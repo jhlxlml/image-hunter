@@ -23,6 +23,12 @@
   const C = IH.C;
   const U = IH.U;
   const MSG = C.MSG;
+  /* 灯箱的按钮标题与状态文字都跟着界面语言走。
+     它跑在两个宿主里（内容脚本 / 图库页），两边都先加载了 shared/i18n.js。 */
+  const t = (k, a) => IH.I18n.t(k, a);
+  /* 下面这段 UI 是拼 innerHTML 的，文案要转义 —— 英文文案里有 ' 和 &，
+     不转义在 HTML 属性里会当场截断。 */
+  const esc = (s) => U.escapeHtml(s);
 
   const ICON_PREV =
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" ' +
@@ -153,22 +159,24 @@
       '  <span class="ih-lb-meta"></span>',
       '  <span class="ih-lb-spacer"></span>',
       '  <span class="ih-lb-zoom">',
-      '    <button data-act="zoom-out" title="缩小">−</button>',
+      /* 图标按钮没有可见文字，title 与 aria-label 都要给 —— 只给 title 的话
+         读屏器念的是「按钮」，键盘/读屏用户根本不知道这一排是干什么的。 */
+      '    <button data-act="zoom-out" title="' + esc(t('pg.lbZoomOut')) + '" aria-label="' + esc(t('pg.lbZoomOut')) + '">−</button>',
       '    <span class="ih-lb-zoom-val">100%</span>',
-      '    <button data-act="zoom-in" title="放大">+</button>',
+      '    <button data-act="zoom-in" title="' + esc(t('pg.lbZoomIn')) + '" aria-label="' + esc(t('pg.lbZoomIn')) + '">+</button>',
       '  </span>',
-      '  <button class="ih-lb-btn" data-act="link" title="复制图片直链">' + ICON_LINK + '</button>',
-      '  <button class="ih-lb-btn" data-act="copyimg" title="复制图片到剪贴板">' + ICON_COPY_IMG + '</button>',
-      '  <button class="ih-lb-btn" data-act="open" title="在新标签页打开原图">' + ICON_OPEN + '</button>',
-      '  <button class="ih-lb-btn ih-lb-gallery" data-act="gallery" title="在图库中打开：定位到这张图，并可浏览本页全部图片">' + ICON_GALLERY + '</button>',
-      '  <button class="ih-lb-btn ih-lb-primary" data-act="save">' + ICON_DOWNLOAD + '<span>保存原图</span></button>',
-      '  <button class="ih-lb-btn ih-lb-icon" data-act="close" title="关闭 (Esc)">' + ICON_CLOSE + '</button>',
+      '  <button class="ih-lb-btn" data-act="link" title="' + esc(t('pg.lbCopyLink')) + '" aria-label="' + esc(t('pg.lbCopyLink')) + '">' + ICON_LINK + '</button>',
+      '  <button class="ih-lb-btn" data-act="copyimg" title="' + esc(t('pg.lbCopyImage')) + '" aria-label="' + esc(t('pg.lbCopyImage')) + '">' + ICON_COPY_IMG + '</button>',
+      '  <button class="ih-lb-btn" data-act="open" title="' + esc(t('pg.lbOpenTab')) + '" aria-label="' + esc(t('pg.lbOpenTab')) + '">' + ICON_OPEN + '</button>',
+      '  <button class="ih-lb-btn ih-lb-gallery" data-act="gallery" title="' + esc(t('pg.lbOpenGallery')) + '" aria-label="' + esc(t('pg.lbOpenGallery')) + '">' + ICON_GALLERY + '</button>',
+      '  <button class="ih-lb-btn ih-lb-primary" data-act="save">' + ICON_DOWNLOAD + '<span>' + esc(t('pg.saveOriginal')) + '</span></button>',
+      '  <button class="ih-lb-btn ih-lb-icon" data-act="close" title="' + esc(t('pg.lbClose')) + '" aria-label="' + esc(t('pg.lbClose')) + '">' + ICON_CLOSE + '</button>',
       '</div>',
       '<div class="ih-lb-stage">',
-      '  <button class="ih-lb-nav ih-lb-prev" data-act="prev" title="上一张 (←)">' + ICON_PREV + '</button>',
+      '  <button class="ih-lb-nav ih-lb-prev" data-act="prev" title="' + esc(t('pg.lbPrev')) + '" aria-label="' + esc(t('pg.lbPrev')) + '">' + ICON_PREV + '</button>',
       '  <img class="ih-lb-img" alt="" draggable="false" />',
       '  <div class="ih-lb-loading"><div class="ih-spinner"></div></div>',
-      '  <button class="ih-lb-nav ih-lb-next" data-act="next" title="下一张 (→)">' + ICON_NEXT + '</button>',
+      '  <button class="ih-lb-nav ih-lb-next" data-act="next" title="' + esc(t('pg.lbNext')) + '" aria-label="' + esc(t('pg.lbNext')) + '">' + ICON_NEXT + '</button>',
       '</div>',
       '<div class="ih-lb-strip"></div>'
     ].join('');
@@ -232,7 +240,7 @@
     img.addEventListener('error', () => {
       loaded = false;
       ui.loading.style.display = 'none';
-      ui.meta.textContent = '原图加载失败（可能受站点防盗链限制，仍可尝试保存）';
+      ui.meta.textContent = t('pg.lbLoadFailed');
     });
 
     strip.addEventListener('click', (e) => {
@@ -354,7 +362,7 @@
     ui.title.title = c.url;
 
     ui.tag.style.display = c.restored ? 'inline-flex' : 'none';
-    if (c.restored) ui.tag.textContent = '已还原原图';
+    if (c.restored) ui.tag.textContent = t('pg.tagRestored');
 
     updateMeta();
 
@@ -374,7 +382,7 @@
     } else if (c.width && c.height) {
       parts.push(c.width + ' × ' + c.height);
     } else {
-      parts.push('尺寸未知');
+      parts.push(t('pg.dimUnknown'));
     }
     if (c.type) parts.push(String(c.type).toUpperCase());
     if (c.sizeBytes) parts.push(U.formatBytes(c.sizeBytes));
@@ -382,7 +390,7 @@
     /* 被尺寸阈值挡掉的那些要如实说出来。
        不说的话用户只会以为「嗅探漏了图」—— 而设置页里那个开关是他自己调的，
        得让他能把「这张图没出现」和「我设了 64px」对上。 */
-    if (dropped > 0) parts.push('已按 ' + minSize + 'px 过滤 ' + dropped + ' 张');
+    if (dropped > 0) parts.push(t('pg.filteredOut', { min: minSize, n: dropped }));
     ui.meta.textContent = parts.join('  ·  ');
   }
 
@@ -448,8 +456,8 @@
   }
 
   function fileNameOf(url) {
-    if (!url) return '图片';
-    if (U.isDataUrl(url)) return '内联图片';
+    if (!url) return t('pg.imageWord');
+    if (U.isDataUrl(url)) return t('pg.inlineImage');
     try {
       const last = decodeURIComponent(new URL(url).pathname.split('/').filter(Boolean).pop() || '');
       return last || U.prettyHost(url);
@@ -466,7 +474,7 @@
 
     clearTimeout(saveTimer);
     btn.disabled = true;
-    if (label) label.textContent = '保存中…';
+    if (label) label.textContent = t('pg.savingShort');
 
     const s = IH.Store.getSettings();
     const res = await U.sendToBg({
@@ -483,12 +491,12 @@
 
     btn.disabled = false;
     if (res && res.ok) {
-      if (label) label.textContent = res.skipped ? '已存在，已跳过' : '已保存 ✓';
+      if (label) label.textContent = res.skipped ? t('pg.skippedExists') : t('pg.savedCheck');
     } else {
-      if (label) label.textContent = '保存失败';
+      if (label) label.textContent = t('pg.saveFailed');
       console.warn('[ImageHunter] 保存失败', res && res.error);
     }
-    saveTimer = setTimeout(() => { if (label) label.textContent = '保存原图'; }, 1800);
+    saveTimer = setTimeout(() => { if (label) label.textContent = t('pg.saveOriginal'); }, 1800);
   }
 
   function flashButton(act, ok) {
@@ -514,13 +522,13 @@
         type: MSG.FETCH_IMAGE,
         payload: { url: c.url, pageUrl: pageUrl || location.href }
       });
-      if (!res || !res.ok) throw new Error((res && res.error) || '获取图片失败');
+      if (!res || !res.ok) throw new Error((res && res.error) || t('pg.fetchImageFailed'));
 
       const blob = await (await fetch(res.dataUrl)).blob();
       const png = await U.toPngBlob(blob);
 
       if (!navigator.clipboard || typeof ClipboardItem === 'undefined') {
-        throw new Error('当前环境不支持复制图片');
+        throw new Error(t('pg.copyUnsupported'));
       }
       await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
       flashButton('copyimg', true);

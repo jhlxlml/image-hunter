@@ -9,6 +9,8 @@
   const U = IH.U;
   const Store = IH.Store;
   const MSG = C.MSG;
+  const I18n = IH.I18n;
+  const t = (k, a) => I18n.t(k, a);
 
   const $ = (id) => document.getElementById(id);
   const $$ = (sel) => Array.prototype.slice.call(document.querySelectorAll(sel));
@@ -47,6 +49,54 @@
     }
     document.documentElement.setAttribute('data-theme', t);
     $$('#segTheme button').forEach((b) => b.classList.toggle('active', b.dataset.v === theme));
+  }
+
+  /* ------------------------------------------------------------------ *
+   * 界面语言
+   *
+   * 切换之后要做三件事，少一件界面就会中英混着：
+   *   1. 重填 HTML 里的静态文案（I18n.apply 走 data-i18n）
+   *   2. 重渲染**动态**内容 —— 内置规则名、自定义规则里的按钮、统计标签
+   *      都嵌着文案，它们不在 data-i18n 里，apply 管不到
+   *   3. 把当前选择高亮回 segLang
+   * ------------------------------------------------------------------ */
+
+  function applyLang() {
+    const v = settings.uiLang || 'auto';
+    $$('#segLang button').forEach((b) => b.classList.toggle('active', b.dataset.v === v));
+  }
+
+  /**
+   * 页脚。版本号从 manifest 读，不写死 ——
+   * 原来这里硬编码着 `v1.0.0`，而 manifest 早就走到 1.7.x，没人会记得改它。
+   *
+   * 必须单独成一个函数：它是**直接赋值**上去的（不走 data-i18n），
+   * 所以切换语言时不重设的话，页脚会一直停在旧语言 —— 一整页英文里
+   * 挂着一句中文，而截图看着毫无异样。
+   */
+  function renderFooter() {
+    try {
+      const m = chrome.runtime.getManifest();
+      /* 版本号单独包一层 `<b id="ftrVersion">`（用 innerHTML 就是为了产出这个元素）：
+         它是「版本确实从 manifest 读的、不是写死的 v—」的**可取到的锚点** ——
+         tests/screenshot.js 就靠它做这项检查。只把版本本身转义，模板是我们自己写的。
+         调用点有两处：init() 与 switchLang()（页脚是直接赋值，不走 data-i18n，
+         只在 init 里设一次的话，切语言时它会纹丝不动）。 */
+      $('ftrText').innerHTML = t('opt.footer', {
+        version: '<b id="ftrVersion">v' + U.escapeHtml(m.version || '—') + '</b>'
+      });
+    } catch (e) { /* 拿不到就保持占位符，不编一个版本号出来 */ }
+  }
+
+  async function switchLang(v) {
+    settings = (await I18n.setLang(v)) || settings;
+    I18n.apply(document);
+    applyLang();
+    renderFooter();
+    renderSettings();
+    renderBuiltin();
+    renderRules();
+    flashSaved();
   }
 
   /* ------------------------------------------------------------------ *
@@ -93,7 +143,7 @@
     const lines = el.value.split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean);
     if (!lines.length) {
       note.className = 'inline-note';
-      note.textContent = '当前没有排除任何站点';
+      note.textContent = t('opt.blockNoteEmpty');
       return;
     }
 
@@ -105,11 +155,13 @@
       else bad.push(line);
     }
 
+    /* 列表本身是域名，中英文都一样，所以只有前后缀需要翻译；
+       分隔符用 '、' 还是 ', ' 也跟着语言走。 */
+    const sep = I18n.lang() === 'zh' ? '、' : ', ';
     note.className = 'inline-note' + (bad.length ? ' warn' : '');
     note.textContent = bad.length
-      ? '会排除 ' + good.length + ' 个站点；下面这 ' + bad.length + ' 行不是有效域名，将被忽略：'
-        + bad.join('、')
-      : '会排除 ' + good.length + ' 个站点：' + good.join('、');
+      ? t('opt.blockNoteBad', { n: good.length, m: bad.length, list: bad.join(sep) })
+      : t('opt.blockNoteOk', { n: good.length, list: good.join(sep) });
   }
 
   function updateOutput(el) {
@@ -120,9 +172,9 @@
     if (key === 'probeTimeout') out.textContent = v + ' ms';
     else if (key === 'hoverDelay') out.textContent = v + ' ms';
     else if (key === 'minSize') out.textContent = v + ' px';
-    else if (key === 'lightboxMinSize') out.textContent = v > 0 ? v + ' px' : '不过滤';
-    else if (key === 'concurrency') out.textContent = v + ' 张';
-    else if (key === 'retries') out.textContent = v + ' 次';
+    else if (key === 'lightboxMinSize') out.textContent = v > 0 ? v + ' px' : t('cmn.noFilter');
+    else if (key === 'concurrency') out.textContent = t('opt.unitImgs', { v });
+    else if (key === 'retries') out.textContent = t('opt.unitTimes', { v });
     else out.textContent = String(v);
   }
 
@@ -160,6 +212,10 @@
       });
     });
 
+    $$('#segLang button').forEach((b) => {
+      b.addEventListener('click', () => { switchLang(b.dataset.v); });
+    });
+
     // 站点排除列表：输入时就存（防抖），失焦时把规范化结果回填
     const bhEl = $('blockedHosts');
     if (bhEl) {
@@ -182,16 +238,16 @@
       const n = (settings.customRules || []).length;
       const b = (settings.blockedHosts || []).length;
       const extra = [];
-      if (n) extra.push(n + ' 条自定义还原规则');
-      if (b) extra.push(b + ' 个排除站点');
+      if (n) extra.push(t('opt.ruleCount', { n }));
+      if (b) extra.push(t('opt.blockCount', { n: b }));
       const msg = extra.length
-        ? '确定要把所有设置恢复为默认值吗？\n\n这会同时删除你添加的 ' + extra.join(' 和 ') + '，且无法撤销。'
-        : '确定要把所有设置恢复为默认值吗？';
+        ? t('opt.resetConfirm') + '\n\n' + t('opt.resetConfirmExtra', { extra: extra.join(t('cmn.and')) })
+        : t('opt.resetConfirm');
       if (!confirm(msg)) return;
       settings = await Store.resetSettings();
       renderSettings();
       renderRules();
-      toast('已恢复默认设置', 'ok');
+      toast(t('opt.restored'), 'ok');
     });
 
     $('btnShortcuts').addEventListener('click', () => {
@@ -214,7 +270,8 @@
       const d = document.createElement('div');
       d.className = 'builtin-item';
       d.innerHTML = '<span></span><em>' + U.escapeHtml(r.id) + '</em>';
-      d.firstChild.textContent = r.label;
+      // 规则名跟着语言走；constants 里的 label 是中文兜底
+      d.firstChild.textContent = I18n.ruleLabel(r.id, r.label);
       wrap.appendChild(d);
     });
   }
@@ -232,28 +289,29 @@
 
     const pattern = document.createElement('input');
     pattern.type = 'text';
-    pattern.placeholder = '匹配正则，如  -\\d{2,4}x\\d{2,4}(?=\\.jpg)';
+    pattern.placeholder = t('opt.rulePatternPh');
     pattern.value = rule.pattern || '';
 
     const flags = document.createElement('input');
     flags.type = 'text';
-    flags.placeholder = 'flags';
+    flags.placeholder = t('opt.ruleFlagsPh');
     flags.value = rule.flags || 'i';
 
     const replace = document.createElement('input');
     replace.type = 'text';
-    replace.placeholder = '替换为（留空即删除匹配部分）';
+    replace.placeholder = t('opt.ruleReplacePh');
     replace.value = rule.replace == null ? '' : rule.replace;
 
     const del = document.createElement('button');
     del.className = 'del';
     del.type = 'button';
-    del.title = '删除该规则';
+    del.title = t('opt.ruleDelTitle');
+    del.setAttribute('aria-label', t('opt.ruleDelTitle'));
     del.textContent = '×';
 
     const hint = document.createElement('div');
     hint.className = 'hint-row';
-    hint.textContent = '示例：正则 (-\\d{2,4}x\\d{2,4})(?=\\.jpg)  ·  替换为空 → 去掉 WordPress 尺寸后缀';
+    hint.textContent = t('opt.ruleHint');
 
     const commit = U.debounce(async () => {
       const list = (settings.customRules || []).slice();
@@ -302,7 +360,7 @@
         const v = url.replace(re, rule.replace == null ? '' : rule.replace);
         if (v && v !== url) out.push({ by: 'custom', url: v });
       } catch (e) {
-        out.push({ by: 'custom', url: '', error: '正则非法：' + e.message });
+        out.push({ by: 'custom', url: '', error: t('opt.ruleErr', { msg: e.message }) });
       }
     }
     return out;
@@ -329,15 +387,17 @@
   async function runTest() {
     const url = $('testUrl').value.trim();
     const box = $('testResult');
-    if (!url) { box.innerHTML = '<span class="none">请先粘贴一个图片地址</span>'; return; }
+    const none = (s) => '<span class="none">' + U.escapeHtml(s) + '</span>';
+
+    if (!url) { box.innerHTML = none(t('opt.testNeedUrl')); return; }
 
     const list = buildCandidates(url);
     if (!list.length) {
-      box.innerHTML = '<span class="none">没有规则匹配这个地址 —— 它会被当作原图直接下载</span>';
+      box.innerHTML = none(t('opt.testNoMatch'));
       return;
     }
 
-    box.innerHTML = '<span class="none">正在加载候选原图…</span>';
+    box.innerHTML = none(t('opt.testLoading'));
 
     const rows = await Promise.all(list.map(async (c) => {
       if (!c.url) return { ...c, size: null };
@@ -350,7 +410,9 @@
 
     const head = document.createElement('div');
     head.className = 'none';
-    head.textContent = '原地址：' + (originSize ? originSize.w + ' × ' + originSize.h : '加载失败 / 未知');
+    head.textContent = t('opt.testOrigin', {
+      dim: originSize ? originSize.w + ' × ' + originSize.h : t('opt.testUnknown')
+    });
     box.appendChild(head);
 
     for (const r of rows) {
@@ -358,10 +420,11 @@
       if (r.error) {
         d.innerHTML = '<span class="none">[' + U.escapeHtml(r.by) + '] ' + U.escapeHtml(r.error) + '</span>';
       } else {
-        const dim = r.size ? r.size.w + ' × ' + r.size.h : '加载失败';
+        const dim = r.size ? r.size.w + ' × ' + r.size.h : t('opt.testLoadFail');
         const better = r.size && originSize && (r.size.w * r.size.h > originSize.w * originSize.h);
         d.innerHTML = '<span class="' + (better ? 'hit' : 'none') + '">[' + U.escapeHtml(r.by) + '] '
-          + dim + ' → ' + U.escapeHtml(r.url) + (better ? '  ✓ 会被采用' : '  （不会采用）') + '</span>';
+          + dim + ' → ' + U.escapeHtml(r.url)
+          + U.escapeHtml(better ? t('opt.testWillUse') : t('opt.testWontUse')) + '</span>';
       }
       box.appendChild(d);
     }
@@ -390,18 +453,33 @@
     body.textContent = '';
 
     if (!history.length) {
-      body.innerHTML = '<p style="color:var(--text-3);padding:20px 0">还没有下载记录</p>';
+      const p = document.createElement('p');
+      p.style.cssText = 'color:var(--text-3);padding:20px 0';
+      p.textContent = t('opt.histEmpty');
+      body.appendChild(p);
     } else {
       const table = document.createElement('table');
       table.className = 'hist-table';
-      table.innerHTML = '<thead><tr><th>时间</th><th>文件名</th><th>尺寸</th><th>体积</th><th>状态</th><th>来源页</th></tr></thead>';
+      const thead = document.createElement('thead');
+      const htr = document.createElement('tr');
+      /* 写全键、不拼前缀：拼出来的键静态查不到，
+         一旦某个键漏了翻译，界面上会直接显示 "opt.histTime" 而测试全绿。 */
+      ['opt.histTime', 'opt.histName', 'opt.histDims',
+        'opt.histBytes', 'opt.histStatus', 'opt.histPage'].forEach((k) => {
+        const th = document.createElement('th');
+        th.textContent = t(k);
+        htr.appendChild(th);
+      });
+      thead.appendChild(htr);
+      table.appendChild(thead);
+
       const tb = document.createElement('tbody');
 
       history.slice(0, 300).forEach((h) => {
         const tr = document.createElement('tr');
         const st = h.status === 'done'
-          ? '<span class="pill ok">成功</span>'
-          : '<span class="pill err">失败</span>';
+          ? '<span class="pill ok">' + U.escapeHtml(t('opt.histOk')) + '</span>'
+          : '<span class="pill err">' + U.escapeHtml(t('opt.histFail')) + '</span>';
         tr.innerHTML =
           '<td>' + U.formatTime(h.ts) + '</td>' +
           '<td>' + U.escapeHtml(h.filename || '') + '</td>' +
@@ -427,7 +505,7 @@
     };
     const stamp = new Date().toISOString().slice(0, 10);
     U.downloadText('imagehunter-settings-' + stamp + '.json', JSON.stringify(data, null, 2), 'application/json');
-    toast('设置已导出', 'ok');
+    toast(t('opt.exported'), 'ok');
   }
 
   /* ------------------------------------------------------------------ *
@@ -440,7 +518,7 @@
 
   async function exportDiagnostics() {
     if (!IH.Diag) {
-      toast('诊断模块未加载，请重新加载扩展', 'err');
+      toast(t('opt.diagMissing'), 'err');
       return;
     }
 
@@ -471,13 +549,13 @@
     const leaks = IH.Diag.audit(diag);
     if (leaks.length) {
       console.error('[ImageHunter] 诊断包自查发现未清洗的地址：', leaks);
-      toast('诊断包自查未通过（' + leaks.length + ' 处地址未清洗），已中止导出', 'err');
+      toast(t('opt.diagAuditFail', { n: leaks.length }), 'err');
       return;
     }
 
     const text = JSON.stringify(diag, null, 2);
     U.downloadText(IH.Diag.fileName(), text, 'application/json');
-    toast('诊断包已导出（' + (diag.recentDownloadsCount || 0) + ' 条下载记录）', 'ok');
+    toast(t('opt.diagExported', { n: diag.recentDownloadsCount || 0 }), 'ok');
   }
 
   function importSettings(file) {
@@ -485,7 +563,7 @@
     fr.onload = async () => {      try {
         const data = JSON.parse(fr.result);
         const incoming = data && data.settings ? data.settings : data;
-        if (!incoming || typeof incoming !== 'object') throw new Error('文件格式不正确');
+        if (!incoming || typeof incoming !== 'object') throw new Error(t('opt.importBadFormat'));
 
         // 只接受已知字段（customRules 会在里面走 sanitizeCustomRules 校验），
         // 避免脏数据；也保证「导出 → 导入」是完整的往返
@@ -495,9 +573,9 @@
         renderSettings();
         renderRules();
         const n = (settings.customRules || []).length;
-        toast(n ? '设置已导入（含 ' + n + ' 条自定义还原规则）' : '设置已导入', 'ok');
+        toast(n ? t('opt.importedRules', { n }) : t('opt.imported'), 'ok');
       } catch (e) {
-        toast('导入失败：' + ((e && e.message) || e), 'err');
+        toast(t('opt.importFail', { msg: (e && e.message) || e }), 'err');
       }
     };
     fr.readAsText(file);
@@ -509,23 +587,23 @@
     $('modal').addEventListener('click', (e) => { if (e.target === $('modal')) $('modal').hidden = true; });
 
     $('btnClearHistory').addEventListener('click', async () => {
-      if (!confirm('确定清除所有下载历史吗？已保存的文件不受影响。')) return;
+      if (!confirm(t('opt.clearHistoryConfirm'))) return;
       await Store.clearHistory();
       await refreshStats();
-      toast('下载历史已清除', 'ok');
+      toast(t('opt.historyCleared'), 'ok');
     });
 
     $('btnClearFp').addEventListener('click', async () => {
-      if (!confirm('确定清除去重指纹吗？清除后，之前下载过的图片会重新允许下载。')) return;
+      if (!confirm(t('opt.clearFpConfirm'))) return;
       await Store.clearFingerprints();
       await refreshStats();
-      toast('去重指纹已清除', 'ok');
+      toast(t('opt.fpCleared'), 'ok');
     });
 
     $('btnExportSettings').addEventListener('click', exportSettings);
 
     $('btnExportDiag').addEventListener('click', () => {
-      exportDiagnostics().catch((e) => toast('导出失败：' + ((e && e.message) || e), 'err'));
+      exportDiagnostics().catch((e) => toast(t('opt.exportFail', { msg: (e && e.message) || e }), 'err'));
     });
 
     $('btnImportSettings').addEventListener('click', () => $('fileImport').click());
@@ -544,12 +622,11 @@
   async function init() {
     settings = await Store.loadSettings();
 
-    /* 页脚版本号从 manifest 读，不写死。
-       原来这里硬编码着 `v1.0.0`，而 manifest 早就走到 1.7.x —— 没人会记得改它。 */
-    try {
-      const m = chrome.runtime.getManifest();
-      $('ftrVersion').textContent = 'v' + (m.version || '—');
-    } catch (e) { /* 拿不到就保持占位符，不编一个版本号出来 */ }
+    /* 先把 HTML 里的静态文案按当前语言填一遍，再去渲染动态内容 ——
+       顺序反了的话，规则列表这类动态内容会先用旧语言渲染一遍再被覆盖。 */
+    I18n.apply(document);
+    applyLang();
+    renderFooter();
 
     bindControls();
     renderSettings();
@@ -582,6 +659,6 @@
 
   init().catch((e) => {
     console.error('[ImageHunter] 设置页初始化失败', e);
-    toast('初始化失败：' + ((e && e.message) || e), 'err');
+    toast(t('opt.initFail', { msg: (e && e.message) || e }), 'err');
   });
 })();

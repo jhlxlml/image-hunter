@@ -540,7 +540,8 @@ node tools/package.js --list   # 只列出会打进包的文件
 
 ```
 image-hunter/
-├── README.md                   # 面向 GitHub 的简明首页
+├── README.md                   # 面向 GitHub 的简明首页（中文）
+├── README.en.md                # 面向 GitHub 的简明首页（英文）
 ├── HANDBOOK.md                 # 本文件：完整手册（功能详解 / 使用说明 / FAQ / 全部版本历史）
 ├── LICENSE                     # AGPL-3.0
 ├── manifest.json               # MV3 清单
@@ -553,6 +554,7 @@ image-hunter/
 │   ├── constants.js            # 消息类型、默认配置、原图还原规则表
 │   ├── utils.js                # URL 规范化、srcset 解析、文件名生成、并发控制
 │   ├── store.js                # chrome.storage 封装
+│   ├── i18n.js                 # 界面多语言：427 条键 × 中/英，运行时切换 + 降级链
 │   └── diagnostics.js          # 诊断包：字段白名单 + 地址脱敏 + 落盘前自查（纯函数）
 ├── content/
 │   ├── scanner.js              # 【核心】嗅探引擎 + 原图还原算法
@@ -572,7 +574,7 @@ image-hunter/
 │       └── bgstub.js           # 后台 vm 测试桩（假 chrome；内容脚本可编程、超时常量可缩短）
 ├── docs/
 │   └── screenshots/            # 界面截图（11 张，由 tests/screenshot.js 生成并纳入版本管理）
-├── _locales/                   # 仅扩展名称/描述/命令标题/右键菜单文案（服务 manifest）；界面文案只有中文
+├── _locales/                   # 仅扩展名称/描述/命令标题/右键菜单文案（服务 manifest）；界面文案由 shared/i18n.js 负责
 └── icons/                      # 扩展图标
 ```
 
@@ -595,8 +597,8 @@ image-hunter/
 
 ```bash
 npm ci                # 首次：装开发期依赖（jsdom + playwright-core）
-npm test              # Node 套件（15 个）
-npm run test:browser  # 真实浏览器套件（25 个，需要本机 Edge / Chrome）
+npm test              # Node 套件（16 个）
+npm run test:browser  # 真实浏览器套件（26 个，需要本机 Edge / Chrome）
 npm run test:all      # 两个入口都跑
 ```
 
@@ -659,11 +661,17 @@ IH_AUDIT_VERBOSE=1 node tools/audit-settings.js   # 连每个命中位置的行�
 ## 常见问题
 
 **Q：界面有英文版吗？**
-A：**没有，界面文案目前 100% 是中文硬编码。** 仓库里的 `_locales/` 只有 8 个键
-（扩展名称、描述、三个命令标题、两个右键菜单文案），它们是给 manifest 用的，
-不覆盖任何界面文字。
-之所以现在做成这样：这个扩展的界面有 300 多条文案，抽取 + 翻译 + 校对是一笔
-不小的投入，而目前没有明确的需求。想要英文界面的话欢迎提 issue。
+A：**有，界面支持中英运行时切换。** 设置页的「界面语言」提供三档：**跟随浏览器 / 中文 / English**，
+默认跟随浏览器语言；切换**立即生效**，已经开着的图库页会当场跟着变，不需要刷新。
+
+实现方式：自建了一层 `shared/i18n.js`（427 条键 × 2 种语言），界面文案全部走 `t(key)`。
+**为什么不用 `chrome.i18n`**：那套只认**浏览器界面语言**，跟随浏览器设置、无法由扩展在运行时改变 ——
+「用户在设置页里选英文」这件事它做不到。所以 `_locales/` 只保留浏览器原生渲染的那 8 条
+（扩展名称、描述、三个命令标题、两个右键菜单文案），其余全部由 `shared/i18n.js` 负责。
+
+降级链是 `当前语言 → 中文 → key 本身`。最外环故意返回 key：界面上出现 `pop.saveSelected`
+一眼就能看出漏翻译了，比显示空串好排查。中英两份文案表由测试套件强制齐平
+（`tests/validate.js` 第 18 节），想加第三种语言照着表加一列即可。
 
 **Q：某些图片保存失败？**
 A：少数站点有严格的防盗链校验。扩展会自动尝试降级方案（改用扩展页拉取），若仍失败，可在图片上右键选择「在新标签页打开原图」后手动保存。
@@ -789,6 +797,54 @@ A：先确认鼠标确实停在图片上（要等悬停按钮浮现出来）。�
 ---
 
 ## 版本
+
+v1.14.0 —— **中英双语界面 + 英文 README**。界面支持**运行时切换**中/英，
+新增 `README.en.md`。
+
+          **为什么不能用 `chrome.i18n`**：那套只认**浏览器界面语言** —— 跟随浏览器设置，
+          扩展改不了它。「用户在设置页里选英文」这件事它做不到。所以自建了一层
+          `shared/i18n.js`：**427 条键 × 中/英**，界面文案全部走 `t(key)`。
+          `_locales/` 仍保留，但只管浏览器原生渲染的那 8 条（扩展名称 / 描述 /
+          命令标题 / 右键菜单），因为那部分由 manifest 驱动，改不了。
+
+          | 设计点 | 做法 | 为什么 |
+          |---|---|---|
+          | 降级链 | `当前语言 → 中文 → key 本身` | 最外环故意返回 key：界面出现 `pop.saveSelected` 一眼看出漏翻译，比空串好排查 |
+          | 填充属性 | `data-i18n`(textContent) / `-html`(innerHTML) / `-ph`(placeholder) / `-aria`(aria-label+title) / `-title` | 静态文案不写进 JS，HTML 里能直接读 |
+          | `<html lang>` | `apply()` 顺手改掉 | 读屏器靠它切发音 |
+          | 动态内容 | 切语言时**整块重建**（`applyLangChange()` / `switchLang()`） | chips / 内置规则名 / 底栏统计 / 卡片角标 / 空态提示都是 JS 拼的，`data-i18n` 管不到 |
+
+          **踩到的两个真 bug**（都是测试抓出来的，不是靠人看）：
+
+          1. **页脚切语言不刷新。** 页脚是直接赋值（不走 `data-i18n`），原来只在 `init()` 里设一次。
+             `browser-lang.js` 一断言就红。抽出 `renderFooter()`，`switchLang()` 里也调。
+          2. **HTML 兜底文案里写了没转义的 `<a href>`。** 改写 `options/options.html` 时把
+             原版转义过的 `&lt;a href&gt;` 写成了裸标签。`<a>` 不是空元素，解析器把它压进
+             活动格式化元素栈，`</span>` 只关掉 span，**收养算法会把 `<a>` 复活并包住后面整篇文档** ——
+             包括「导出诊断包」按钮。按钮在锚点里 → 点击走默认行为 → **整页重载** →
+             测试打的 `downloadText` 补丁随 `window` 一起没了。表现是「按钮在、文案对、可见，
+             就是点了没反应」，完全不像 HTML 问题。修法：转义回 `&lt;a href&gt;`（同批还有
+             `<img>` / `<link rel="preload">` 两处），并在 `validate.js` 第 18 节加了守卫 ——
+             **在解析后的 DOM 上**断言每个 `[data-i18n]` 元素的 `children.length === 0`
+             （`data-i18n` 是整段 `textContent` 覆写，底下本来就不该有元素）。注入验证过。
+             详见 `tests/README.md` 第二十三个坑。
+
+          **测试环境的语言必须钉死。** 界面默认「跟随浏览器」，而**开发机是 `zh-CN`、
+          CI runner 是 `en-US`、jsdom 的 `navigator.language` 恒为 `en-US`** ——
+          不钉死就是「本地全绿、CI 全红」，或断言整体翻成英文，两边都看不出是语言问题。
+          做法：25→26 个浏览器套件全部加 `locale: 'zh-CN'`；jsdom 套件给 `chrome.storage`
+          桩喂 `uiLang: 'zh'` 并先 `await Store.loadSettings()`（`I18n.lang()` 读的是 Store
+          缓存，不加载就还是 `auto`）；后台 vm 桩补 `navigator: { language: 'zh-CN' }`。
+
+          另外 `background.js` 里原本就有一个 `function t(key, fallback)`（走 `chrome.i18n.getMessage`），
+          与新加的取词 `t` 同名 —— 在 vm 里加载直接 `SyntaxError: Identifier 't' has already been declared`。
+          旧的改名 `localeMsg`。
+
+          **测试**：新增 `tests/test-i18n.js`（44 项：语言判定 / 降级链 / 五种属性填充 / 落盘）
+          与 `tests/browser-lang.js`（30 项：真浏览器里「浏览器中文 + 用户选英文」，
+          验静态文案、动态生成内容、跨页面同步、刷新后保持、切回 auto 落回中文）。
+          `validate.js` 新增第 18 节，把中英齐平、无空串、引用键都存在、`uiLang` 在
+          `DEFAULT_SETTINGS`、加载顺序、套件语言钉死全部钉住。
 
 v1.13.1 —— 修一个用户报的 bug：**「首次点击扩展图标，嗅探有问题，要刷新下才行」**。
           它看起来像嗅探坏了，其实是**扫描的结论只有两态**惹的祸。

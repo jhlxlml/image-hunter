@@ -12,6 +12,8 @@
   const C = IH.C;
   const U = IH.U;
   const MSG = C.MSG;
+  /* 这里返回的 error 会原样显示在页内气泡 / 图库的提示里 —— 是给用户看的，要翻译 */
+  const t = (k, a) => IH.I18n.t(k, a);
 
   const isTopFrame = (() => {
     try { return window.top === window; } catch (e) { return false; }
@@ -189,7 +191,7 @@
         restored: !!cand.restored
       }
     });
-    return res || { ok: false, error: '无响应' };
+    return res || { ok: false, error: t('pg.noResponse') };
   }
 
   async function saveBySrc(srcUrl) {
@@ -206,11 +208,11 @@
 
     if (el) {
       const cand = await IH.Scanner.resolveForElement(el);
-      if (!cand) return { ok: false, error: '未找到可保存的图片' };
+      if (!cand) return { ok: false, error: t('pg.noSavable') };
       return await doDownload(cand);
     }
 
-    if (!srcUrl) return { ok: false, error: '没有可保存的图片地址' };
+    if (!srcUrl) return { ok: false, error: t('pg.noSavableUrl') };
 
     // 找不到对应元素时，退化为「按 URL 直接下载 + 尝试原图还原」
     const cand = { url: srcUrl, width: 0, height: 0 };
@@ -275,7 +277,7 @@
         /* 快捷键「保存鼠标当前悬停的那张图」。后台是广播给所有 frame 的
            （鼠标在哪一帧只有那一帧知道），没有目标的那几帧什么都不做。 */
         if (isBlocked()) { sendResponse({ ok: false, error: 'blocked' }); return true; }
-        if (!IH.Hover || !IH.Hover.saveHovered) { sendResponse({ ok: false, error: '悬停模块未加载' }); return true; }
+        if (!IH.Hover || !IH.Hover.saveHovered) { sendResponse({ ok: false, error: t('pg.hoverNotLoaded') }); return true; }
         IH.Hover.saveHovered().then(
           (r) => sendResponse(r),
           (e) => sendResponse({ ok: false, error: String((e && e.message) || e) })
@@ -291,7 +293,7 @@
            而且它自带「只有确实更大才采纳」的保护，重试也改不坏链接。 */
         const payload = msg.payload || {};
         const url = payload.url || '';
-        if (!url) { sendResponse({ ok: false, error: '缺少图片地址' }); return true; }
+        if (!url) { sendResponse({ ok: false, error: t('pg.missingUrl') }); return true; }
 
         const cand = { url, width: payload.width || 0, height: payload.height || 0 };
         (async () => {

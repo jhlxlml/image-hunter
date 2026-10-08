@@ -1,6 +1,6 @@
 {
   "name": "image-hunter",
-  "version": "1.13.1",
+  "version": "1.14.0",
   "private": true,
   "description": "图片猎人 ImageHunter —— 浏览器扩展。扩展本体零依赖零构建；这里声明的全是开发期依赖（跑测试用），不进扩展包。",
   "license": "AGPL-3.0-only",

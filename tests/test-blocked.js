@@ -71,7 +71,9 @@ function makeEnv(opts) {
   };
 
   const sent = [];
-  const storeData = { ih_settings: Object.assign({}, o.settings || {}) };
+  /* uiLang 钉成中文：jsdom 的 navigator.language 恒为 en-US，
+     而断言写的是中文文案（浏览器套件那边用 locale: 'zh-CN'）。 */
+  const storeData = { ih_settings: Object.assign({ uiLang: 'zh' }, o.settings || {}) };
 
   const ctx = dom.getInternalVMContext();
   ctx.console = console;
@@ -101,6 +103,7 @@ function makeEnv(opts) {
   load('shared/constants.js');
   load('shared/utils.js');
   load('shared/store.js');
+  load('shared/i18n.js');       // 与 manifest 的清单同序
   load('content/scanner.js');
   load('content/hover.js');
   load('content/lightbox.js');

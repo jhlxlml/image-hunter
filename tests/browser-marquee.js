@@ -116,6 +116,7 @@ async function marqueeDrag(page, o) {
 
   const ctx = await chromium.launchPersistentContext(PROFILE, {
     executablePath: EDGE,
+    locale: 'zh-CN',   // 界面固定中文：断言写的是中文，不能让它跟着 runner 的语言变
     headless: true,
     viewport: { width: 1440, height: 900 },
     args: ['--no-sandbox', '--disable-extensions-except=' + EXT, '--load-extension=' + EXT]

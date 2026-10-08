@@ -46,7 +46,9 @@ ctx.console = console;
 /* chrome.storage 桩：get 回我们要的这份设置，Store 就会把它铺成完整设置。
    Get 必须按 key 分流 —— 加载 settings 的表叫 ih_settings（C.STORAGE_KEYS.SETTINGS），
    一律返回同一份 `stored` 会把 settings 自己也当成设置塞进去。 */
-let stored = {};
+/* uiLang 钉成中文：jsdom 的 navigator.language 恒为 en-US，
+   而本套件断言的是中文文案（浏览器套件那边用 locale: 'zh-CN' 做同一件事）。 */
+let stored = { uiLang: 'zh' };
 ctx.chrome = {
   runtime: {
     lastError: undefined,
@@ -74,6 +76,7 @@ ctx.chrome = {
 vm.runInContext(fs.readFileSync(path.join(BASE, 'shared/constants.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(BASE, 'shared/utils.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(BASE, 'shared/store.js'), 'utf8'), ctx);
+vm.runInContext(fs.readFileSync(path.join(BASE, 'shared/i18n.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(BASE, 'content/lightbox.js'), 'utf8'), ctx);
 
 const IH = ctx.IH;
@@ -112,7 +115,8 @@ const thumbSrcs = () => Array.from(
  *  loadSettings(true) 只是把 cached promise 换掉 —— storage.get 是同步 resolve 的
  *  微任务，所以这里 await 之后缓存已经是新值了。 */
 async function useSettings(patch) {
-  stored = patch;
+  // uiLang 每次都带上：整套断言是中文的，被 patch 冲掉就会整体翻成英文
+  stored = Object.assign({ uiLang: 'zh' }, patch);
   await IH.Store.loadSettings(true);
 }
 

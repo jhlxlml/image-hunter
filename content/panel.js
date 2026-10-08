@@ -52,7 +52,7 @@
     const iframe = document.createElement('iframe');
     iframe.className = 'ih-panel-frame';
     iframe.setAttribute('allow', 'clipboard-write');
-    iframe.setAttribute('title', '图片库');
+    iframe.setAttribute('title', IH.I18n.t('pg.galleryPanel'));
 
     created.root.appendChild(grip);
     created.root.appendChild(iframe);

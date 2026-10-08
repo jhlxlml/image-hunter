@@ -16,6 +16,8 @@
   const U = IH.U;
   const Store = IH.Store;
   const MSG = C.MSG;
+  const I18n = IH.I18n;
+  const t = (k, a) => I18n.t(k, a);
 
   const params = new URLSearchParams(location.search);
   const rawMode = params.get('mode');
@@ -39,7 +41,7 @@
   const $ = (id) => document.getElementById(id);
   const CHUNK = 120;
   const SIZE_PRESETS = [
-    { label: '全部', value: 0 },
+    { label: '', value: 0, i18n: 'cmn.all' },
     { label: '≥ 800px', value: 800 },
     { label: '≥ 1200px', value: 1200 },
     { label: '≥ 1920px', value: 1920 },
@@ -117,6 +119,11 @@
     maxOnly: false
   };
 
+  /* 当前界面的语言。用来发现「设置页把语言改了」——
+     图库自己没有语言切换控件，但设置页改完这一屏要立刻跟着变，
+     否则用户切了英文、回到图库看到的是半中半英。 */
+  let currentLang = 'zh';
+
   let renderedCount = 0;
   let fillToken = 0;          // 每次重建自增，用来作废上一轮还没跑完的「分片补全」
   let fillHandle = null;      // rAF / timeout 句柄
@@ -181,12 +188,12 @@
 
   function formatDimShort(c) {
     if (c.width && c.height) return c.width + '×' + c.height;
-    return '尺寸未知';
+    return t('pop.dimUnknown');
   }
 
   function fileNameOf(url) {
     if (!url) return '';
-    if (U.isDataUrl(url)) return '内联图片';
+    if (U.isDataUrl(url)) return t('pop.inlineImage');
     try {
       const last = decodeURIComponent(new URL(url).pathname.split('/').filter(Boolean).pop() || '');
       return last || U.prettyHost(url);
@@ -245,7 +252,7 @@
     try { main.textContent = ''; } catch (e) { /* ignore */ }
     const box = document.createElement('div');
     box.style.cssText = 'padding:24px;font:13px/1.7 system-ui,sans-serif;color:#666';
-    box.textContent = '这个页面不是由图片猎人打开的，已拒绝在此显示图库。';
+    box.textContent = t('pop.untrusted');
     main.appendChild(box);
   }
 
@@ -261,7 +268,11 @@
 
     await Store.loadSettings();
     applyTheme();
-    document.title = '图片猎人 · 图库';
+    /* 与设置页同一个顺序：先把 HTML 里的静态文案填一遍，再去拼动态内容。
+       反过来的话筛选 chips、卡片角标会先用旧语言拼一遍再被覆盖。 */
+    I18n.apply(document);
+    document.title = t('pop.titleGallery');
+    currentLang = I18n.lang();
 
     // 「先出图、后升级」的第二步：扫描的最终结果（原图还原之后）由后台广播过来。
     // page / panel 两种宿主都要收 —— 面板模式同样会经历「先铺图、后换原图」。
@@ -289,10 +300,16 @@
       });
       Store.onChange((p) => {
         if (!p || p.type !== 'settings') return;
-        applyTheme();
         onSettingsChanged();
       });
     }
+
+    // 主题与语言：不管哪种宿主都要跟着变（设置页改了，图库也得改）
+    Store.onChange((p) => {
+      if (!p || p.type !== 'settings') return;
+      applyTheme();
+      applyLangChange();
+    });
 
     /* 合并嗅探只在独立页里提供 —— 页内面板天生是「贴着当前这一页」的窄条，
        让它去合并别的标签页既装不下那个多选面板，也违背面板的定位。 */
@@ -371,7 +388,7 @@
       if (!tabs.length) {
         const o = document.createElement('option');
         o.value = '';
-        o.textContent = '没有可嗅探的网页标签页';
+        o.textContent = t('pop.noTabs');
         sel.appendChild(o);
         sel.disabled = true;
       } else {
@@ -442,22 +459,24 @@
     if (!lastTabs.length) {
       const d = document.createElement('div');
       d.className = 'tm-empty';
-      d.textContent = '没有可嗅探的网页标签页';
+      d.textContent = t('pop.noTabs');
       list.appendChild(d);
     } else {
-      for (const t of lastTabs) {
+      /* 循环变量叫 tab 不叫 t —— `t` 是本文件的「取词」助手，
+         同名会把它盖掉，写出来的 `t('pop.xxx')` 会当场抛 TypeError。 */
+      for (const tab of lastTabs) {
         const row = document.createElement('label');
         row.className = 'tm-row';
 
         const cb = document.createElement('input');
         cb.type = 'checkbox';
-        cb.value = String(t.id);
-        cb.checked = targetIds.indexOf(t.id) >= 0;
+        cb.value = String(tab.id);
+        cb.checked = targetIds.indexOf(tab.id) >= 0;
         cb.addEventListener('change', () => {
           if (cb.checked) {
-            if (targetIds.indexOf(t.id) < 0) targetIds.push(t.id);
+            if (targetIds.indexOf(tab.id) < 0) targetIds.push(tab.id);
           } else {
-            targetIds = targetIds.filter((id) => id !== t.id);
+            targetIds = targetIds.filter((id) => id !== tab.id);
           }
           onTargetsChanged();
         });
@@ -465,13 +484,13 @@
 
         const txt = document.createElement('span');
         txt.className = 'tm-txt';
-        txt.textContent = (t.title || t.url || '').trim().slice(0, 80) || '（无标题）';
-        txt.title = t.url || '';
+        txt.textContent = (tab.title || tab.url || '').trim().slice(0, 80) || t('pop.untitled');
+        txt.title = tab.url || '';
         row.appendChild(txt);
 
         const host = document.createElement('span');
         host.className = 'tm-host';
-        host.textContent = t.host || '';
+        host.textContent = tab.host || '';
         row.appendChild(host);
 
         list.appendChild(row);
@@ -482,17 +501,19 @@
     if (sum) {
       const n = targetIds.length;
       if (!n) {
-        sum.textContent = '选择页面…';
-        sum.title = '还没有勾选任何页面';
+        sum.textContent = t('pop.targetSummary');
+        sum.title = t('pop.noPagePicked');
       } else if (n === 1) {
-        const one = lastTabs.find((t) => t.id === targetIds[0]);
-        sum.textContent = one ? ((one.title || one.url || '').trim().slice(0, 40) || '1 个页面') : '1 个页面';
+        const one = lastTabs.find((x) => x.id === targetIds[0]);
+        sum.textContent = one
+          ? ((one.title || one.url || '').trim().slice(0, 40) || t('pop.pageCount', { n: 1 }))
+          : t('pop.pageCount', { n: 1 });
         sum.title = one ? (one.url || '') : '';
       } else {
-        sum.textContent = n + ' 个页面';
+        sum.textContent = t('pop.pageCount', { n });
         sum.title = targetIds.map((id) => {
-          const t = lastTabs.find((x) => x.id === id);
-          return t ? (t.title || t.url) : String(id);
+          const found = lastTabs.find((x) => x.id === id);
+          return found ? (found.title || found.url) : String(id);
         }).join('\n');
       }
     }
@@ -654,14 +675,14 @@
     }
 
     if (!card) {
-      toast('图库里没有这张图（可能超出前 2000 张，或页面已经变了）', 'err');
+      toast(t('pop.focusMissing', { n: C.SCAN_LIMIT }), 'err');
       return;
     }
 
     const el = await waitForCard(card.id, 3000);
     if (!el) {
       // 卡片在列表里、却没等到它渲染出来：那是分片补全还没轮到，不是找不到。
-      toast('这张图排在列表很靠后，向下滚动即可看到');
+      toast(t('pop.focusFar'));
       return;
     }
 
@@ -674,9 +695,7 @@
     const landed = state.filtered.findIndex((c) => c.id === card.id);
     if (landed >= 0) setRoving(landed);
 
-    toast(reset
-      ? '已定位到这张图（它原本被筛选条件挡住，已重置筛选）'
-      : '已定位到这张图 · 点放大镜可浏览全部图片', 'ok');
+    toast(reset ? t('pop.focusReset') : t('pop.focusOk'), 'ok');
   }
 
   async function refreshProgress() {
@@ -694,6 +713,29 @@
       theme = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
     }
     document.documentElement.setAttribute('data-theme', theme);
+  }
+
+  /**
+   * 语言被改了之后重画这一屏。
+   *
+   * 静态文案走 I18n.apply（data-i18n）；但筛选 chips、卡片角标、底栏统计、
+   * 目标页摘要全是 JS 拼出来的，apply 管不到 —— 只能整块重建。
+   * 少了这一步就是「切了英文、界面还是半中半英」。
+   */
+  function applyLangChange() {
+    const next = I18n.lang();
+    if (next === currentLang) return;
+    currentLang = next;
+    I18n.apply(document);
+    document.title = t('pop.titleGallery');
+    buildStaticChips();
+    buildDynamicChips();
+    buildSizePresets();
+    renderTargets();
+    // 卡片上的角标、aria-label、底栏统计都嵌着文案 —— 重跑一遍才会换语言
+    if (state.all.length) applyFilters();
+    else updateStats();
+    renderProgress();
   }
 
   function onParentMessage(e) {
@@ -732,20 +774,22 @@
    * 筛选条件 —— 所有维度统一成 chips，点一下即生效
    * ------------------------------------------------------------------ */
 
+  /* label 留空、真正的值走 `i18n` 键 —— 语言切换后 buildStaticChips 会重建，
+     那时才取词。写死在这里的话切了语言这几个 chip 不会变。 */
   const ASPECTS = [
-    { value: 'all', label: '全部' },
-    { value: 'landscape', label: '横图' },
-    { value: 'portrait', label: '竖图' },
-    { value: 'square', label: '方图' },
-    { value: 'wide', label: '超宽' },
-    { value: 'tall', label: '超长' }
+    { value: 'all', i18n: 'pop.aspAll' },
+    { value: 'landscape', i18n: 'pop.aspLandscape' },
+    { value: 'portrait', i18n: 'pop.aspPortrait' },
+    { value: 'square', i18n: 'pop.aspSquare' },
+    { value: 'wide', i18n: 'pop.aspWide' },
+    { value: 'tall', i18n: 'pop.aspTall' }
   ];
 
   /** 三个开关型条件，顺序即界面顺序 */
   const SWITCHES = [
-    { key: 'onlyRestored', label: '仅已还原原图' },
-    { key: 'hideDownloaded', label: '隐藏已下载' },
-    { key: 'maxOnly', label: '每张仅留最大' }
+    { key: 'onlyRestored', i18n: 'pop.swRestored' },
+    { key: 'hideDownloaded', i18n: 'pop.swHideDownloaded' },
+    { key: 'maxOnly', i18n: 'pop.swMaxOnly' }
   ];
 
   /** 渲染一组单选 chips。current 决定高亮项，onPick 里再决定是否重排列表 */
@@ -757,7 +801,7 @@
       b.type = 'button';
       b.className = 'chip' + (String(it.value) === String(current) ? ' active' : '');
       b.dataset.value = String(it.value);
-      b.textContent = it.label;
+      b.textContent = it.i18n ? t(it.i18n) : it.label;
       b.addEventListener('click', () => {
         onPick(String(it.value));
         // 只刷新本组高亮，不必整块重建
@@ -776,7 +820,7 @@
       b.type = 'button';
       b.className = 'chip' + (filters[s.key] ? ' active' : '');
       b.dataset.flag = s.key;
-      b.textContent = s.label;
+      b.textContent = t(s.i18n);
       b.addEventListener('click', async () => {
         filters[s.key] = !filters[s.key];
         b.classList.toggle('active', filters[s.key]);
@@ -807,36 +851,37 @@
     const seenS = new Set();
 
     state.all.forEach((c) => {
-      const t = c.type || U.extFromUrl(c.url);
-      if (t && !seenT.has(t)) { seenT.add(t); types.push(t); }
+      const ty = c.type || U.extFromUrl(c.url);
+      if (ty && !seenT.has(ty)) { seenT.add(ty); types.push(ty); }
       (c.allSources || [c.source]).forEach((s) => {
         if (s && !seenS.has(s)) { seenS.add(s); sources.push(s); }
       });
     });
 
     types.sort();
-    sources.sort((a, b) => String(C.SOURCE_LABELS[a] || a)
-      .localeCompare(String(C.SOURCE_LABELS[b] || b)));
+    // 来源按**当前语言**的标签排 —— 按中文排的话切到英文后顺序会看着乱
+    sources.sort((a, b) => String(I18n.sourceLabel(a))
+      .localeCompare(String(I18n.sourceLabel(b))));
 
     // 之前选中的值在这次扫描里没有了，退回「全部」
     if (filters.type !== 'all' && !seenT.has(filters.type)) filters.type = 'all';
     if (filters.source !== 'all' && !seenS.has(filters.source)) filters.source = 'all';
 
     renderChips($('typeChips'),
-      [{ value: 'all', label: '全部' }].concat(types.map((t) => ({ value: t, label: t.toUpperCase() }))),
+      [{ value: 'all', i18n: 'cmn.all' }].concat(types.map((x) => ({ value: x, label: x.toUpperCase() }))),
       filters.type,
       (v) => { filters.type = v; applyFilters(); });
 
     renderChips($('sourceChips'),
-      [{ value: 'all', label: '全部' }].concat(
-        sources.map((s) => ({ value: s, label: C.SOURCE_LABELS[s] || s }))),
+      [{ value: 'all', i18n: 'cmn.all' }].concat(
+        sources.map((s) => ({ value: s, label: I18n.sourceLabel(s) }))),
       filters.source,
       (v) => { filters.source = v; applyFilters(); });
   }
 
   function buildSizePresets() {
     renderChips($('sizePresets'),
-      SIZE_PRESETS.map((p) => ({ value: p.value, label: p.label })),
+      SIZE_PRESETS.map((p) => ({ value: p.value, i18n: p.i18n, label: p.label })),
       filters.sizePreset,
       (v) => {
         filters.sizePreset = Number(v);
@@ -858,12 +903,10 @@
     const row = $('sizeSliderRow');
     if (!el) return;
     el.value = String(filters.sizeMin);
-    if (out) out.textContent = filters.sizeMin > 0 ? '≥ ' + filters.sizeMin + 'px' : '不过滤';
+    if (out) out.textContent = filters.sizeMin > 0 ? '≥ ' + filters.sizeMin + 'px' : t('cmn.noFilter');
     // 档位生效时滑条被忽略 —— 视觉上要说出来，否则用户拖了没反应会以为坏了
     if (row) row.classList.toggle('overridden', filters.sizePreset > 0);
-    if (out) out.title = filters.sizePreset > 0
-      ? '当前由上方档位（≥ ' + filters.sizePreset + 'px）决定；拖动这里会切回滑条'
-      : '';
+    if (out) out.title = filters.sizePreset > 0 ? t('pop.sliderOverridden', { n: filters.sizePreset }) : '';
   }
 
   /** 滑条：input 时只更新数字（跟手），change 时才算 + 落盘 */
@@ -874,7 +917,7 @@
     el.addEventListener('input', () => {
       filters.sizeMin = Number(el.value) || 0;
       const out = $('sizeMinOut');
-      if (out) out.textContent = filters.sizeMin > 0 ? '≥ ' + filters.sizeMin + 'px' : '不过滤';
+      if (out) out.textContent = filters.sizeMin > 0 ? '≥ ' + filters.sizeMin + 'px' : t('cmn.noFilter');
     });
 
     el.addEventListener('change', () => {
@@ -1046,7 +1089,7 @@
 
     $('btnResetFilters').addEventListener('click', () => {
       resetFilters();
-      toast('已重置全部筛选条件');
+      toast(t('pop.filtersReset'));
     });
 
     // 点搜索框以外的地方 → 收起搜索框（筛选条常驻，不参与自动收起）
@@ -1063,8 +1106,8 @@
       updateStats();
       paintSelection(state.selected);
       const added = state.selected.size - before;
-      if (added) toast('已勾上 ' + added + ' 张');
-      else toast('当前筛选出的已全部勾选');
+      if (added) toast(t('pop.selectedN', { n: added }));
+      else toast(t('pop.allSelected'));
     });
 
     $('btnInvert').addEventListener('click', () => {
@@ -1091,9 +1134,9 @@
       // 已经在飞的下载没法中断，会照常落盘 —— 文案必须说清楚，
       // 否则用户点完「停止」又看到几个文件冒出来，会以为按钮坏了（AUDIT P2-5）
       if (active > 0) {
-        toast('已取消队列中 ' + dropped + ' 张；正在下载的 ' + active + ' 张会继续完成', 'ok');
+        toast(t('pop.cancelPartial', { dropped, active }), 'ok');
       } else {
-        toast(dropped ? '已取消队列中 ' + dropped + ' 张' : '已停止后续下载');
+        toast(dropped ? t('pop.cancelQueued', { n: dropped }) : t('pop.cancelStopped'));
       }
     });
 
@@ -1120,8 +1163,8 @@
 
     $('btnPanel').addEventListener('click', async () => {
       const r = await U.sendToBg({ type: MSG.OPEN_PANEL, tabId });
-      if (r && r.blocked) toast('这个站点已在排除列表中，不打开面板', 'err');
-      else if (!r || !r.ok) toast('无法在当前页面打开面板', 'err');
+      if (r && r.blocked) toast(t('pop.blockedNoPanel'), 'err');
+      else if (!r || !r.ok) toast(t('pop.panelFail'), 'err');
       // 原来这里还有一句 `if (MODE === 'popup') window.close();`：
       // 弹窗模式打开面板后要把自己关掉。弹窗入口已不存在（manifest 无 default_popup），
       // 那是一条永远走不到的分支，已删。
@@ -1158,8 +1201,8 @@
         const p = msg.payload || {};
         if (p.tabId == null || p.tabId === tabId) {
           setLoadingText(
-            '正在深度嗅探… 已采集 ' + p.total + ' 张',
-            '第 ' + (p.round + 1) + ' 轮 · 本轮新增 ' + p.added + ' 张 · 结束后会滚回原位'
+            t('pop.deepProgress', { n: p.total }),
+            t('pop.deepProgressHint', { round: p.round + 1, added: p.added })
           );
         }
       }
@@ -1465,10 +1508,10 @@
       paintSelection(state.selected);
       updateStats();
       const n = state.selected.size;
-      if (!marquee.hits.size) toast('框选未命中任何图片');
-      else if (marquee.mode === 'add') toast('已追加，共勾选 ' + n + ' 张');
-      else if (marquee.mode === 'sub') toast('已取消框内图片，共勾选 ' + n + ' 张');
-      else toast(n ? '已勾选 ' + n + ' 张' : '已取消框内图片');
+      if (!marquee.hits.size) toast(t('pop.marqueeMiss'));
+      else if (marquee.mode === 'add') toast(t('pop.marqueeAdd', { n }));
+      else if (marquee.mode === 'sub') toast(t('pop.marqueeSub', { n }));
+      else toast(n ? t('pop.marqueeToggle', { n }) : t('pop.marqueeCleared'));
     }
     marquee.preview = null;
     marquee.base = null;
@@ -1596,16 +1639,16 @@
 
   /** 加载态的两行文案：普通嗅探与深度嗅探要说清楚正在发生什么 */
   function setLoadingText(text, hint) {
-    const t = $('loadingText');
-    const h = $('loadingHint');
-    if (t) t.textContent = text;
-    if (h) h.textContent = hint;
+    const elText = $('loadingText');
+    const elHint = $('loadingHint');
+    if (elText) elText.textContent = text;
+    if (elHint) elHint.textContent = hint;
   }
 
-  const LOADING_IDLE = {
-    text: '正在嗅探本页图片…',
-    hint: '会分析 srcset、懒加载、背景图，并尝试还原被缩略化的原图'
-  };
+  /* 取词不能在模块顶层做 —— 那时 Store 还没加载，语言还判定不出来。 */
+  function loadingIdle() {
+    return { text: t('pop.loading'), hint: t('pop.loadingHint') };
+  }
 
   /**
    * @param {boolean} [notify] 完成后弹一句提示（重新嗅探用）
@@ -1618,11 +1661,10 @@
   async function doScan(notify, deep, force) {
     state.deepScanning = !!deep;
     $('loading').hidden = false;
+    const idle = loadingIdle();
     setLoadingText(
-      deep ? '正在深度嗅探…' : LOADING_IDLE.text,
-      deep
-        ? '自动滚动页面以加载更多图片，结束后会把页面滚回原位'
-        : LOADING_IDLE.hint
+      deep ? t('pop.deepLoading') : idle.text,
+      deep ? t('pop.deepLoadingHint') : idle.hint
     );
     $('empty').hidden = true;
     cancelFill();                 // 别让上一轮还没补完的卡片插进清空后的网格
@@ -1646,10 +1688,8 @@
       state.deepScanning = false;
       $('loading').hidden = true;
       showEmpty(MODE === 'page'
-        ? (mergeTabs
-          ? '还没有勾选要嗅探的页面 — 点顶部的「选择页面」，勾一个或多个标签页'
-          : '还没有选择要嗅探的页面 — 在顶部选一个标签页，或先打开一个网页')
-        : '无法确定当前标签页');
+        ? (mergeTabs ? t('pop.noTargetMerge') : t('pop.noTargetSingle'))
+        : t('pop.noTargetPanel'));
       return;
     }
 
@@ -1668,7 +1708,7 @@
     });
 
     state.deepScanning = false;
-    setLoadingText(LOADING_IDLE.text, LOADING_IDLE.hint);
+    setLoadingText(idle.text, idle.hint);
     $('loading').hidden = true;
     state.scanned = true;
 
@@ -1680,14 +1720,13 @@
         state.targetCount = 1;
         state.pages = [];
         if (res.pageUrl) {
-          $('pageHost').textContent = U.prettyHost(res.pageUrl) || '当前页面';
+          $('pageHost').textContent = U.prettyHost(res.pageUrl) || t('pop.currentPage');
           $('pageHost').title = res.title || res.pageUrl;
         }
-        showEmpty('这个站点在你的排除列表里，所以没有嗅探',
-          '要在这里使用，请到设置页的「站点排除列表」里移除它');
+        showEmpty(t('pop.blockedEmpty'), t('pop.blockedEmptyHint'));
         return;
       }
-      showEmpty('嗅探失败：' + ((res && res.error) || '未知错误'));
+      showEmpty(t('pop.scanFail', { msg: (res && res.error) || t('cmn.unknownError') }));
       return;
     }
 
@@ -1709,8 +1748,8 @@
 
     if (notify) {
       toast(state.truncated
-        ? '已重新嗅探，本页共 ' + state.found + ' 张，仅展示前 ' + state.all.length + ' 张'
-        : '已重新嗅探，共发现 ' + state.all.length + ' 张图片');
+        ? t('pop.rescanTrunc', { found: state.found, shown: state.all.length })
+        : t('pop.rescanDone', { n: state.all.length }));
     }
   }
 
@@ -1742,8 +1781,8 @@
     if (!state.all.length) {
       // 中间结果里一张都没有、但还原还在跑 —— 这时候说「本页没有发现图片」是错的
       showEmpty(state.upgradePending
-        ? '正在还原原图…'
-        : (state.targetCount > 1 ? '这些页面里没有发现图片' : '本页没有发现图片'));
+        ? t('pop.restoring')
+        : (state.targetCount > 1 ? t('pop.emptyMulti') : t('pop.empty')));
       return false;
     }
 
@@ -1759,8 +1798,8 @@
        用户会以为扫了两遍。 */
     if (!opts.partial) {
       announce(state.targetCount > 1
-        ? '合并嗅探完成，' + state.targetCount + ' 个页面共 ' + state.all.length + ' 张图片'
-        : '嗅探完成，共发现 ' + state.all.length + ' 张图片');
+        ? t('pop.announceMerged', { pages: state.targetCount, n: state.all.length })
+        : t('pop.announceScan', { n: state.all.length }));
     }
     return true;
   }
@@ -1770,12 +1809,12 @@
     const el = $('pageHost');
     if (!el) return;
     if (state.targetCount > 1) {
-      el.textContent = state.targetCount + ' 个页面';
+      el.textContent = t('pop.pageCount', { n: state.targetCount });
       el.title = state.pages
-        .map((p) => (p.title || p.pageUrl || '') + (p.ok ? '' : '（未扫到）'))
-        .filter(Boolean).join('\n') || '合并嗅探';
+        .map((p) => (p.title || p.pageUrl || '') + (p.ok ? '' : t('pop.notScanned')))
+        .filter(Boolean).join('\n') || t('pop.mergedScan');
     } else {
-      el.textContent = U.prettyHost(state.pageUrl) || '当前页面';
+      el.textContent = U.prettyHost(state.pageUrl) || t('pop.currentPage');
       el.title = state.title || state.pageUrl;
     }
   }
@@ -1862,7 +1901,7 @@
       ok: okCount > 0,
       // 「全都被排除」才叫 blocked；只要有一页扫到了，就不该拿排除列表来搪塞
       blocked: okCount === 0 && blockedCount > 0 && failCount === 0,
-      error: okCount === 0 ? (firstError || (settled ? '全部页面都没扫到图片' : '')) : undefined,
+      error: okCount === 0 ? (firstError || (settled ? t('pop.allPagesEmpty') : '')) : undefined,
       images: out,
       found: out.length,
       truncated,
@@ -1897,8 +1936,8 @@
     let done = 0;
     const paint = () => {
       setLoadingText(
-        '正在嗅探 ' + ids.length + ' 个页面…（已完成 ' + done + '/' + ids.length + '）',
-        '合并嗅探：每个页面各自嗅探并还原原图，再按图片地址合并去重'
+        t('pop.mergedProgress', { n: ids.length, done }),
+        t('pop.mergedProgressHint')
       );
     };
     paint();
@@ -1923,7 +1962,8 @@
     }));
 
     state.deepScanning = false;
-    setLoadingText(LOADING_IDLE.text, LOADING_IDLE.hint);
+    const idle2 = loadingIdle();
+    setLoadingText(idle2.text, idle2.hint);
     $('loading').hidden = true;
     state.scanned = true;
     // 合并路径没有 partial → upgrade 的配对，别留下一个会被迟到的广播命中的 reqId
@@ -1936,21 +1976,19 @@
 
     if (!merged.ok) {
       if (merged.blocked) {
-        showEmpty('这些站点都在你的排除列表里，所以没有嗅探',
-          '要在这里使用，请到设置页的「站点排除列表」里移除它们');
+        showEmpty(t('pop.blockedEmptyMulti'), t('pop.blockedEmptyHintMulti'));
       } else {
-        showEmpty('嗅探失败：' + (merged.error || '未知错误'));
+        showEmpty(t('pop.scanFail', { msg: merged.error || t('cmn.unknownError') }));
       }
       return;
     }
 
     adoptScanResult(merged);
     if (opts.notify && merged.images.length) {
-      toast('已重新嗅探 ' + ids.length + ' 个页面，合并去重后共 ' + merged.images.length + ' 张');
+      toast(t('pop.rescanMerged', { pages: ids.length, n: merged.images.length }));
     }
   }
 
-  const FTR_HINT_DEFAULT = '网格中拖拽框选 · 框到已勾选的会取消';
   let ftrHintTimer = null;
 
   /** 临时占用底栏那句提示，过一会儿自动还回去（面板模式里它是隐藏的，无副作用） */
@@ -1959,7 +1997,8 @@
     if (!el) return;
     clearTimeout(ftrHintTimer);
     el.textContent = text;
-    ftrHintTimer = setTimeout(() => { el.textContent = FTR_HINT_DEFAULT; }, restoreMs || 5000);
+    // 还回时按**当前语言**取 —— 期间切过语言的话，不该还回一句旧语言的默认提示
+    ftrHintTimer = setTimeout(() => { el.textContent = t('pop.ftrHint'); }, restoreMs || 5000);
   }
 
   /**
@@ -2036,20 +2075,22 @@
     // 这种情况必须说出来 —— 用户点「保存选中」时少了几张，比弹个提示糟糕得多。
     const dropped = selectedBefore - state.selected.size;
     if (dropped > 0) {
-      toast('还原后有 ' + dropped + ' 张已勾选的图片不在列表里了，已自动取消勾选', 'err');
+      toast(t('pop.upgradeDropped', { n: dropped }), 'err');
     } else if (nowRestored > prevRestored) {
-      setFooterHint('已升级为原图：' + (nowRestored - prevRestored) + ' 张');
+      setFooterHint(t('pop.upgraded', { n: nowRestored - prevRestored }));
     }
   }
 
-  /** 空状态默认的副标题（正常「没找到图」时用） */
-  const EMPTY_HINT = '试试点击右上角刷新，或检查是否屏蔽了背景图嗅探';
+  /** 空状态默认的副标题（正常「没找到图」时用）。取词要现取，别在顶层缓存 */
+  function emptyHint() {
+    return t('pop.emptyHint');
+  }
 
   function showEmpty(text, hint) {
-    $('emptyText').textContent = text || '本页没有发现图片';
+    $('emptyText').textContent = text || t('pop.empty');
     // 副标题要跟着主文案走：说「没有发现图片」时提示去刷新，
     // 说「站点被排除了」时还提示刷新就是在误导
-    $('emptyHint').textContent = hint || EMPTY_HINT;
+    $('emptyHint').textContent = hint || emptyHint();
     $('empty').hidden = false;
     $('grid').textContent = '';
     updateStats();
@@ -2207,7 +2248,7 @@
       if (!keep.has(id)) { state.selected.delete(id); removed++; }
     }
     if (removed && !(opts && opts.quiet)) {
-      toast('已取消 ' + removed + ' 张不在当前筛选内的勾选');
+      toast(t('pop.pruned', { n: removed }));
     }
     return removed;
   }
@@ -2284,7 +2325,7 @@
     const btn = $('emptyClearSize');
     if (!btn) return;
     if (!sizeOnly) { btn.hidden = true; btn.onclick = null; return; }
-    btn.textContent = '显示全部 ' + sizeOnly.count + ' 张';
+    btn.textContent = t('pop.showAll', { n: sizeOnly.count });
     btn.hidden = false;
     /* 出口的语义是「我现在就想看到全部」，所以**两条尺寸条件都清掉**：
        档位复位到「全部」、滑条拖到 0（而不是拖回默认的 256 —— 那样等于什么都没做，
@@ -2353,17 +2394,15 @@
          第 2 种最需要解释：它看起来像「嗅探坏了」，而且有一个明确的出口。 */
       const sizeOnly = sizeFilterOnlyBlocker();
       if (!state.all.length) {
-        $('emptyText').textContent = '本页没有发现图片';
-        $('emptyHint').textContent = EMPTY_HINT;
+        $('emptyText').textContent = t('pop.empty');
+        $('emptyHint').textContent = emptyHint();
       } else if (sizeOnly) {
-        $('emptyText').textContent =
-          sizeOnly.count + ' 张图片都被「最小尺寸 ≥ ' + filters.sizeMin + 'px」挡住了';
-        $('emptyHint').textContent =
-          '这一页的图片较短边都小于 ' + filters.sizeMin + 'px（常见于列表缩略图）。';
+        $('emptyText').textContent = t('pop.emptySizeBlocked', { n: sizeOnly.count, min: filters.sizeMin });
+        $('emptyHint').textContent = t('pop.emptySizeBlockedHint', { min: filters.sizeMin });
       } else {
-        $('emptyText').textContent = '没有符合当前筛选条件的图片';
+        $('emptyText').textContent = t('pop.emptyFiltered');
         // 走的是和 showEmpty 同一个副标题来源，避免上一次的「站点被排除」提示留在这里
-        $('emptyHint').textContent = EMPTY_HINT;
+        $('emptyHint').textContent = emptyHint();
       }
       syncEmptyAction(sizeOnly);
       return;
@@ -2635,8 +2674,8 @@
       // 失败要保持按钮可用 —— 多半是网络抖动 / 页面正在刷新，再点一次就好
       btn.disabled = false;
       btn.classList.remove('busy');
-      btn.textContent = '还原';
-      toast('还原失败：' + ((res && res.error) || '未知错误'), 'err');
+      btn.textContent = t('pop.restore');
+      toast(t('pop.restoreFail', { msg: (res && res.error) || t('cmn.unknownError') }), 'err');
       return;
     }
 
@@ -2644,7 +2683,7 @@
       // 确实没有更大的原图：把按钮收掉，别让它一直勾着人再点第二次
       restoreCache.set(c, false);
       replaceCardInPlace(cardEl, c);
-      toast('这张图已经是能拿到的最大的版本了');
+      toast(t('pop.restoreNoBetter'));
       return;
     }
 
@@ -2673,7 +2712,7 @@
     replaceCardInPlace(cardEl, c);
     updateChipCounts();     // 尺寸变了，尺寸筛选 chip 上的计数要跟着变
     updateStats();
-    toast('已还原为原图 ' + (c.width || 0) + '×' + (c.height || 0));
+    toast(t('pop.restoredOne', { w: c.width || 0, h: c.height || 0 }));
   }
 
   /**
@@ -2684,12 +2723,15 @@
    * 写进名字里会被念两遍（「已勾选，已勾选」）。
    */
   function cardLabel(c, index) {
-    const parts = ['第 ' + (index + 1) + ' 张'];
+    const parts = [t('pop.cardIndex', { n: index + 1 })];
     parts.push(formatDimShort(c));
     if (c.type) parts.push(String(c.type).toUpperCase());
-    if (c.restored) parts.push('已还原为原图');
-    if (state.targetCount > 1 && c.pageHost) parts.push('来自 ' + c.pageHost);
-    return parts.join('，');
+    if (c.restored) parts.push(t('pop.labelRestored'));
+    if (state.targetCount > 1 && c.pageHost) {
+      parts.push(t('pop.fromPage', { host: c.pageHost }));
+    }
+    // 中文用「，」分隔，英文用 ', ' —— 读屏器念起来才自然
+    return parts.join(I18n.lang() === 'zh' ? '，' : ', ');
   }
 
   function buildCard(c, index) {
@@ -2727,7 +2769,7 @@
     const pick = document.createElement('button');
     pick.className = 'pick';
     pick.type = 'button';
-    pick.title = '勾选 / 取消';
+    pick.title = t('pop.pickTitle');
     /* 对读屏器隐藏：它和卡片自己的 `aria-selected` 说的是同一件事，
        两个都念一遍只会让人以为有两个开关。键盘用户按 Enter / 空格即可。
        鼠标用户照常点它（点击处理在 onGridClick 里）。 */
@@ -2741,12 +2783,12 @@
     const zoom = document.createElement('button');
     zoom.className = 'zoom';
     zoom.type = 'button';
-    zoom.title = '大图预览';
+    zoom.title = t('pop.zoomTitle');
     /* tabindex = -1：不占 Tab 顺序（否则每张卡片都是 3 个停靠点），
        但仍在无障碍树里，读屏器的虚拟光标可以点它。
        键盘等价物是卡片上的 P 键（见 onGridKeydown 与 #gridHelp）。 */
     zoom.tabIndex = -1;
-    zoom.setAttribute('aria-label', '大图预览');
+    zoom.setAttribute('aria-label', t('pop.zoomAria'));
     zoom.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" ' +
       'stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4-4"/>' +
       '<path d="M11 8.5v5"/><path d="M8.5 11h5"/></svg>';
@@ -2761,10 +2803,10 @@
       const restore = document.createElement('button');
       restore.className = 'restore';
       restore.type = 'button';
-      restore.title = '这张图没还原成功，单独重试一次';
+      restore.title = t('pop.restoreTitle');
       restore.tabIndex = -1;                 // 同 zoom：不占 Tab 顺序，键盘等价物是 R
-      restore.setAttribute('aria-label', '单独重试还原这张图');
-      restore.textContent = '还原';
+      restore.setAttribute('aria-label', t('pop.restoreAria'));
+      restore.textContent = t('pop.restore');
       thumb.appendChild(restore);
     }
 
@@ -2774,14 +2816,14 @@
     if (c.restored) {
       const b = document.createElement('span');
       b.className = 'badge restored';
-      b.textContent = '原图';
-      b.title = '已从缩略图还原为原图';
+      b.textContent = t('pop.cardOriginal');
+      b.title = t('pop.cardOriginalTitle');
       badges.appendChild(b);
     }
     if (state.downloaded.has(c.id)) {
       const b = document.createElement('span');
       b.className = 'badge downloaded';
-      b.textContent = '已下载';
+      b.textContent = t('pop.cardDownloaded');
       badges.appendChild(b);
     }
     if (c.width && c.width >= 1920) {
@@ -2797,9 +2839,12 @@
       const b = document.createElement('span');
       b.className = 'badge page';
       b.textContent = c.pageHost;
-      b.title = '来自 ' + (c.pageUrl || c.pageHost)
+      b.title = t('pop.fromPage', { host: c.pageUrl || c.pageHost })
         + (c.pageHosts && c.pageHosts.length > 1
-          ? '（也出现在：' + c.pageHosts.filter((h) => h !== c.pageHost).join('、') + '）'
+          ? t('pop.alsoOn', {
+            list: c.pageHosts.filter((h) => h !== c.pageHost)
+              .join(I18n.lang() === 'zh' ? '、' : ', ')
+          })
           : '');
       badges.appendChild(b);
     }
@@ -2837,23 +2882,21 @@
     $('statSelected').textContent = String(n);
     $('saveCount').textContent = String(n);
     $('btnSave').disabled = n === 0;
-    $('ftrHint').textContent = n
-      ? '将保存 ' + n + ' 张原图到浏览器下载目录'
-      : '网格中拖拽框选图片 · 框到已勾选的会取消勾选';
+    $('ftrHint').textContent = n ? t('pop.willSave', { n }) : t('pop.ftrHintSelect');
     /* 读屏器：勾选数变了要说一声。announce 自带 180ms 防抖，
        所以框选拖拽期间（每帧都在变）不会刷屏，只在停下来之后念一句。
        初值是 0，于是「打开图库」那一次 n=0 不会白念一句。 */
     if (n !== lastAnnouncedSelected) {
       lastAnnouncedSelected = n;
-      announce(n ? '已勾选 ' + n + ' 张' : '已取消全部勾选');
+      announce(n ? t('pop.selectedN', { n }) : t('pop.clearedAll'));
     }
   }
 
   /** 把「几分钟前」说成人话 */
   function cacheAgeText(at) {
     const s = Math.max(0, Math.round((Date.now() - at) / 1000));
-    if (s < 60) return s + ' 秒';
-    return Math.round(s / 60) + ' 分钟';
+    if (s < 60) return t('pop.ageSeconds', { n: s });
+    return t('pop.ageMinutes', { n: Math.round(s / 60) });
   }
 
   function updateStats() {
@@ -2867,27 +2910,28 @@
     if (note) {
       const parts = [];
       if (state.truncated && state.found > state.all.length) {
-        parts.push('本页共 ' + state.found + ' 张，仅展示前 ' + state.all.length + ' 张');
+        parts.push(t('pop.truncTotal', { found: state.found, shown: state.all.length }));
       }
       // 合并嗅探：合并后的 found 就等于实际张数，上面那条不会触发，
       // 但「某个页面被截断了」这件事仍要如实说出来
       if (state.targetCount > 1 && state.truncated) {
-        parts.push('部分页面图片过多，每页只取了前若干张');
+        parts.push(t('pop.truncMerged'));
       }
       if (state.bgTruncatedFrames) {
-        parts.push('页面元素过多（约 ' + state.bgTruncatedElements + ' 个）'
-          + '，部分 CSS 背景图未扫描');
+        parts.push(t('pop.truncBg', { n: state.bgTruncatedElements }));
       }
       if (state.restoreTruncated) {
-        parts.push('原图还原超时，靠后的部分图片仍是页面上的版本');
+        parts.push(t('pop.truncRestore'));
       }
       if (state.deepTruncated) {
-        parts.push('深度嗅探已达滚动上限，页面里可能还有未采集到的图片');
+        parts.push(t('pop.truncDeep'));
       }
       // 隐藏时清空文案：否则 DOM 里会留着上一页的「本页共 2001 张」，
       // 一旦哪天样式把 hidden 覆盖掉就会露出过期数字
       note.hidden = !parts.length;
-      note.textContent = parts.length ? '（' + parts.join('；') + '）' : '';
+      note.textContent = parts.length
+        ? t('pop.parenList', { list: parts.join(I18n.lang() === 'zh' ? '；' : '; ') })
+        : '';
     }
 
     /* 复用缓存时如实标出来。**不能因为「反正是同一页」就闷着不说** ——
@@ -2897,7 +2941,7 @@
     if (cnote) {
       if (state.cachedAt) {
         cnote.hidden = false;
-        cnote.textContent = '（复用 ' + cacheAgeText(state.cachedAt) + '前的嗅探结果 · 点此重新嗅探）';
+        cnote.textContent = t('pop.cacheNote', { age: cacheAgeText(state.cachedAt) });
       } else {
         cnote.hidden = true;
         cnote.textContent = '';
@@ -2976,16 +3020,18 @@
       retrying = true;
       state.probeFailed.clear();     // 放开重试，失败再重新记进去
     } else {
-      toast('没有需要探测的图片');
+      toast(t('pop.probeNothing'));
       return;
     }
 
     const btn = $('btnProbe');
-    const baseTitle = '探测体积：只读响应头拿真实文件大小，不下载图片';
+    const baseTitle = t('pop.probeTitle');
     btn.disabled = true;
     btn.classList.add('busy');
-    btn.title = '正在探测体积…';
-    toast((retrying ? '正在重试 ' : '正在探测 ') + targets.length + ' 张图片的体积…');
+    btn.title = t('pop.probing');
+    toast(retrying
+      ? t('pop.probeRetrying', { n: targets.length })
+      : t('pop.probeRunning', { n: targets.length }));
 
     let okCount = 0;
     let doneCount = 0;
@@ -3020,7 +3066,7 @@
 
         doneCount += chunk.length;
         if (doneCount < targets.length) {
-          btn.title = '正在探测体积… ' + doneCount + ' / ' + targets.length;
+          btn.title = t('pop.probeProgress', { done: doneCount, total: targets.length });
         }
       }
     } finally {
@@ -3033,10 +3079,11 @@
 
     const failedNow = targets.length - okCount;
     if (okCount) {
-      toast('已获取 ' + okCount + ' 张图片的体积'
-        + (failedNow ? '，' + failedNow + ' 张失败' : ''));
+      toast(failedNow
+        ? t('pop.probeDoneFail', { n: okCount, failed: failedNow })
+        : t('pop.probeDone', { n: okCount }));
     } else {
-      toast('未能获取体积：站点可能禁止跨域读取', 'err');
+      toast(t('pop.probeAllFail'), 'err');
     }
   }
 
@@ -3046,7 +3093,7 @@
 
   async function saveSelected() {
     const items = state.all.filter((c) => state.selected.has(c.id));
-    if (!items.length) { toast('请先勾选要保存的图片'); return; }
+    if (!items.length) { toast(t('pop.saveNothing')); return; }
 
     const settings = Store.getSettings();
     const payload = items.map((c, i) => ({
@@ -3063,11 +3110,11 @@
     btn.disabled = state.selected.size === 0;
 
     if (res && res.ok) {
-      toast('已加入下载队列：' + items.length + ' 张', 'ok');
+      toast(t('pop.queued', { n: items.length }), 'ok');
       $('progress').hidden = false;
       renderProgress();
     } else {
-      toast('批量保存失败：' + ((res && res.error) || '未知错误'), 'err');
+      toast(t('pop.saveFail', { msg: (res && res.error) || t('cmn.unknownError') }), 'err');
     }
   }
 
@@ -3090,26 +3137,26 @@
 
     /* 只在「开始」和「结束」各播报一句 —— 中间过程交给上面的 aria-valuenow。 */
     if (p.status === 'running' && lastProgressStatus !== 'running') {
-      announce('开始保存 ' + total + ' 张图片');
+      announce(t('pop.savingStart', { n: total }));
     } else if (p.status !== 'running' && lastProgressStatus === 'running') {
-      announce('保存结束：成功 ' + (p.done || 0) + ' 张'
-        + (p.failed ? '，失败 ' + p.failed + ' 张' : '')
-        + (p.skipped ? '，跳过 ' + p.skipped + ' 张' : ''));
+      announce(t('pop.saveEnd', { n: p.done || 0 })
+        + (p.failed ? t('pop.saveEndFailed', { n: p.failed }) : '')
+        + (p.skipped ? t('pop.saveEndSkipped', { n: p.skipped }) : ''));
     }
     lastProgressStatus = p.status;
 
     const parts = [];
-    if (p.status === 'running') parts.push('下载中');
-    else if (p.status === 'done') parts.push('已完成');
+    if (p.status === 'running') parts.push(t('pop.stRunning'));
+    else if (p.status === 'done') parts.push(t('pop.stDone'));
     else if (p.status === 'cancelled') {
       // 停止后还在飞的那几张会照常落盘，进度条上得写明白
-      parts.push(p.active ? '已停止（' + p.active + ' 张仍在完成）' : '已停止');
+      parts.push(p.active ? t('pop.stStoppedActive', { n: p.active }) : t('pop.stStopped'));
     }
 
     parts.push(finished + ' / ' + total);
-    if (p.done) parts.push('成功 ' + p.done);
-    if (p.failed) parts.push('失败 ' + p.failed);
-    if (p.skipped) parts.push('跳过 ' + p.skipped);
+    if (p.done) parts.push(t('pop.pDone', { n: p.done }));
+    if (p.failed) parts.push(t('pop.pFailed', { n: p.failed }));
+    if (p.skipped) parts.push(t('pop.pSkipped', { n: p.skipped }));
     $('progressText').textContent = parts.join(' · ');
 
     if (p.status !== 'running') {
@@ -3126,28 +3173,30 @@
     // 判断「有没有图」要用 state.all；导出的是「当前筛选结果」。
     // 原来写成 `state.filtered.length ? state.filtered : state.all`，
     // 结果用户把条件筛到 0 张时点导出，拿到的是**全部图片**的清单。
-    if (!state.all.length) { toast('没有可导出的图片'); return; }
+    if (!state.all.length) { toast(t('pop.exportNothing')); return; }
     const list = state.filtered;
     if (!list.length) {
-      toast('当前筛选条件下没有图片，已取消导出', 'err');
+      toast(t('pop.exportEmpty'), 'err');
       return;
     }
 
+    /* CSV / JSON 的表头。中英文下**列名要跟着变**，导出的是给人看的清单；
+       键写英文，值才是翻译 —— 否则切了语言导出的表头还是中文。 */
     const rows = list.map((c, i) => ({
-      index: i + 1,
-      文件名: fileNameOf(c.url),
-      宽度: c.width || '',
-      高度: c.height || '',
-      体积: state.sizes[c.url] != null ? state.sizes[c.url] : '',
-      格式: c.type || U.extFromUrl(c.url),
-      来源: (c.allSources || [c.source]).map((s) => C.SOURCE_LABELS[s] || s).join('/'),
-      已还原原图: c.restored ? '是' : '否',
-      站点: c.host || '',
+      [t('pop.csvIndex')]: i + 1,
+      [t('pop.csvFilename')]: fileNameOf(c.url),
+      [t('pop.csvWidth')]: c.width || '',
+      [t('pop.csvHeight')]: c.height || '',
+      [t('pop.csvBytes')]: state.sizes[c.url] != null ? state.sizes[c.url] : '',
+      [t('pop.csvType')]: c.type || U.extFromUrl(c.url),
+      [t('pop.csvSource')]: (c.allSources || [c.source]).map((s) => I18n.sourceLabel(s)).join('/'),
+      [t('pop.csvRestored')]: c.restored ? t('cmn.yes') : t('cmn.no'),
+      [t('pop.csvHost')]: c.host || '',
       /* 合并嗅探时，一条记录属于哪个页面必须写出来 ——
          否则导出之后这一列信息就永久丢了（用户没法再从别的渠道还原出来）。
          单页扫描时它就是 state.pageUrl，等于多一列常量，无害。 */
-      来源页: c.pageUrl || state.pageUrl || '',
-      地址: c.url
+      [t('pop.csvPageUrl')]: c.pageUrl || state.pageUrl || '',
+      [t('pop.csvUrl')]: c.url
     }));
 
     const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
@@ -3167,7 +3216,7 @@
     } else {
       U.downloadText(base + '.json', JSON.stringify(rows, null, 2), 'application/json');
     }
-    toast('已导出 ' + rows.length + ' 条记录（' + exportFormat.toUpperCase() + '）', 'ok');
+    toast(t('pop.exported', { n: rows.length, fmt: exportFormat.toUpperCase() }), 'ok');
   }
 
   /* ------------------------------------------------------------------ *
@@ -3196,7 +3245,7 @@
         tabId,
         payload: { list, index }
       });
-      if (!res || !res.ok) toast('无法在页面中打开预览', 'err');
+      if (!res || !res.ok) toast(t('pop.lightboxFail'), 'err');
       return;
     }
 
@@ -3206,7 +3255,7 @@
     // 于是「点放大镜」变成「被甩到原标签页」，弹窗模式还会顺手 window.close() 把自己关掉。
     // 现在预览留在图库页内，点开就是点开，不换地方。
     if (!IH.Lightbox) {
-      toast('预览组件未加载，请重新加载扩展', 'err');
+      toast(t('pop.lightboxMissing'), 'err');
       return;
     }
     IH.Lightbox.open(list, index, { pageUrl: state.pageUrl || '' });
@@ -3219,7 +3268,7 @@
   // 导出格式切换：右键「导出清单」切换 JSON / CSV
   document.addEventListener('DOMContentLoaded', () => {
     const btn = $('btnExport');
-    btn.title = '左键导出 JSON，右键导出 CSV';
+    btn.title = t('pop.exportTitle2');
     btn.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       exportFormat = 'csv';
@@ -3231,6 +3280,6 @@
   init().catch((e) => {
     console.error('[ImageHunter] 初始化失败', e);
     $('loading').hidden = true;
-    showEmpty('初始化失败：' + ((e && e.message) || e));
+    showEmpty(t('pop.initFail', { msg: (e && e.message) || e || t('cmn.unknownError') }));
   });
 })();

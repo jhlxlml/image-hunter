@@ -152,7 +152,10 @@ ctx.chrome = {
   },
   storage: {
     local: {
-      get: (k) => Promise.resolve({}),
+      /* 界面语言钉成中文：jsdom 的 navigator.language 恒为 en-US，
+         而本套件的断言写的是中文句子。不钉死就是「测试全红，
+         但看起来像产品坏了」。浏览器套件那边是 locale: 'zh-CN'，同理。 */
+      get: () => Promise.resolve({ ih_settings: { uiLang: 'zh' } }),
       set: (o) => { Object.assign(storeData, o); return Promise.resolve(); }
     },
     onChanged: { addListener() {} }
@@ -162,6 +165,8 @@ ctx.chrome = {
 vm.runInContext(fs.readFileSync(path.join(BASE, 'shared/constants.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(BASE, 'shared/utils.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(BASE, 'shared/store.js'), 'utf8'), ctx);
+// 与 manifest 的内容脚本清单保持同序：i18n 在 store 之后、内容脚本之前
+vm.runInContext(fs.readFileSync(path.join(BASE, 'shared/i18n.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(BASE, 'content/scanner.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(BASE, 'content/hover.js'), 'utf8'), ctx);
 // 悬停的预览键会直接调用 IH.Lightbox —— 灯箱必须真的加载进来，
@@ -172,6 +177,9 @@ const IH = ctx.IH;
 const doc = window.document;
 
 (async function run() {
+  /* 先把设置读进来：i18n 取词读的是 Store 的缓存，缓存没加载时 uiLang 还是默认的
+     'auto'，于是会退到 jsdom 的 navigator.language（恒为 en-US）→ 断言里的中文全变英文。 */
+  await IH.Store.loadSettings();
   IH.Hover.start();
 
   const img = doc.getElementById('a');

@@ -6,8 +6,8 @@
 
 ```bash
 npm ci                  # 首次：装开发期依赖（jsdom + playwright-core）
-npm test                # Node 套件（15 个）
-npm run test:browser    # 真实浏览器套件（25 个，需要本机 Edge / Chrome）
+npm test                # Node 套件（16 个）
+npm run test:browser    # 真实浏览器套件（26 个，需要本机 Edge / Chrome）
 npm run test:all        # 两个入口都跑
 ```
 
@@ -24,7 +24,7 @@ node tests/run-all-browser.js   # 真实浏览器套件
 > **浏览器套件第一次跑要先装一份完整 Chromium**：
 > `npx playwright-core install --with-deps --no-shell chromium`。
 > **`--no-shell` 不能省** —— headless shell 不支持 `--load-extension`，
-> 装错的话 25 个套件会全部卡在「等 service worker」超时，报错看起来像扩展坏了。
+> 装错的话 26 个套件会全部卡在「等 service worker」超时，报错看起来像扩展坏了。
 
 CI 在 `.github/workflows/ci.yml`：`push` / `pull_request` 都跑这两个入口，
 两个 job 都**不允许 `continue-on-error`**。失败时会把汇总里的 ✗ 行做成
@@ -49,7 +49,8 @@ CI 在 `.github/workflows/ci.yml`：`push` / `pull_request` 都跑这两个入�
 | `test-menus.js` | Service Worker 右键菜单幂等性：模拟 `onInstalled` / `onStartup` 并发触发，断言不会出现 `duplicate id` |
 | `test-package.js` | 打包脚本 `tools/package.js`：**自己按 ZIP 规范独立写了一个读取器**（只认中央目录，不参考写入器的布局，否则等于拿写入器验写入器）。5 节：清单完整性 + 孤儿检测（`collectFiles` 从 manifest 递归展开，磁盘上多出来的运行时文件必须被抓到）/ zip 合法性 + 逐个条目 CRC + 与磁盘文件逐字节比对 / **可复现**（同源码打两次字节相同）/ `crc32` 标准测试向量（`''`→`0`、`'123456789'`→`0xCBF43926`、quick brown fox→`0x414FA339`） |
 | `test-diagnostics.js` | **诊断包（纯函数，无需 jsdom）**。守的不是功能而是**边界** —— 诊断包是要被用户贴到公开 issue 里的文件，所以它最重要的性质是「里面不可能出现完整地址」。9 节 59 项：`hostOf` 只取主机名（丢路径 / 查询 / 锚点，保留端口）；`scrub` 把任何 `scheme://…` 换成 `[url]`（含 `chrome-extension://`）且**无状态**（连调两次结果一致 —— 正则带 `g` 会让 `lastIndex` 残留）；`sanitizeDownload` 结果只含白名单字段、`host` 从 `url` 现算、未列入白名单的 `referer` / `cookie` **连键都不出现**；`sanitizeScan` 丢掉 `pageUrl` / `title`、`sourceCounts` 只保留数字值；`sanitizeSettings` 把 `blockedHosts` 换成条数；`build` 的缺省与垃圾输入过滤；`audit` 的路径定位（`$.list[1].bad`）。第 8 节是**注入式端到端断言**：故意塞 `referer` / `cookie` / 完整 URL / 内网主机名 / 页面标题，要求序列化后连一个 `http://` 都不出现 |
-| `validate.js` | 交付完整性：manifest 引用、HTML 资源、元素 id、`getURL` 路径、PNG 尺寸、内容脚本加载顺序、i18n 键、`MSG.*` 常量正反向校验、图库宿主模式（无弹窗残留 + 首帧布局）、还原候选实现唯一性；第 12 节静态钉住「在图库中打开 / 扫描缓存 / 快捷键」的接线（命令声明、后台分支、`SAVE_HOVERED` 必须广播给所有 frame、内容脚本接线、灯箱导出 `save`）；第 13 节静态钉住**「没有死设置」**——遍历 `DEFAULT_SETTINGS` 的每个键，在产品代码里找读取点，一个都没有才算死；并给三条**非 `data-key` 形态**的界面入口（分段按钮 `theme`、富文本控件 `blockedHosts` / `customRules`）加反向守卫。注入一条零读取的 `__deadProbe` 后第 13 节如实变红。**v1.11.0 又追加两组守卫**：① 图库尺寸滑条的契约（HTML 的 `min/max/step/value` 必须与 `popup.js` 的 `SIZE_MIN_*` 常量逐一对上，`min=0`/`max=4096`/`value=256` 三个需求硬指标单独钉，视图状态键 `ih_gallery_view` 不得混进 `DEFAULT_SETTINGS`）；② **跨套件夹具守卫** —— 静态扫描所有浏览器用例的 `startServer({...imgW,imgH...})` 字面量，带 `thumbPath: true` 的按短边减半算，短边必须严格大于滑条默认阈值，否则报红并指明文件与尺寸。真正的例外走文件级白名单或行内 `// fixture-ok: <理由>` 标记，理由必须写出来，且白名单引用了不存在的文件也会报红（防腐烂）。注入一个 200×150 的夹具后如实变红。**v1.12.0 再追加第 14 节**：静态钉住「多标签页合并嗅探」的 11 条接线 —— `mergeTabs` 默认值必须是 `false`（需求就是「提供开关」，默认必须是关的）、设置页必须有 `data-key="mergeTabs"`、单选 `#selTargetTab` 与多选 `#targetMulti` / `#targetsList` 三个节点都在、两者按设置互斥显示、`popup.js` 里真的读了这个设置、只在 `MODE === 'page'` 时启用、合并路径每页都传 `finalOnly: true`（否则多页并发时「先出图后升级」的广播会互相盖掉）、单页路径未被改动、去重确实按 `U.normalizeUrl(img.url)`、空态文案含「还没有勾选要嗅探的页面」。注入「默认值改成 true」与「去掉合并路径的 finalOnly」各红 1 项。**v1.13.0 再追加第 15 节（键盘与读屏器接线，19 条）**：断言一律打在**去注释后的源码**上（整块 `/* */` 与整行 `//` 先抹掉）—— 否则一句「这里本来该写 `onGridKeydown`」的注释就能把守卫骗过去；内容覆盖 listbox 语义、`#gridHelp` 是 `sr-only` 且按键说明写全、`#srStatus` 的三件套、`progress[role=progressbar]` + `aria-valuenow`、`.card:focus` 必须让 `.zoom` / `.restore` 显形、`.card:focus-visible` 必须有 `outline`、**`.sr-only` 不得用 `display:none` / `visibility:hidden`**、roving tabindex 的三元表达式、移动键与动作键接全、`keydown` 真的绑在 `#grid` 上、`announce()` 有防抖、勾选同步到 `aria-selected`、`.pick` 对读屏器隐藏、`.zoom` / `.restore` 不占 Tab 顺序。**第 16 节（诊断包接线，19 条）**：`MSG.GET_DIAGNOSTICS` 定义唯一、后台真的处理它、真扫描与缓存命中**两条路**都记摘要、扫描摘要里**没有** `pageUrl` / `title`（只留 `pageHost`）、`probeStats` 只累计计数、设置页有按钮且脚本加载顺序在 `options.js` 之前、`build` + `audit` 都在、**`audit` 挡在落盘前面**、`sanitizeDownload` 走 `pick(白名单)` 而**不是** `Object.assign` 整体透传、`DOWNLOAD_FIELDS` 里没有 `url`、`SETTINGS_OMIT` 排除了 `blockedHosts`、`URL_RE` **不带 `g` 标志**、`IH.Diag` 导出齐全、新套件已登记进 `run-all.js`。注入 7 项：删焦点显现规则 / 删四个方向键分支 / 所有卡片 `tabIndex=0` / 白名单退化成整体透传 / 摘要塞回 `pageUrl` / `URL_RE` 加 `g`，各红 1 项**v1.13.1 再追加第 17 节（扫描结论的三态，13 条）**：钉的是**接线**而不是行为 —— `finalizeScan` 的 `ok` 不能退回裸的 `!session.blocked`（那样「没扫成」又会冒充「没有图」）、`noReply` 判据必须在、`SCAN_NO_REPLY` 的文案里**不许出现**「没有发现图片」这种会被读成「这页没图」的说法、图库的「嗅探失败」分支必须排在「本页没有发现图片」**之前**、内容脚本里不再有 `error: 'busy'` 这条路径、中间结果的回报必须排在补尺寸**之前**；另外两条是「测试资产自身的完整性」：后台 vm 桩只能有一份（`tests/lib/bgstub.js`，缓存套件不许自己再养一份），以及浏览器回归套件必须以 `browser-` 开头（总入口靠这个前缀自动发现，名字起错了不会报错，它只是永远不被跑） |
+| `test-i18n.js` | **界面多语言（jsdom，44 项 / 7 节）**。守的不是「有没有翻译」而是**取词的语义**：① 浏览器语言判定（`zh` / `zh-CN` / `zh-TW` / `ZH-HANS` → 中文；`en-US` / `ja-JP` → 英文；**没有 `navigator` 时也要有答案**，不能抛）；② **设置优先于浏览器**（`uiLang: 'en'` 时浏览器是 `zh-CN` 也走英文）；③ **降级链 `当前语言 → 中文 → key 本身`** —— 这一节是**注入式**的：删掉英文某条 → 断言退回中文 → 补回去 → 断言又走英文；两种语言都没有 → 返回 key（**故意返回 key 而不是空串**：界面出现 `pop.saveSelected` 一眼看出漏翻译）；占位符替换含 `{n: 0}` 这种「假值」参数；④ `apply()` 的五种属性（`data-i18n` / `-html` / `-ph` / `-aria` / `-title`）真的填了、`-aria` 同时写 `aria-label` 与 `title`、**`<html lang>` 跟着变**、切语言后重填一遍；⑤ `setLang` 落盘（走 `Store`）、非法值退回 `auto`；⑥ `sourceLabel` / `ruleLabel`（内置规则名要能翻译，**规则 id 本身不许被翻译** —— 它是数据，翻译了就认不出来了）；⑦ `uiLang` 必须在 `DEFAULT_SETTINGS` 里。**注意**：这个套件必须先 `await Store.loadSettings()` —— `I18n.lang()` 读的是 Store 缓存，缓存没加载时 `uiLang` 还是默认的 `auto`，会退回 `navigator.language`（jsdom 恒为 `en-US`），中文断言会整体翻成英文 |
+| `validate.js` | 交付完整性：manifest 引用、HTML 资源、元素 id、`getURL` 路径、PNG 尺寸、内容脚本加载顺序、i18n 键、`MSG.*` 常量正反向校验、图库宿主模式（无弹窗残留 + 首帧布局）、还原候选实现唯一性；第 12 节静态钉住「在图库中打开 / 扫描缓存 / 快捷键」的接线（命令声明、后台分支、`SAVE_HOVERED` 必须广播给所有 frame、内容脚本接线、灯箱导出 `save`）；第 13 节静态钉住**「没有死设置」**——遍历 `DEFAULT_SETTINGS` 的每个键，在产品代码里找读取点，一个都没有才算死；并给三条**非 `data-key` 形态**的界面入口（分段按钮 `theme`、富文本控件 `blockedHosts` / `customRules`）加反向守卫。注入一条零读取的 `__deadProbe` 后第 13 节如实变红。**v1.11.0 又追加两组守卫**：① 图库尺寸滑条的契约（HTML 的 `min/max/step/value` 必须与 `popup.js` 的 `SIZE_MIN_*` 常量逐一对上，`min=0`/`max=4096`/`value=256` 三个需求硬指标单独钉，视图状态键 `ih_gallery_view` 不得混进 `DEFAULT_SETTINGS`）；② **跨套件夹具守卫** —— 静态扫描所有浏览器用例的 `startServer({...imgW,imgH...})` 字面量，带 `thumbPath: true` 的按短边减半算，短边必须严格大于滑条默认阈值，否则报红并指明文件与尺寸。真正的例外走文件级白名单或行内 `// fixture-ok: <理由>` 标记，理由必须写出来，且白名单引用了不存在的文件也会报红（防腐烂）。注入一个 200×150 的夹具后如实变红。**v1.12.0 再追加第 14 节**：静态钉住「多标签页合并嗅探」的 11 条接线 —— `mergeTabs` 默认值必须是 `false`（需求就是「提供开关」，默认必须是关的）、设置页必须有 `data-key="mergeTabs"`、单选 `#selTargetTab` 与多选 `#targetMulti` / `#targetsList` 三个节点都在、两者按设置互斥显示、`popup.js` 里真的读了这个设置、只在 `MODE === 'page'` 时启用、合并路径每页都传 `finalOnly: true`（否则多页并发时「先出图后升级」的广播会互相盖掉）、单页路径未被改动、去重确实按 `U.normalizeUrl(img.url)`、空态文案含「还没有勾选要嗅探的页面」。注入「默认值改成 true」与「去掉合并路径的 finalOnly」各红 1 项。**v1.13.0 再追加第 15 节（键盘与读屏器接线，19 条）**：断言一律打在**去注释后的源码**上（整块 `/* */` 与整行 `//` 先抹掉）—— 否则一句「这里本来该写 `onGridKeydown`」的注释就能把守卫骗过去；内容覆盖 listbox 语义、`#gridHelp` 是 `sr-only` 且按键说明写全、`#srStatus` 的三件套、`progress[role=progressbar]` + `aria-valuenow`、`.card:focus` 必须让 `.zoom` / `.restore` 显形、`.card:focus-visible` 必须有 `outline`、**`.sr-only` 不得用 `display:none` / `visibility:hidden`**、roving tabindex 的三元表达式、移动键与动作键接全、`keydown` 真的绑在 `#grid` 上、`announce()` 有防抖、勾选同步到 `aria-selected`、`.pick` 对读屏器隐藏、`.zoom` / `.restore` 不占 Tab 顺序。**第 16 节（诊断包接线，19 条）**：`MSG.GET_DIAGNOSTICS` 定义唯一、后台真的处理它、真扫描与缓存命中**两条路**都记摘要、扫描摘要里**没有** `pageUrl` / `title`（只留 `pageHost`）、`probeStats` 只累计计数、设置页有按钮且脚本加载顺序在 `options.js` 之前、`build` + `audit` 都在、**`audit` 挡在落盘前面**、`sanitizeDownload` 走 `pick(白名单)` 而**不是** `Object.assign` 整体透传、`DOWNLOAD_FIELDS` 里没有 `url`、`SETTINGS_OMIT` 排除了 `blockedHosts`、`URL_RE` **不带 `g` 标志**、`IH.Diag` 导出齐全、新套件已登记进 `run-all.js`。注入 7 项：删焦点显现规则 / 删四个方向键分支 / 所有卡片 `tabIndex=0` / 白名单退化成整体透传 / 摘要塞回 `pageUrl` / `URL_RE` 加 `g`，各红 1 项**v1.13.1 再追加第 17 节（扫描结论的三态，13 条）**：钉的是**接线**而不是行为 —— `finalizeScan` 的 `ok` 不能退回裸的 `!session.blocked`（那样「没扫成」又会冒充「没有图」）、`noReply` 判据必须在、`SCAN_NO_REPLY` 的文案里**不许出现**「没有发现图片」这种会被读成「这页没图」的说法、图库的「嗅探失败」分支必须排在「本页没有发现图片」**之前**、内容脚本里不再有 `error: 'busy'` 这条路径、中间结果的回报必须排在补尺寸**之前**；另外两条是「测试资产自身的完整性」：后台 vm 桩只能有一份（`tests/lib/bgstub.js`，缓存套件不许自己再养一份），以及浏览器回归套件必须以 `browser-` 开头（总入口靠这个前缀自动发现，名字起错了不会报错，它只是永远不被跑）。**v1.14.0 再追加第 18 节（界面语言，含 6 组守卫）**：① 中英两份文案表**齐平**且没有空串（空串比缺键更隐蔽 —— `t()` 静默返回空串，界面上就是一小片空白）；② 产品代码里引用的每个键都真的存在（**断言打在「键」上，不是「中文句子」上** —— 文案搬进 i18n 后，`/图库里没有这张图/.test(src)` 这类写法全部失效；同时先剥注释、正则用 `(?<![\w$.])t\(`，否则 `createElement('div')`、`params.get('mode')`、`'opt.' + k` 都会误报）；③ `uiLang` 必须在 `DEFAULT_SETTINGS` 里（否则导出→导入会把它静默过滤掉，用户切了英文、导入一次备份就回到中文）；④ 设置页有 `#segLang` 三档；⑤ `i18n.js` 的加载顺序必须排在 `store.js` **之后**（它要读 `settings.uiLang`）；⑥ **所有浏览器套件都固定了 `locale: 'zh-CN'`**、加载内容脚本的 jsdom 套件都加载了 `i18n.js` 且把 `uiLang` 钉成中文。第 ⑥ 组的存在理由是「本地全绿、CI 全红」：界面默认跟随浏览器，开发机是 `zh-CN`、CI runner 是 `en-US`、jsdom 的 `navigator.language` 恒为 `en-US` —— 不钉死，断言里的中文会整体翻掉。**(f) 另有一条 HTML 结构守卫**：用 jsdom 解析两个页面，断言每个 `[data-i18n]` 元素的 `children.length === 0` —— `data-i18n` 是整段 `textContent` 覆写，兜底文案里写没转义的标签会被连子树一起删掉，写 `<a>` 更会把**后面整篇文档**吞成它的子节点（见第二十三个坑）。**注入验证**：把 `&lt;a href&gt;` 改回裸 `<a href>` → 报 `opt.scanLinksHint → <a>`，1 项变红 |
 | `tools/audit-settings.js` | **设置项巡检（辅助脚本，不在 `run-all.js` 里）**：把每条设置的「定义点 / 读取点 / UI 挂点 / 写入点」连**行号**列出来，把候选缩到一小撮。加 `IH_AUDIT_VERBOSE=1` 打印每条的全部命中位置。**它不做判断** —— 判定仍要人打开文件看原代码，因为反向读取（`!== false`）、属性链（`settings.batchPrefix`）、整体透传（`scanTab(tabId, opts)`）都不是简单字符串匹配能覆盖的。写它时三次把 `theme` / `blockedHosts` / `customRules` 误报成「没有界面入口」—— 分别是分段按钮组、按 id 挂的 textarea、动态列表根节点，每次都是识别方式漏了一类形态 |
 
 ### 可选：真实浏览器测试
@@ -61,7 +62,7 @@ CI 在 `.github/workflows/ci.yml`：`push` / `pull_request` 都跑这两个入�
 `browser-scan-upgrade.js` / `browser-restore-one.js` / `browser-blocked.js` /
 `browser-subfolder.js` / `browser-gallery-jump.js` / `browser-preview-all.js` /
 `browser-size-slider.js` / `browser-merge-tabs.js` /
-`browser-first-scan.js`
+`browser-first-scan.js` / `browser-lang.js`
 会把扩展真加载进 Chromium 跑端到端，用来抓 jsdom 测不出来的问题
 （真实图片加载、真实下载落盘、Chrome 改写文件名、真实鼠标拖拽等）。
 它们**不在 `run-all.js` 里**，需要额外依赖：
@@ -121,6 +122,7 @@ NODE_PATH=<node_modules> node tests/browser-merge-tabs.js
 | `browser-merge-tabs.js` | **多标签页合并嗅探（离线，39 项 / 10 节）**：`mergeTabs` 是**默认关**的开关（设置页里开），打开后图库顶部的「扫描目标」从单选下拉变成多选勾选列表。两个本地站 —— **A 是同站两页**（`pages: [{path:'/', imageIndexes:[0..5]}, {path:'/b', imageIndexes:[3..7]}]`，故意让第 3/4/5 张**两页都有**）、**B 换 host**（`host:'localhost'`，跨站地址必然不同、永远没有重叠，用来验「合并」而不是「去重」）。① 默认关：单选在、多选不在、6 张、无来源页角标；② 打开设置**当场生效**（不用刷新）、默认勾 1 个、列表 3 行；③ 勾同源两页 → **8 张而不是 11**（去重按 `U.normalizeUrl` 的规范化地址），`/img/3.png` 全列表只出现一次；④ 每张卡片带来源页角标、顶栏写「2 个页面」；⑤ 跨站 A+B = 10 张（**没有重叠**，证明第 ③ 节的 8≠11 不是「少扫了」而是真的去重）；⑥ 只勾一个 → 退回 6 张、角标消失、顶栏回域名；⑦ 全取消 → 空态说「还没有勾选要嗅探的页面」（**不是**「这些页面没有图片」）；⑧ 搜 `localhost` → 只剩 B 站的 4 张（搜索要连来源页一起匹配）；⑨ 导出 CSV 带「来源页」列且 10 条；⑩ **切扫描目标**（图库开着时再点一次图标）—— 合并模式下勾选收缩成一个，单选模式下也必须真的换过去（**回归测试**，见第十三个坑的续记）。**注入验证**：去掉跨页去重（`if (false && prev)`）→ 红 3 项；去掉来源页角标 → 红 1 项；把 `loadTabList()` 的单选分支改回「用 `targetIds` 覆盖 `tabId`」→ 第 10 节红 2 项。夹具里的 `pages` / `host` 见下面的选项表 |
 | `browser-a11y.js` | **键盘与读屏器（离线，50 项 / 10 节）**。静态守卫只能证明「代码写了」，证明不了「真的能用」—— roving tabindex 写错会变成「整个网格完全 Tab 不进去」，`:focus` 显隐规则写错会变成「Tab 到一个看不见的按钮上」，这两种错都不影响截图和鼠标操作。所以这里用**真键盘**走一遍：① 语义骨架（`role="listbox"` / `aria-multiselectable` / `aria-describedby` / `#gridHelp` 是 `sr-only` 且宽度 ≤ 1px / `#srStatus` 的 `role`+`aria-live`+`aria-atomic` / `#progress` 是 `progressbar` 且有 `aria-valuenow`）；② **整个网格只有 1 个 Tab 停靠点**（`#grid` 内 `tabIndex >= 0` 的元素计数 === 1，30 张卡片不是 30 个停靠点），且 `Tab` / `Shift+Tab` 都能正常进出；③ 方向键真的移动焦点（`→` +1、`↓` +列数、边界不越界）且 roving 停靠点跟着挪（`zeroCount` 恒为 1）；④ `Home` / `End`；⑤ `:focus-visible` 匹配、`outline` 是 `solid ≥ 2px`、**聚焦卡片上 `.zoom` 的 `opacity` 真的是 1**（WCAG 2.4.7），而未聚焦未悬停的卡片上仍是 0（焦点规则没有误伤全局）；⑥ `Enter` / `空格` 勾选（`class` 与 `aria-selected` 双写）且读屏器播报「已勾选 1 张」（要等过 180ms 防抖）；⑦ `P` 打开灯箱、`Esc` 关掉；⑧ `.pick` 的 `aria-hidden` + `tabIndex=-1`、`.zoom` / `.restore` 不占 Tab 顺序、卡片可访问名称以「第 1 张」开头且**不含**勾选状态；⑨ 搜索把列表清空后没有残留的 `tabindex=0`，恢复后停靠点被夹回第一张。**注入验证**：让所有卡片都 `tabIndex = 0` → **50 → 45/5** |
 | `browser-gallery-jump.js` | **灯箱「在图库中打开」+ 扫描缓存（离线）**：网页上悬停预览（v1.9.0 起拿到本页全部图片，但顶栏按钮发的是**当前那张**）→ 点它图库标签页打开并**定位到那张卡片**（`.ih-focus`、滚进视口、原页灯箱收起）→ 图库页自己的灯箱**不显示**这个按钮（`host === 'gallery'`）→ 关掉再开走缓存（实测 **227ms**）且界面如实标注「复用 N 分钟前的嗅探结果」→ 点「重新嗅探」绕开缓存 → 点底栏那行缓存标记本身也能强制重扫。注入「默认 host 改 content」红 5 项、「不按宿主判断」红 5 项、「失败也关灯箱」红 9 项、「永远发第一张」红 5 项、「缓存不校验地址」红 6 项 |
+| `browser-lang.js` | **中英切换（离线，30 项 / 6 节）**。真浏览器 + 真扩展，而且**故意把浏览器设成中文**（`locale: 'zh-CN'`）—— 要验的正是「浏览器是中文、用户自己选了英文」这条最容易写错的路径。① 默认 `auto` → 界面是中文；② 切英文：**静态文案**（`h2` = `General`、主题档位 = `Light`、`langHint`、placeholder）与**动态生成的内容**（内置规则名 `WordPress size suffix`、`blockedNote`、页脚）一起变，且**规则 id 保持 `wp-size` 不被翻译**（id 是数据）；③ `data-i18n-html` 的元素里仍然是**真 `<code>` 元素**（不是被转义成一串文本）；④ 刷新后仍是英文（落盘了）；⑤ **跨页面同步**：图库页跟着变（`Filters` / `Save selected` / `Total` / chip `All`）；⑥ **已经开着的图库当场跟着变**（设置页切回中文 → 图库里的 `筛选` / `保存选中` / chip `全部` 立刻变，**且卡片数不变** —— 顺手证明切换是重渲染而不是重新扫描）；⑦ 切回 `auto` 落回中文。**这个套件抓到过一个真 bug**：页脚是直接赋值（不走 `data-i18n`），原来只在 `init()` 里设一次，切语言时纹丝不动 |
 | `browser-diagnostics.js` | **诊断包导出全链路（离线）**。`test-diagnostics.js` 已经测过纯函数，但用户点的是设置页那个按钮，中间还隔着四段可能悄悄断掉的接线：设置页 → `sendToBg(GET_DIAGNOSTICS)` → background 回原料 → `IH.Diag.build()` → `audit()` → `U.downloadText()`。**任何一段坏了，界面表现都是「点了按钮什么也没发生」，而纯函数测试全绿。** 所以这里在真浏览器 + 真扩展里走一遍：① 先真扫一次（12 张），断言 background 的 `lastScan` 真的存在、`pageHost` 是这次那个站、`found` 与真实张数对得上、有来源分布、**没有 `pageUrl`**；② 写一条排除列表并**确认后台读到了**（不能只 `set` 不等待，见 `browser-blocked.js` 的教训）；③ 打开设置页，把 `IH.U.downloadText` 截下来（**不真去读磁盘上的下载文件** —— CDP 接管下载会把文件名改写成随机名，「找到那个文件」本身就是不稳的活儿，而这里要断言的是**内容**），点按钮，断言确实产出了 payload、文件名匹配 `image-hunter-diag-<8位>-<6位>.json`、mime 是 `application/json`；④ payload 内容：`_version` 必须等于 `chrome.runtime.getManifest().version`、`settings.blockedHostsCount` 等于条数而 `blockedHosts` 键不存在；⑤ **边界**：`http://` / `https://` / 带端口的本机地址 / 图片路径 `/img/` / 被排除的站点域名**一个都不出现**，`scheme://` 出现 0 次；⑥ `audit` 判定干净，且**注入一个地址后如实报出 `$.settings.__probe`**（证明上一条不是恒真） |
 | `browser-first-scan.js` | **首次点开图标就要出图（离线，12 项）** —— 用户原话是「首次点击扩展图标，嗅探有问题，要刷新下才行」。这里是那条 bug 的**端到端**回归：把页面图片的 `src` 挪到 `data-src`（真实站点上「懒加载还没触发」「图还没加载完」都是这个形态，此时 `naturalWidth = 0`，尺寸只能靠联网探测补），再让服务端每张图延迟 2.5 秒响应 —— 12 张、探测并发 6，于是「补尺寸」这一步必然越过后台的 4 秒判据。① 首次打开就铺出 12 张、且出图耗时在 4 秒判据之内；② **全程**没有出现过「本页没有发现图片」这句错话（一边等一边记录，不只在最后看一眼 —— 中途出现过又消失，对用户来说也是出现过）；③ 最终结果仍会到、尺寸全都补上（这里要按**卡片上的尺寸文案**等，别拿 `statTotal` 当「最终结果到了」的判据：中间结果里它就已经是 12 了，一查就返回，等于什么都没等）；④ 关掉图库、趁上一轮还没跑完再打开一次 → 也要出图（内容脚本「忙」时排队，不回空结果）；⑤ **反向**：页面里真的一张图都没有时，仍然如实说「没有发现图片」（这一节必须先换一个地址，否则会命中后台的扫描缓存 —— 那是它该做的事）。注入「把提前回报关掉」后首次出图 5710ms，第 1 节如实变红 |
 | `screenshot.js` | 给界面截图（改 UI 后快速看效果），输出十一张，**默认全部落在 `docs/screenshots/`**（第二个参数可改目录，脚本会自己把目录建出来）：`gallery-preview.png`（真实默认态）、`gallery-filters.png`（搜索框展开 + 有生效条件）、`gallery-panel.png`（页内面板模式 380px 窄屏，主动展开筛选条看最挤的情况）、`gallery-marquee.png`（框选进行中）、`gallery-lightbox.png`（图库页内的大图预览）、`hover-buttons.png`（网页图片右上角的两个按钮）、`gallery-restore.png`（没还原成功的卡片右下角的「还原」按钮）、`options-page.png`（设置页全页，含「站点排除列表」与「保存到子目录」，拍的是全新配置的真实默认态，顺带把页脚版本号读出来打在日志里，确认它是从 manifest 取的而不是写死的）、`lightbox-content.png`（**网页里**打开的灯箱，顶栏带「在图库中打开」按钮 —— 对比 `gallery-lightbox.png` 可见图库页自己的灯箱不显示它）、`gallery-empty-size.png`（尺寸过滤清空时的空态 + 一键出口）、`gallery-merge-tabs.png`（多标签页合并嗅探的勾选面板 —— v1.12.0 唯一的新界面，而且**默认关**，不主动打开就永远看不到它，所以脚本里显式开一次开关、再开一个别的页面，然后拍展开的面板；控件没切过来就打印警告，别把「面板没展开」当成「截好了」）。不传目标 URL 时用 `lib/localsite.js` 起本地站，栅格布局稳定可复现。**面板那张必须走内容脚本真领 token 那条路**（从后台发 `TOGGLE_PANEL` → 抓页面里那个带 token 的 iframe → 按它的 URL 重开），不能自己拼 `?mode=panel&tabId=N` 直接 goto —— v1.8.1 的来源校验会拒绝没有 token 的宿主，截出来是那句「已拒绝在此显示图库」。脚本现在按**渲染出的是哪种界面**做硬检查（有拒绝文案 → 真挂了；有 `#grid` 但 0 张 → 大概率是过滤把夹具清空了；有卡片 → 正常），不再把「正常空态」误报成拒绝页（见第十四个坑） |
@@ -196,7 +198,7 @@ NODE_PATH=<node_modules> node tests/browser-merge-tabs.js
 > 注意：jsdom 不会加载 `<link rel="stylesheet">`，所以 `test-hover.js` 里的点击成功，
 > 同时也验证了「即使 `overlay.css` 加载失败，悬停按钮依然可点击」这条降级路径。
 
-## 测试自己会骗人：二十二个坑
+## 测试自己会骗人：二十三个坑
 
 前两个是「报绿但没测」，第三、五个是「断言恒真」，第六个是「注入验证根本没跑」，
 第七个是「超时被吞掉，把真 bug 伪装成正常」，第八个是「断言的前提被后来的修复推翻，
@@ -990,4 +992,75 @@ Alt+点击真保存了），其实只是前提没成立。而这个套件**本�
    所有套件共用的底层（这里是把全部站点的监听地址都换掉），很容易把别处弄红 ——
    而且红的那个套件同样会「单独跑绿」，又是一轮排查。**把改动收窄到只覆盖出问题的
    那条路径**，通常更省事。
+
+### 第二十三个坑：**HTML 兜底文案里写了没转义的标签 —— 页面被 `<a>` 吞掉，报错指向别处**
+
+给界面加 i18n 时，每个静态文案都要在 HTML 里留一份**兜底文本**（`t()` 还没跑之前
+先显示什么）。改写 `options/options.html` 时，把原本转义好的文案写成了裸标签：
+
+```html
+<!-- 原版：转义过 -->
+<span data-i18n="opt.scanLinksHint">扫描 &lt;a href&gt; 指向的图片文件</span>
+<!-- 改写后：裸标签 -->
+<span data-i18n="opt.scanLinksHint">扫描 <a href> 指向的图片文件</span>
+```
+
+`browser-diagnostics` 立刻红了，但**只红一条**，其余全绿：
+
+```
+  按钮 = {"text":"导出诊断包","hidden":false}
+  ✓ #btnExportDiag 存在
+  ✓ 按钮文案正确
+  ✓ 按钮可见（不是被 CSS 藏起来的）
+  ✗ 点击后确实调用了 downloadText（不是「点了没反应」）
+通过 10 项，失败 1 项
+```
+
+「按钮存在、文案对、可见，但点了没反应」看起来像事件没接上。于是去查
+`bindControls()`、查 `init()` 有没有中途抛错 —— 全都正常。
+
+**真正的判据是「页面被重载了」**。在真浏览器里挂三个探针：
+
+```
+[console.log] PROBE CLICK target=btnExportDiag prevented=false
+[console.log] PROBE BEFOREUNLOAD          ← 点击触发了真实导航
+[navigated]   chrome-extension://…/options/options.html   ← 整页重载
+BTN {"type":"submit","form":null,"inAnchor":true}          ← 但不在 form 里，在 <a> 里！
+```
+
+`inAnchor: true` 是决定性的一条。`<a>` **不是空元素**，解析器见到 `<a href>` 就把它
+压进「活动格式化元素」栈；后面的 `</span>` 只关掉了 `span`，而**收养算法（adoption
+agency）会把 `<a>` 复活**，包住它之后的**整篇文档** —— 包括那个导出按钮。
+按钮在锚点里 → 点击走锚点默认行为（`href` 为空 → 当前地址）→ 整页重载 →
+`window` 上的全局量（测试打的 `downloadText` 补丁、探针标记）全部消失。
+
+顺带一提，同一批文案里还有两处同类写法，症状更轻但也是错的：
+
+```html
+<span data-i18n="opt.scanImgHint">扫描 <img> 元素…</span>              <!-- 真建出一个 <img> -->
+<span data-i18n="opt.scanPreloadHint">扫描 <link rel="preload" as="image"></span>
+<!-- ↑ 真建出一个 <link rel=preload>，控制台报 "invalid href value" -->
+```
+
+**为什么这条特别值得记**：`data-i18n` 是**整段 `textContent` 覆写**，
+所以它底下本来就**不允许有任何元素** —— 有也会被 `apply()` 连同子树一起删掉。
+更要紧的是**解析顺序**：HTML 解析发生在 `apply()` 之前，等 JS 把文字修正过来时，
+文档结构**早就已经被啃坏了**。所以这类 bug 的现场永远不在文案上。
+
+**判据与做法**：
+
+1. **别对着源码正则判「有没有裸标签」。** 正则在源码里看到的是文本，
+   解析器看到的是**结构** —— 谁被谁吞掉只有解析之后才知道。要在**解析后的 DOM**
+   上断言（`new JSDOM(html)` → `querySelectorAll('[data-i18n]')` → 每个的
+   `children.length === 0`）。
+2. **静态守卫要覆盖「HTML 兜底文案」这一层。** 同一个文案现在有**两份**：
+   i18n 表里的那份（走 `textContent`，写裸标签也看不出来）和 HTML 里的那份
+   （会被解析器执行）。守卫只查 i18n 表的话，这类 bug 完全漏掉。
+3. **「元素都在、就是点了没反应」优先怀疑布局/结构，而不是事件绑定。**
+   加一条 `page.on('framenavigated')` 比读十遍事件绑定代码都快 ——
+   如果页面在你点击时导航了，那问题就从来不在 `addEventListener` 上。
+4. 守卫已加进 `tests/validate.js` 第 18 节 (f)，并做过注入验证：
+   把 `&lt;a href&gt;` 改回裸 `<a href>` → 报
+   `opt.scanLinksHint → <a>`，1 项变红；还原后 244 项全绿。
+
 

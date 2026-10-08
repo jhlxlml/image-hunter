@@ -17,6 +17,9 @@
   const C = IH.C;
   const U = IH.U;
   const MSG = C.MSG;
+  /* 悬停按钮的标题与气泡都是给用户看的，跟着界面语言走。
+     写成函数而不是在顶层取值 —— 那时 Store 还没加载，语言判定不出来。 */
+  const t = (k, a) => IH.I18n.t(k, a);
 
   /* ---------------------------- 图标 ---------------------------- */
 
@@ -104,10 +107,10 @@
     const bar = document.createElement('div');
     bar.className = 'ih-hover';
 
-    const preview = makeButton('ih-hover-preview', '大图预览', '大图预览（就在当前页看，不跳走）', ICON_PREVIEW);
+    const preview = makeButton('ih-hover-preview', t('pg.preview'), t('pg.previewTitle'), ICON_PREVIEW);
     seal(preview, () => { if (target) openPreview(target); });
 
-    const btn = makeButton('ih-hover-save', '保存原图', '保存原图（Alt+点击图片 可免悬停直存）', ICON_DOWNLOAD);
+    const btn = makeButton('ih-hover-save', t('pg.saveOriginal'), t('pg.saveOriginalTitle'), ICON_DOWNLOAD);
     seal(btn, () => { if (target) saveElement(target); });
 
     bar.appendChild(preview);
@@ -202,16 +205,16 @@
 
     if (next === 'saving') {
       btn.innerHTML = '<div class="ih-spinner"></div>';
-      btn.title = '正在保存…';
+      btn.title = t('pg.saving');
     } else if (next === 'done') {
       btn.innerHTML = ICON_CHECK;
-      btn.title = '已保存';
+      btn.title = t('pg.saved');
     } else if (next === 'error') {
       btn.innerHTML = ICON_ERROR;
-      btn.title = '保存失败，点击重试';
+      btn.title = t('pg.saveFailedRetry');
     } else {
       btn.innerHTML = ICON_DOWNLOAD;
-      btn.title = '保存原图（Alt+点击图片 可免悬停直存）';
+      btn.title = t('pg.saveOriginalTitle');
     }
   }
 
@@ -230,8 +233,8 @@
     p.classList.toggle('ih-busy', previewBusy);
     p.innerHTML = previewBusy ? '<div class="ih-spinner"></div>' : ICON_PREVIEW;
     p.title = previewBusy
-      ? '正在整理本页图片…'
-      : '大图预览（就在当前页看，不跳走）';
+      ? t('pg.collecting')
+      : t('pg.previewTitle');
   }
 
   /** 「正在忙」：保存中，或正在整理本页图片。这两种时候收起 UI 等于把反馈藏起来 */
@@ -652,7 +655,7 @@
     if (!found || !found.el) return;
     if (previewBusy) return;          // 已经在整理了，别再叠一次全页扫描
     if (!IH.Lightbox) {
-      showBubble('预览组件未加载', true);
+      showBubble(t('pg.previewNotLoaded'), true);
       return;
     }
 
@@ -662,7 +665,7 @@
     } catch (e) { /* 解析失败按「没有可预览的图片」处理 */ }
 
     if (!cand || !cand.url) {
-      showBubble('没找到可预览的图片', true);
+      showBubble(t('pg.previewNone'), true);
       return;
     }
 
@@ -682,7 +685,7 @@
     };
 
     setPreviewBusy(true);
-    showBusyBubble('正在整理本页图片…');
+    showBusyBubble(t('pg.collecting'));
 
     let view = { list: [self], index: 0 };
     try {
@@ -735,7 +738,7 @@
 
     try {
       const cand = await IH.Scanner.resolveForElement(found.el);
-      if (!cand || !cand.url) throw new Error('未找到可保存的图片');
+      if (!cand || !cand.url) throw new Error(t('pg.noSavable'));
 
       const s = settings();
       const res = await U.sendToBg({
@@ -755,24 +758,27 @@
         if (res.skipped) {
           // 被「跳过已下载」拦下 —— 这不是保存成功，必须说清楚，
           // 否则用户会以为文件已经存下来了却怎么也找不到。
-          showBubble('已下载过，本次已跳过', false);
+          showBubble(t('pg.skippedDownloaded'), false);
         } else {
+          // dim 自带前导空格（尺寸未知时就是空串，不会多出一个悬空空格）
           const dim = cand.width && cand.height ? ' ' + cand.width + '×' + cand.height : '';
-          let text = '已保存' + (cand.restored ? '原图' : '') + dim;
+          // 「已保存」和「已保存原图」是两句不同的话，不是拼接 ——
+          // 英文里原图那句要加个空格，拼出来会变成 "Savedoriginal 1920×1080"
+          let text = cand.restored ? t('pg.savedOriginalDim', { dim }) : t('pg.savedDim', { dim });
           // 开了「保存到子目录」时说清存到哪一层 —— 否则用户拿着一个文件名
           // 在下载目录里翻半天
-          if (res.folder) text += ' → ' + res.folder + '/';
+          if (res.folder) text += t('pg.savedFolder', { folder: res.folder });
           // Chrome 会按真实 MIME 纠正扩展名，如实告知实际文件名，免得用户找不到
-          if (res.renamed && res.filename) text += '（实际为 ' + shortName(res.filename) + '）';
+          if (res.renamed && res.filename) text += t('pg.savedAs', { name: shortName(res.filename) });
           showBubble(text, false);
         }
         resetTimer = setTimeout(() => setState('idle'), 1400);
       } else {
-        throw new Error((res && res.error) || '下载失败');
+        throw new Error((res && res.error) || t('pg.downloadFailed'));
       }
     } catch (err) {
       setState('error');
-      showBubble(String((err && err.message) || err || '保存失败'), true);
+      showBubble(String((err && err.message) || err || t('pg.saveFailed')), true);
       resetTimer = setTimeout(() => setState('idle'), 2400);
     }
   }
@@ -830,7 +836,7 @@
       return { ok: true, via: 'hover' };
     }
 
-    showCenterHint('先把鼠标移到图片上，再按这个快捷键');
+    showCenterHint(t('pg.hoverFirst'));
     return { ok: false, error: 'no-target' };
   }
 

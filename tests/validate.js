@@ -9,6 +9,17 @@ function ok(label) { pass++; console.log('  ✓ ' + label); }
 function bad(label, extra) { fail++; console.log('  ✗ ' + label + (extra ? '  → ' + extra : '')); }
 function exists(rel) { return fs.existsSync(path.join(ROOT, rel)); }
 
+/* 把 shared/i18n.js **真的跑一遍**，拿到中英两份文案表。
+ *
+ * 界面文案搬到 i18n 之后，那些「源码里有没有这句中文」的断言全部失效 ——
+ * 只靠正则读源码的话，「键存在、值是空的」和「键根本不存在」长得一模一样。
+ * 所以这里直接加载文案表，断言打在**键**上，并额外验一遍中英是否齐平。 */
+globalThis.IH = globalThis.IH || {};
+require(path.join(ROOT, 'shared/i18n.js'));
+const STRINGS = (globalThis.IH.I18n && globalThis.IH.I18n.STRINGS) || { zh: {}, en: {} };
+/** 这个键在中英两种语言里都真的有内容 */
+const hasI18n = (k) => STRINGS.zh[k] != null && STRINGS.en[k] != null;
+
 console.log('=== 1. manifest.json 引用 ===');
 const mf = JSON.parse(fs.readFileSync(path.join(ROOT, 'manifest.json'), 'utf8'));
 
@@ -151,7 +162,9 @@ const idx = (f) => order.indexOf(f);
 const rules = [
   ['shared/constants.js', 'shared/utils.js', 'constants 先于 utils'],
   ['shared/utils.js', 'shared/store.js', 'utils 先于 store'],
-  ['shared/store.js', 'content/scanner.js', 'store 先于 scanner'],
+  // i18n 要读 settings.uiLang，必须在 store 之后、任何用它取词的脚本之前
+  ['shared/store.js', 'shared/i18n.js', 'store 先于 i18n'],
+  ['shared/i18n.js', 'content/scanner.js', 'i18n 先于 scanner'],
   ['content/scanner.js', 'content/hover.js', 'scanner 先于 hover'],
   ['content/hover.js', 'content/lightbox.js', 'hover 先于 lightbox'],
   ['content/lightbox.js', 'content/panel.js', 'lightbox 先于 panel'],
@@ -682,7 +695,7 @@ if (/resetFilters\(\)/.test(popupCode) && /reset = true/.test(popupCode)) {
 } else {
   bad('focusImage 没有处理「被筛选挡住」这种情况');
 }
-if (/图库里没有这张图/.test(popupCode)) {
+if (/t\('pop\.focusMissing'/.test(popupCode) && hasI18n('pop.focusMissing')) {
   ok('真的找不到时如实说明（不假装定位成功）');
 } else {
   bad('缺少「找不到」的如实提示');
@@ -1125,7 +1138,8 @@ console.log('\n=== 14. 多标签页合并嗅探的接线 ===');
   }
 
   // (j) 空态要能区分「还没勾选」和「这些页面没有图片」
-  if (/还没有勾选要嗅探的页面/.test(popupJsSrc)) {
+  if (/noTargetMerge/.test(popupJsSrc) && /noTargetSingle/.test(popupJsSrc)
+    && hasI18n('pop.noTargetMerge') && hasI18n('pop.noTargetSingle')) {
     ok('全部取消勾选时有专门的空态文案（不是「本页没有发现图片」）');
   } else {
     bad('清空勾选后没有专门文案 —— 用户会以为嗅探坏了');
@@ -1160,9 +1174,11 @@ console.log('\n=== 15. 键盘与读屏器接线 ===');
   else bad('网格没有 aria-describedby="gridHelp" —— 键盘用法读屏器念不出来');
 
   // (b) #gridHelp 必须是 sr-only，且把按键都写全了
-  if (/<p class="sr-only" id="gridHelp">/.test(popupHtml)) ok('#gridHelp 是 sr-only（视觉不占位、无障碍树里在）');
+  // 结尾写 [^>]* 而不是 >：这一段挂了 data-i18n，尖括号前还有属性
+  const helpTag = /<p class="sr-only" id="gridHelp"[^>]*>/.test(popupHtml);
+  if (helpTag) ok('#gridHelp 是 sr-only（视觉不占位、无障碍树里在）');
   else bad('#gridHelp 缺失或不是 sr-only');
-  const helpText = (popupHtml.match(/<p class="sr-only" id="gridHelp">([\s\S]*?)<\/p>/) || [])[1] || '';
+  const helpText = (popupHtml.match(/<p class="sr-only" id="gridHelp"[^>]*>([\s\S]*?)<\/p>/) || [])[1] || '';
   const helpKeys = ['方向键', 'Home', 'End', 'PageUp', 'PageDown', 'Enter', '空格', 'P', 'R'];
   const helpMissing = helpKeys.filter((k) => helpText.indexOf(k) < 0);
   if (helpText && !helpMissing.length) ok('#gridHelp 把全部键盘用法写清了（方向键 / Home·End / PageUp·PageDown / Enter·空格 / P / R）');
@@ -1404,19 +1420,30 @@ console.log('\n=== 17. 扫描结论的三态 ===');
     bad('background.js 里找不到 noReply 判据');
   }
 
-  // (c) 给用户看的那句话不能读起来像「这页没图」
-  const noReplyText = (/const SCAN_NO_REPLY = ([\s\S]*?);\n/.exec(bgSrc3) || [])[1] || '';
-  if (noReplyText && !/没有发现图片/.test(noReplyText)) {
-    ok('「没扫成」的文案里没有「没有发现图片」这种会被读成「这页没图」的说法');
+  // (c) 给用户看的那句话不能读起来像「这页没图」。
+  //     文案搬到 i18n 之后，**两种语言都要查** —— 只查中文的话，
+  //     英文那句写成 "No images found on this page" 谁也不会发现。
+  const noReplyZh = String(STRINGS.zh['bg.scanNoReply'] || '');
+  const noReplyEn = String(STRINGS.en['bg.scanNoReply'] || '');
+  if (/scanNoReply/.test(bgSrc3) && noReplyZh && noReplyEn) {
+    ok('「没扫成」的文案由 background.js 按语言取（bg.scanNoReply）');
   } else {
-    bad('SCAN_NO_REPLY 文案会把「没扫成」说成「这页没图」', noReplyText);
+    bad('background.js 里找不到「没扫成」的文案接线（bg.scanNoReply）');
   }
-  if (/刷新|加载/.test(noReplyText)) ok('「没扫成」的文案给了可操作的建议（刷新 / 等加载完）');
-  else bad('SCAN_NO_REPLY 没告诉用户该怎么办');
+  if (noReplyZh && !/没有发现图片/.test(noReplyZh) && !/no images found/i.test(noReplyEn)) {
+    ok('「没扫成」的文案里没有「没有发现图片」这种会被读成「这页没图」的说法（中英都查）');
+  } else {
+    bad('「没扫成」的文案会被读成「这页没图」', noReplyZh + ' || ' + noReplyEn);
+  }
+  if (/刷新|加载/.test(noReplyZh) && /refresh|loading/i.test(noReplyEn)) {
+    ok('「没扫成」的文案给了可操作的建议（中英都有刷新 / 等加载完）');
+  } else {
+    bad('「没扫成」的文案没告诉用户该怎么办', noReplyZh + ' || ' + noReplyEn);
+  }
 
   // (d) 图库侧：错误分支必须**早于**空页面分支，而且各自说各自的话
-  const iFail = popupSrc.indexOf("showEmpty('嗅探失败");
-  const iNoImg = popupSrc.indexOf('本页没有发现图片');
+  const iFail = popupSrc.indexOf("t('pop.scanFail'");
+  const iNoImg = popupSrc.indexOf("t('pop.empty')");
   if (iFail > 0 && iNoImg > 0 && iFail < iNoImg) {
     ok('图库先判「嗅探失败」，再说「本页没有发现图片」（两者不会串台）');
   } else {
@@ -1464,6 +1491,149 @@ console.log('\n=== 17. 扫描结论的三态 ===');
     ok('浏览器回归套件存在，且以 browser- 开头（能被自动发现）');
   } else {
     bad('tests/browser-first-scan.js 不存在或没以 browser- 开头');
+  }
+}
+
+/* ------------------------------------------------------------------
+ * 18. 界面语言（中英切换）
+ *
+ * 这一节守的是「翻译件」本身，不是界面逻辑：
+ *   - 缺键 / 空串比逻辑错更难发现 —— t() 会静默退回，界面上只是少一句话；
+ *   - 拼错的键最坏：**t() 会把 key 原样显示出来**（"pop.svaeSelected"）；
+ *   - 设置项没进 DEFAULT_SETTINGS，导出→导入会把它静默过滤掉 ——
+ *     用户切了英文，导入一次备份就回到中文，还以为是自己记错了。
+ * ------------------------------------------------------------------ */
+console.log('\n=== 18. 界面语言 ===');
+{
+  const zhKeys = Object.keys(STRINGS.zh);
+  const enKeys = Object.keys(STRINGS.en);
+  const onlyZh = zhKeys.filter((k) => STRINGS.en[k] == null);
+  const onlyEn = enKeys.filter((k) => STRINGS.zh[k] == null);
+  if (!onlyZh.length && !onlyEn.length) {
+    ok('中英文案表齐平（' + zhKeys.length + ' 条）');
+  } else {
+    bad('中英文案表不齐平',
+      '只中文有：' + (onlyZh.join('、') || '无') + '；只英文有：' + (onlyEn.join('、') || '无'));
+  }
+
+  // 空值比缺键更隐蔽：t() 静默返回空串，界面上就是一小片空白
+  const allKeys = zhKeys.concat(onlyEn);
+  const blank = allKeys.filter((k) => !String(STRINGS.zh[k] || '').trim()
+    || !String(STRINGS.en[k] || '').trim());
+  if (!blank.length) ok('没有空文案（空串比缺键更难发现：界面上就是一小片空白）');
+  else bad('这些文案是空的：' + blank.join('、'));
+
+  /* 产品代码里引用的每个键都必须真的存在。
+     拼错的键不会报错 —— t() 找不到就**把 key 原样返回**，
+     界面上会出现 "pop.svaeSelected" 这种东西，而测试全绿。 */
+  const uiFiles = [
+    'popup/popup.html', 'popup/popup.js',
+    'options/options.html', 'options/options.js',
+    'background.js',
+    'content/hover.js', 'content/lightbox.js', 'content/panel.js', 'content/main.js'
+  ];
+  const used = new Set();
+  uiFiles.forEach((rel) => {
+    /* 先剥注释：注释里写的 `t('pop.xxx')` 示例会被当成真实引用。
+       再剥 `<!-- -->`（HTML）和 `/* *\/`、`//`（JS）。 */
+    let s = fs.readFileSync(path.join(ROOT, rel), 'utf8');
+    s = s.replace(/<!--[\s\S]*?-->/g, '')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*\/\/.*$/gm, '');
+    /* `(?<![\w$.])t\(` —— 否则 createElement('div') 的 …t('div'
+       和 params.get('mode') 的 …t('mode' 都会被当成取词调用。 */
+    for (const m of s.matchAll(/(?<![\w$.])t\(\s*'([A-Za-z0-9_.]+)'/g)) used.add(m[1]);
+    for (const m of s.matchAll(/data-i18n(?:-html|-ph|-aria|-title)?\s*=\s*"([A-Za-z0-9_.]+)"/g)) used.add(m[1]);
+  });
+  const missing = Array.from(used).filter((k) => !hasI18n(k));
+  if (!missing.length) ok('界面引用的 ' + used.size + ' 个文案键全部存在（t() 不会把 key 显示出来）');
+  else bad('这些文案键在语言表里找不到：' + missing.join('、'));
+
+  // (a) uiLang 必须在 DEFAULT_SETTINGS 里，否则导出→导入会静默丢掉它
+  const constSrc = fs.readFileSync(path.join(ROOT, 'shared/constants.js'), 'utf8');
+  if (/uiLang\s*:/.test(constSrc)) ok('DEFAULT_SETTINGS 里有 uiLang（导出→导入不会把语言丢掉）');
+  else bad('DEFAULT_SETTINGS 里没有 uiLang —— 导入设置后语言会被静默过滤');
+
+  // (b) 设置页要有语言切换控件
+  const optHtml = fs.readFileSync(path.join(ROOT, 'options/options.html'), 'utf8');
+  if (/id="segLang"/.test(optHtml) && /data-v="en"/.test(optHtml) && /data-v="zh"/.test(optHtml)) {
+    ok('设置页有「跟随浏览器 / 中文 / English」三档语言切换');
+  } else {
+    bad('设置页缺少语言切换控件（#segLang 或 zh / en 档位）');
+  }
+
+  // (c) 加载顺序：i18n 要读 settings.uiLang，必须在 store.js 之后
+  ['popup/popup.html', 'options/options.html'].forEach((rel) => {
+    // 剥掉注释：注释里解释加载顺序时会提到这两个文件名，会把 indexOf 带偏
+    const s = fs.readFileSync(path.join(ROOT, rel), 'utf8').replace(/<!--[\s\S]*?-->/g, '');
+    const iStore = s.indexOf('shared/store.js');
+    const iI18n = s.indexOf('shared/i18n.js');
+    if (iStore > 0 && iI18n > iStore) ok(rel + ' 的 i18n.js 排在 store.js 之后（才读得到 uiLang）');
+    else bad(rel + ' 的 i18n.js 加载顺序不对', 'store=' + iStore + ' i18n=' + iI18n);
+  });
+
+  /* (d) 浏览器套件必须自己钉死界面语言
+     界面默认是「跟随浏览器」，于是 runner 的语言是什么，界面就是什么语言。
+     开发机上是 zh-CN，CI runner 上是 en-US —— 而断言里写的是中文句子。
+     不钉死就是「本地全绿、CI 全红」，两边都看不出是语言的问题。 */
+  const suites = fs.readdirSync(path.join(ROOT, 'tests')).filter((f) => /^browser-.*\.js$/.test(f));
+  const noLocale = suites.filter((f) => {
+    const s = fs.readFileSync(path.join(ROOT, 'tests', f), 'utf8');
+    return !/locale:\s*'zh-CN'/.test(s);
+  });
+  if (!noLocale.length) {
+    ok(suites.length + ' 个浏览器套件都固定了 locale: zh-CN（界面语言不跟着 runner 变）');
+  } else {
+    bad('这些浏览器套件没固定 locale —— 中文断言在英文 runner 上会全部翻掉：' + noLocale.join('、'));
+  }
+
+  /* (e) 同理：jsdom 套件手工维护加载清单，而 jsdom 的 navigator.language 恒为 en-US。
+     内容脚本要 i18n 才能取词 —— 清单里少一项会以 `IH.I18n is undefined` 炸在
+     一个离原因很远的地方；语言没钉死则会让中文断言整体翻成英文。 */
+  const jsdomSuites = fs.readdirSync(path.join(ROOT, 'tests'))
+    .filter((f) => /^test-.*\.js$/.test(f));
+  const noI18n = [];
+  const noLang = [];
+  jsdomSuites.forEach((f) => {
+    const s = fs.readFileSync(path.join(ROOT, 'tests', f), 'utf8');
+    /* 只盯**真的把它加载进 vm** 的套件。
+       有的套件只是把内容脚本当文本读出来做静态断言（readFileSync + 正则），
+       那种不需要 i18n —— 把「读」当成「加载」会造出一条假红。 */
+    const loads = /(?:vm\.runInContext\(fs\.readFileSync\(path\.join\(BASE,\s*|^\s*load\()'content\/(hover|lightbox|panel|main)\.js'/m;
+    if (!loads.test(s)) return;
+    if (!/shared\/i18n\.js/.test(s)) noI18n.push(f);
+    if (!/uiLang:\s*'zh'/.test(s)) noLang.push(f);
+  });
+  if (!noI18n.length) ok('加载内容脚本的 jsdom 套件都加载了 shared/i18n.js（取词才有得取）');
+  else bad('这些 jsdom 套件漏了 shared/i18n.js：' + noI18n.join('、'));
+  if (!noLang.length) ok('加载内容脚本的 jsdom 套件都把 uiLang 钉成了中文（jsdom 的默认语言是 en-US）');
+  else bad('这些 jsdom 套件没钉 uiLang —— 中文断言在 jsdom 里会整体翻成英文：' + noLang.join('、'));
+
+  /* (f) `data-i18n` 是**整段 textContent 覆写**，所以它底下不能有任何元素。
+     写 HTML 兜底文案时很容易顺手把 `<img>` / `<link rel="preload">` 直接写进去
+     （原版是转义过的 `&lt;img&gt;`），解析器会真的把它们建出来；
+     最狠的是 `<a href>` —— a 不是空元素，它会把**后面整篇文档**吞成自己的子节点，
+     `apply()` 覆盖 textContent 时连那棵子树一起删掉。
+     真机上的表现完全不像 HTML 问题：点「导出诊断包」整个页面重载、按钮像没接事件。
+     所以这里在**解析后的 DOM** 上断言，而不是对着源码正则 —— 正则看不出解析器怎么吞的。 */
+  {
+    const { JSDOM } = require('jsdom');
+    ['options/options.html', 'popup/popup.html'].forEach((rel) => {
+      const dom = new JSDOM(fs.readFileSync(path.join(ROOT, rel), 'utf8'));
+      const offenders = [];
+      dom.window.document.querySelectorAll('[data-i18n]').forEach((el) => {
+        if (el.children.length) {
+          offenders.push(el.getAttribute('data-i18n')
+            + ' → <' + el.children[0].tagName.toLowerCase() + '>');
+        }
+      });
+      if (!offenders.length) {
+        ok(rel + ' 的 data-i18n 兜底文案没有裸标签（不会被 textContent 覆写连子树一起删掉）');
+      } else {
+        bad(rel + ' 的 data-i18n 兜底文案里写了没转义的标签 —— 会被整棵删掉，`<a>` 还会吞掉后面的文档',
+          offenders.join('、'));
+      }
+    });
   }
 }
 

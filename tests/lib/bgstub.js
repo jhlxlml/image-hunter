@@ -160,6 +160,10 @@ function createBg(opts) {
     Promise, Object, Array, String, Number, Math, Date, JSON, Map, Set,
     URL, URLSearchParams, TextEncoder,
     crypto: { subtle: null },
+    /* 界面语言钉成中文。SW 里 `navigator.language` 是浏览器界面语言，
+       桩里不给的话 i18n 会退到 'en'，而断言写的是中文句子 ——
+       于是「测试全红」会被误读成「后台文案坏了」。 */
+    navigator: { language: 'zh-CN' },
     fetch: () => Promise.reject(new Error('offline')),
     importScripts: function () {
       for (const f of arguments) {

@@ -12,13 +12,17 @@
  *  8. SW 休眠恢复：队列持久化到 storage.session
  * ========================================================================== */
 
-importScripts('shared/constants.js', 'shared/utils.js', 'shared/store.js');
+importScripts('shared/constants.js', 'shared/utils.js', 'shared/store.js', 'shared/i18n.js');
 
 const IH = globalThis.IH;
 const C = IH.C;
 const U = IH.U;
 const Store = IH.Store;
 const MSG = C.MSG;
+/* 后台没有界面，但它返回的 error / reason 会被悬停气泡、图库提示和下载历史
+   原样显示给用户 —— 所以这些句子同样跟着界面语言走。
+   语言取自设置里的 uiLang（'auto' 时退到 navigator.language，SW 里也有）。 */
+const t = (k, a) => IH.I18n.t(k, a);
 
 /* ====================================================================== *
  * 全局状态
@@ -186,7 +190,7 @@ function waitForDownload(id, timeoutMs) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       pendingDownloads.delete(id);
-      reject(new Error('下载超时'));
+      reject(new Error(t('bg.downloadTimeout')));
     }, timeoutMs || 180000);
 
     pendingDownloads.set(id, { resolve, reject, timer });
@@ -196,7 +200,7 @@ function waitForDownload(id, timeoutMs) {
       const item = items && items[0];
       if (!item) return;
       if (item.state === 'complete') settleDownload(id, item);
-      else if (item.state === 'interrupted') failDownload(id, new Error(item.error || '下载被中断'));
+      else if (item.state === 'interrupted') failDownload(id, new Error(item.error || t('bg.downloadInterrupted')));
     }).catch(() => {});
   });
 }
@@ -209,7 +213,7 @@ chrome.downloads.onChanged.addListener((delta) => {
       .then((items) => settleDownload(delta.id, items && items[0]))
       .catch(() => settleDownload(delta.id, null));
   } else if (delta.state.current === 'interrupted') {
-    failDownload(delta.id, new Error((delta.error && delta.error.current) || '下载被中断'));
+    failDownload(delta.id, new Error((delta.error && delta.error.current) || t('bg.downloadInterrupted')));
   }
 });
 
@@ -276,7 +280,7 @@ async function downloadViaFetch(task, filename) {
   const res = await U.fetchWithTimeout(task.url, opts, 30000);
   if (!res.ok) throw new Error('HTTP ' + res.status);
   const blob = await res.blob();
-  if (!blob.size) throw new Error('响应内容为空');
+  if (!blob.size) throw new Error(t('bg.emptyBody'));
 
   let objectUrl = null;
   let downloadable;
@@ -437,7 +441,7 @@ async function runTask(task) {
       pushRecent({ index: task.index, url: task.url, status: 'skipped' });
       broadcastProgress();
       // 跳过 ≠ 保存成功，必须如实告知，否则用户会以为文件已经存下来了
-      finishTask(task, { ok: true, skipped: true, url: task.url, reason: '已下载过' });
+      finishTask(task, { ok: true, skipped: true, url: task.url, reason: t('bg.skippedAlready') });
       return;
     }
   }
@@ -496,7 +500,7 @@ async function runTask(task) {
   }
 
   task.status = 'failed';
-  task.error = String((lastError && lastError.message) || lastError || '未知错误');
+  task.error = String((lastError && lastError.message) || lastError || t('bg.unknownError'));
   job.failed++;
   pushRecent({ index: task.index, url: task.url, status: 'failed', error: task.error });
   await Store.bumpStats({ failed: 1 });
@@ -519,7 +523,7 @@ async function runTask(task) {
  * ====================================================================== */
 
 async function startBatch(items, options) {
-  if (!items || !items.length) return { ok: false, error: '没有需要下载的图片' };
+  if (!items || !items.length) return { ok: false, error: t('bg.noImages') };
 
   const s = await settings();
   const opts = options || {};
@@ -643,8 +647,9 @@ async function ensureInjected(tabId) {
   }
 }
 
-/** 单次嗅探最多返回多少张（再多界面也看不过来，而且会拖慢消息序列化） */
-const SCAN_LIMIT = 2000;
+/* 单次嗅探最多返回多少张。放在 C 里是因为界面也要引用它
+   （图库说「可能超出前 2000 张」用的是同一个数），写两份迟早对不上。 */
+const SCAN_LIMIT = C.SCAN_LIMIT;
 
 function finalizeScan(session) {
   const seen = new Map();
@@ -701,8 +706,8 @@ function finalizeScan(session) {
     // 单独一个字段，图库才能给出对得上的说法而不是一句笼统的错误。
     blocked: !!session.blocked,
     error: session.blocked ? 'blocked'
-      : noReply ? SCAN_NO_REPLY
-        : failed ? (SCAN_ERROR_TEXT[firstError] || firstError)
+      : noReply ? scanNoReply()
+        : failed ? (SCAN_ERROR_TEXT[firstError] ? t(SCAN_ERROR_TEXT[firstError]) : firstError)
           : undefined,
     images: list,
     title: session.title,
@@ -728,20 +733,22 @@ const SCAN_RESTORE_TIMEOUT = 15000;
 /** 深度嗅探：要滚动整页，光滚动就可能十几秒，还原还得再算 */
 const SCAN_DEEP_TIMEOUT = 45000;
 
-/** 内容脚本自报的错误码 → 给用户看的一句话（见 finalizeScan） */
+/* 内容脚本自报的错误码 → 文案键（取词在 finalizeScan 里做，见那儿）。
+   存**键**不存句子：文案跟着界面语言走，句子是在用时才定的。 */
 const SCAN_ERROR_TEXT = {
   /* 现在的版本不会再回 busy（忙的时候内容脚本自己排队，见 content/main.js）。
      留着是为了**扩展更新后那些还开着的老页面** —— 它们跑的是旧内容脚本，
      回一句 busy 总比把「没扫成」说成「这页没有图」好。 */
-  busy: '上一次嗅探还没结束 —— 等它跑完再试一次',
-  blocked: '这个站点在你的排除列表里'
+  busy: 'bg.scanBusy',
+  blocked: 'bg.scanBlocked'
 };
 
-/* 一个 frame 都没回报时给用户的说法。
+/* 一个 frame 都没回报时给用户的说法（文案见 i18n 的 bg.scanNoReply）。
    **不能**说「本页没有发现图片」—— 那是把「没问成」说成「没有图」，
    用户会以为页面上真的没图，然后去别的地方找原因。 */
-const SCAN_NO_REPLY = '没能在这张页面上开始嗅探 —— 页面可能还没加载完，或者不允许扩展运行。'
-  + '刷新页面后重试，或换一个已经加载完的标签页';
+function scanNoReply() {
+  return t('bg.scanNoReply');
+}
 
 /** 这个地址所在的站点是否在用户的排除列表里（见设置页「站点排除列表」） */
 function isBlockedUrl(url) {
@@ -1131,7 +1138,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
     case MSG.SCAN_TAB: {
       const tabId = msg.tabId != null ? msg.tabId : (sender && sender.tab && sender.tab.id);
-      if (tabId == null) { sendResponse({ ok: false, error: '找不到目标标签页' }); return true; }
+      if (tabId == null) { sendResponse({ ok: false, error: t('bg.noTargetTab') }); return true; }
 
       /* 先出图、后升级。
        *
@@ -1349,7 +1356,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
          排除列表**不拦这条路**：用户是从灯箱里主动点的，属于「显式操作」，
          和右键菜单的 SAVE_BY_SRC 同一类。黑名单管的是「别自己冒出来打扰我」。 */
       const tabId = msg.tabId != null ? msg.tabId : (sender && sender.tab && sender.tab.id);
-      if (tabId == null) { sendResponse({ ok: false, error: '找不到来源标签页' }); return true; }
+      if (tabId == null) { sendResponse({ ok: false, error: t('bg.noSourceTab') }); return true; }
       const focusUrl = (msg.payload && msg.payload.url) || '';
       openGallery(tabId, focusUrl).then(
         () => sendResponse({ ok: true }),
@@ -1369,7 +1376,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           const res = await U.fetchWithTimeout(p.url, opts, 20000);
           if (!res.ok) throw new Error('HTTP ' + res.status);
           const blob = await res.blob();
-          if (blob.size > 16 * 1024 * 1024) throw new Error('图片过大');
+          if (blob.size > 16 * 1024 * 1024) throw new Error(t('bg.imageTooBig'));
           const dataUrl = await U.blobToDataUrl(blob);
           sendResponse({ ok: true, dataUrl, size: blob.size, mime: blob.type });
         } catch (e) {
@@ -1402,8 +1409,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
          frameId 由 onScanResult 打在每张图上，一路带到图库。 */
       const payload = msg.payload || {};
       const tabId = payload.tabId != null ? payload.tabId : (sender && sender.tab && sender.tab.id);
-      if (tabId == null) { sendResponse({ ok: false, error: '找不到目标标签页' }); return true; }
-      if (!payload.url) { sendResponse({ ok: false, error: '缺少图片地址' }); return true; }
+      if (tabId == null) { sendResponse({ ok: false, error: t('bg.noTargetTab') }); return true; }
+      if (!payload.url) { sendResponse({ ok: false, error: t('bg.missingUrl') }); return true; }
 
       const message = {
         type: MSG.RESTORE_ONE,
@@ -1413,7 +1420,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
       (async () => {
         const injected = await ensureInjected(tabId);
-        if (!injected) { sendResponse({ ok: false, error: '无法连接到目标页面' }); return; }
+        if (!injected) { sendResponse({ ok: false, error: t('bg.cannotConnect') }); return; }
 
         let res = null;
         try {
@@ -1481,7 +1488,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
  * 右键菜单
  * ====================================================================== */
 
-function t(key, fallback) {
+/* `_locales/` 那套（chrome.i18n）只认**浏览器界面语言**，管的是浏览器自己渲染的东西
+   —— 右键菜单标题就在这儿。名字叫 localeMsg，别和上面那个按 uiLang 取词的 t() 混了：
+   两者同名会直接 SyntaxError（`Identifier 't' has already been declared`）。 */
+function localeMsg(key, fallback) {
   try {
     const v = chrome.i18n.getMessage(key);
     return v || fallback;
@@ -1532,7 +1542,7 @@ function setupMenus() {
       MENU_DEFS.forEach((def) => {
         chrome.contextMenus.create({
           id: def.id,
-          title: t(def.titleKey, def.titleFallback),
+          title: localeMsg(def.titleKey, def.titleFallback),
           contexts: def.contexts
         }, () => {
           const err = chrome.runtime.lastError;

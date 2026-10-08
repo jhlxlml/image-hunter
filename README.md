@@ -5,8 +5,10 @@
 适用于 **Chrome / Edge** 的浏览器扩展（Manifest V3）。
 **零依赖、零构建** —— 克隆下来用「加载已解压的扩展程序」指到本目录就能跑，不用 `npm install`，也没有构建步骤。
 
+**中文** | [English](README.en.md)
+
 📖 **[完整手册](HANDBOOK.md)** —— 功能详解 · 使用说明 · 技术要点 · 24 条常见问题 · 全部版本历史
-🧪 **[测试说明](tests/README.md)** —— 1,421 项断言 · 22 个「测试自己会骗人」的坑
+🧪 **[测试说明](tests/README.md)** —— 1,511 项断言 · 23 个「测试自己会骗人」的坑
 🗺️ [路线图](ROADMAP-2026-09-29.md) · 🔍 [代码审计](AUDIT-2026-09-28.md) · 📋 [现状复盘](REVIEW-2026-10-08.md)
 
 <table>
@@ -109,6 +111,7 @@
 | **自定义还原规则** | 设置页写正则，带**规则调试器**（粘贴地址即可看到会生成哪些候选、能否加载、是否会被采用） |
 | **三个全局快捷键** | `Alt+Shift+S` 页内面板 / `Alt+Shift+G` 打开图库 / `Alt+Shift+D` 保存当前悬停的那张 |
 | **自助排障诊断包** | 设置页一键导出 JSON。**只含聚合数字与主机名**，不含图片地址 / 页面地址 / 文件路径 |
+| **中英双语界面** | 设置页「界面语言」可运行时切换（跟随浏览器 / 中文 / English），默认跟随浏览器 |
 
 ---
 
@@ -168,14 +171,14 @@ image-hunter/
 ├── LICENSE                # AGPL-3.0
 ├── manifest.json          # MV3 清单
 ├── background.js          # Service Worker：下载队列、消息路由、历史/指纹、体积探测
-├── shared/                # 消息常量、URL 工具、存储封装、诊断包（纯函数）
+├── shared/                # 消息常量、URL 工具、存储封装、界面多语言（i18n）、诊断包（纯函数）
 ├── content/               # 内容脚本：嗅探引擎、悬停按钮、灯箱、页内面板
 ├── popup/                 # 图库主界面（独立页面 / 页内面板共用同一份代码）
 ├── options/               # 设置页
 ├── tools/                 # 打包、设置项巡检
-├── tests/                 # 15 个 Node 套件 + 25 个真实浏览器套件
+├── tests/                 # 16 个 Node 套件 + 26 个真实浏览器套件
 ├── docs/screenshots/      # 界面截图
-├── _locales/              # 仅扩展名称/描述/命令标题/右键菜单文案（服务 manifest）；界面文案只有中文
+├── _locales/              # 仅扩展名称/描述/命令标题/右键菜单文案（服务 manifest）；界面文案由 shared/i18n.js 负责
 └── icons/
 ```
 
@@ -187,8 +190,8 @@ image-hunter/
 
 ```bash
 npm ci                 # 首次：装开发期依赖（jsdom + playwright-core）
-npm test               # Node 套件（15 个）
-npm run test:browser   # 真实浏览器套件（25 个，需要本机 Edge / Chrome）
+npm test               # Node 套件（16 个）
+npm run test:browser   # 真实浏览器套件（26 个，需要本机 Edge / Chrome）
 npm run test:all       # 两个入口都跑
 npm run package        # 打包
 npm run audit:settings # 巡检设置项：列出每条设置的读取点 / UI 挂点，找死设置
@@ -197,11 +200,11 @@ npm run audit:settings # 巡检设置项：列出每条设置的读取点 / UI �
 - **扩展本体零依赖零构建。** `package.json` 里声明的全是**开发期**依赖，不进扩展包
 - 浏览器套件第一次跑要先装一份**完整** Chromium（headless shell 不支持 `--load-extension`）：
   `npx playwright-core install --with-deps --no-shell chromium`
-- 当前实测：Node **15 套件 / 774 项**、真浏览器 **25 套件 / 647 项**，合计 **1,421 项**，全绿
+- 当前实测：Node **16 套件 / 834 项**、真浏览器 **26 套件 / 677 项**，合计 **1,511 项**，全绿
 - CI 在 [`.github/workflows/ci.yml`](.github/workflows/ci.yml)：`push` / `pull_request` 都跑两个入口，
   两个 job 都**不允许 `continue-on-error`** —— 一个会失败但被忽略的检查，比没有检查更糟
 
-> **测试上最值得一看的不是数量，是 [`tests/README.md`](tests/README.md) 里的 20 个坑。**
+> **测试上最值得一看的不是数量，是 [`tests/README.md`](tests/README.md) 里的 23 个坑。**
 > 断言前提写错、静态守卫扫到自己的注释、手写清单漏一项不报错、把中间结果当最终结果去断言……
 > 每个坑都配了判据与做法。这份文档比测试本身更能说明这个项目对「结论可信」的要求。
 
@@ -227,9 +230,10 @@ npm run audit:settings # 巡检设置项：列出每条设置的读取点 / UI �
 滑条右侧和「筛选」按钮上的角标会实时显示条件数。想看全部，把滑条拖到 **0**。
 
 **Q：界面有英文版吗？**
-没有，界面文案目前 **100% 是中文硬编码**。`_locales/` 只有 8 个键
-（扩展名称 / 描述 / 命令标题 / 右键菜单文案），是给 manifest 用的，不覆盖任何界面文字。
-想要英文界面欢迎提 issue。
+有。界面支持**中英运行时切换**：设置页的「界面语言」可选 跟随浏览器 / 中文 / English，
+默认跟随浏览器语言。切换**立即生效** —— 已经开着的图库页会当场跟着变，不用刷新。
+`_locales/` 目录仍然保留，但只服务浏览器原生渲染的那 8 条（扩展名称 / 描述 / 命令标题 / 右键菜单文案），
+真正的界面文案全部来自 `shared/i18n.js`。想加第三种语言？两份语言表由测试套件强制齐平。
 
 **Q：某些图片保存失败？**
 少数站点有严格的防盗链校验。扩展会自动尝试降级方案（改用扩展页拉取），若仍失败，

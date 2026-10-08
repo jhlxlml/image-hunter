@@ -52,7 +52,9 @@ ctx.chrome = {
     onMessage: { addListener() {} }
   },
   storage: {
-    local: { get: () => Promise.resolve({}), set: () => Promise.resolve() },
+    /* uiLang 钉成中文：jsdom 的 navigator.language 恒为 en-US，
+       而断言写的是中文文案（浏览器套件那边用 locale: 'zh-CN'）。 */
+    local: { get: () => Promise.resolve({ ih_settings: { uiLang: 'zh' } }), set: () => Promise.resolve() },
     onChanged: { addListener() {} }
   }
 };
@@ -60,6 +62,7 @@ ctx.chrome = {
 vm.runInContext(fs.readFileSync(path.join(BASE, 'shared/constants.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(BASE, 'shared/utils.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(BASE, 'shared/store.js'), 'utf8'), ctx);
+vm.runInContext(fs.readFileSync(path.join(BASE, 'shared/i18n.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(BASE, 'content/lightbox.js'), 'utf8'), ctx);
 
 const IH = ctx.IH;
@@ -82,6 +85,9 @@ const galleryBtn = () => {
 };
 
 (async function run() {
+  /* 先把设置读进来：i18n 取词读的是 Store 的缓存，缓存没加载时 uiLang 还是默认的
+     'auto'，于是会退到 jsdom 的 navigator.language（恒为 en-US）→ 断言里的中文全变英文。 */
+  await IH.Store.loadSettings();
   console.log('=== 1. 只有网页里的预览才显示这个按钮 ===');
 
   IH.Lightbox.open(ITEMS, 0, { pageUrl: 'https://example.com/article/post-1', host: 'content' });
