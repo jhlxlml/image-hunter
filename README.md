@@ -538,6 +538,8 @@ image-hunter/
 ├── manifest.json               # MV3 清单
 ├── background.js               # Service Worker：下载队列、消息路由、历史/指纹、体积探测、扫描摘要
 ├── package.json                # 只声明开发期依赖（jsdom / playwright-core）与测试脚本，扩展运行**不用**它
+├── .gitignore                  # 忽略依赖 / 打包产物 / 编辑器与系统垃圾（见下）
+├── .gitattributes              # 钉住行尾一律 LF —— 否则「两次打包字节相同」会在别的机器上莫名变红
 ├── .github/workflows/ci.yml    # CI：push / PR 上跑 Node 套件与真实浏览器套件
 ├── shared/
 │   ├── constants.js            # 消息类型、默认配置、原图还原规则表
@@ -560,9 +562,24 @@ image-hunter/
 │   └── lib/
 │       ├── localsite.js        # 本地测试站（零外网依赖，可造多页 / 多 host / 子目录）
 │       └── bgstub.js           # 后台 vm 测试桩（假 chrome；内容脚本可编程、超时常量可缩短）
+├── docs/
+│   └── screenshots/            # 界面截图（11 张，由 tests/screenshot.js 生成并纳入版本管理）
 ├── _locales/                   # 仅扩展名称与描述（服务 manifest）；界面文案目前只有中文
 └── icons/                      # 扩展图标
 ```
+
+### 版本控制约定
+
+仓库里只放**人写的**东西。凡是用脚本能重新生成的都不进仓库 ——
+依赖（`node_modules/`）和打包产物（`dist/`）都在 `.gitignore` 里。
+
+唯一的例外是 `docs/screenshots/`：它同样是脚本生成的，但作为界面演进的记录值得留一份历史，
+所以明确纳入。`tests/screenshot.js` 的默认输出目录就是它（第二个参数可以改）。
+
+行尾一律 LF（`.gitattributes` 里 `* text=auto eol=lf`）。这条不是洁癖：
+测试里没有任何 `\r` 归一化，`validate.js` 直接按原始字节对 `popup.html` 做正则匹配，
+混用行尾会让「跨行断言」在 CRLF 文件上**静默失配** —— 表现为「断言压根没命中」，
+比直接报错难查得多。
 
 ---
 
@@ -896,9 +913,14 @@ v1.13.0 —— 补齐「保障链」：CI、键盘可达性、自助排障诊断
 
           **全量实测（v1.13.1）**：Node **15 套件 / 774 项**全绿 +
           真浏览器 **25 套件 / 647 项**全绿 = **1,421 项**；
-          打包 `dist/image-hunter-v1.13.1.zip`（25 文件，SHA1 `cfd4c050…`，两次打包字节相同）。
+          打包 `dist/image-hunter-v1.13.1.zip`（25 文件，SHA1 `55874c4e…`，两次打包字节相同）。
           （774 里的最后 3 条是事后补的：`test-scanner.js` 第 19 节用几张「DOM 上还没尺寸」
           的图，钉住「先出图的代价 —— 中间结果这一版里尺寸可能还没补齐」。）
+
+          > **哈希为什么不是 `cfd4c050…` 了**：把项目纳入 git 时统一了行尾
+          > （7 个文本文件从 CRLF 改成 LF，其中 `popup/popup.html` 是出货文件），
+          > 打包器按原始字节读文件，所以产物的 SHA1 随之变化 —— 这是**内容真的变了**，
+          > 不是打包器不稳。可复现性照旧：连打两次字节完全相同。
 
 v1.12.0 —— 多标签页合并嗅探：一次把好几个已打开页面的图片合并成一份列表（**可选开关，默认关**）。
 
