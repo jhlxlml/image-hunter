@@ -3,7 +3,7 @@
  * 依赖与用法同 browser-e2e.js（playwright-core + 本机 Edge / Chrome）。
  *
  * 回归的是产品承诺与实现之间的缺口：
- *   README 写着「全量嗅探」，但 collectAll 只看**此刻存在**的 DOM。
+ *   HANDBOOK.md 写着「全量嗅探」，但 collectAll 只看**此刻存在**的 DOM。
  *   微博、Pinterest、电商瀑布流这类站点要滚到底才加载下一批，
  *   于是图库只显示首屏那几十张 —— 用户会直接判定「这扩展不好用」。
  *
