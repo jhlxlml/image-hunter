@@ -58,8 +58,22 @@ jobs:
       # run-all.js 会校验每个套件都打印了完成标记
       # （Node 在「事件循环空了但还有 await 挂着」时会静默以退出码 0 结束，
       #   只看退出码会漏报 —— 见 tests/README.md 第一个坑）
+      #
+      # 失败时把汇总里的 ✗ 行做成 annotation（原因见浏览器 job 那一段：
+      # Actions 的日志 API 要 admin 权限，annotations 不要）。
       - name: 跑 Node 套件
-        run: npm test
+        run: |
+          set +e
+          npm test 2>&1 | tee "$RUNNER_TEMP/node-suites.log"
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            grep -E '^  ✗ ' "$RUNNER_TEMP/node-suites.log" \
+              | sed 's/^  ✗ //' \
+              | while IFS= read -r line; do
+                  echo "::error title=Node 套件失败::${line}"
+                done
+          fi
+          exit "$status"
 
   # ------------------------------------------------------------------ #
   # 真浏览器套件（25 个）：真加载扩展，覆盖真实落盘 / 真实鼠标框选 / 面板 token / 真键盘导航
@@ -90,5 +104,21 @@ jobs:
       # run-all-browser.js 自己解析浏览器：IH_BROWSER → 各平台常见路径
       # → Playwright 缓存。解析失败会立刻退出并打印怎么装，不会让 25 个套件
       # 各自报一遍 ENOENT 把人淹掉。
+      #
+      # 失败时把汇总里的 ✗ 行做成 annotation：Actions 的**日志 API 需要 admin
+      # 权限**（匿名访问 403 `Must have admin rights to Repository.`），而
+      # annotations 不需要 —— 于是「哪个套件红了、为什么」可以被程序读出来，
+      # 提交页 / PR 页上也能直接看到，不用去几千行日志里翻。
       - name: 跑真浏览器套件
-        run: npm run test:browser
+        run: |
+          set +e
+          npm run test:browser 2>&1 | tee "$RUNNER_TEMP/browser-suites.log"
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            grep -E '^  ✗ ' "$RUNNER_TEMP/browser-suites.log" \
+              | sed 's/^  ✗ //' \
+              | while IFS= read -r line; do
+                  echo "::error title=浏览器套件失败::${line}"
+                done
+          fi
+          exit "$status"

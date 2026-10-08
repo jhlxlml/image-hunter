@@ -492,7 +492,17 @@ function startServer(options) {
   });
 
   return new Promise((resolve) => {
-    server.listen(0, opts.host, () => {
+    /* 监听地址分两种：
+       - 默认（127.0.0.1）按 host 绑，走**纯 IPv4** —— 不给正常站点平白加一层
+         IPv4-mapped IPv6 的开销（探测类套件要发上百个请求，累积起来不小）。
+       - `host: 'localhost'` 时**绑所有接口**（Node 默认 `::`，IPv6 双栈）。
+         verbatim 解析顺序下 `listen(0, 'localhost')` 只会绑到 ::1 或 127.0.0.1
+         中的**一个**（实测是 ::1），而浏览器解析 localhost 的顺序未必一致 ——
+         于是 page.goto 直接 ERR_CONNECTION_REFUSED。「多标签页合并嗅探」正是靠
+         `host: 'localhost'` 起第二个站点，就这么红的。
+       origin 仍然按 opts.host 拼，所以「两个站点 host 名不同」的语义不受影响。 */
+    const bindHost = opts.host === 'localhost' ? undefined : opts.host;
+    server.listen(0, bindHost, () => {
       const port = server.address().port;
       const origin = 'http://' + opts.host + ':' + port;
       resolve({

@@ -93,6 +93,13 @@ const hostCount = (page) => page.evaluate(() => document.querySelectorAll('[data
 
   /** 写设置并**确认后台真的读到了**，避免和 SW 的启动期加载抢跑 */
   async function seedBlocked(hosts) {
+    /* 先等 Store 把设置加载完再写。
+       不等的话会和 bootstrap() 的启动期 loadSettings 抢跑 —— 那个还挂在
+       storage.get 上的读一旦 resolve，就可能把刚写进去的值盖回旧的，
+       表现是「设置明明写进去了，后台读到的还是空」。
+       批量跑时特别容易撞上（前一个套件的浏览器进程还在退出、SW 起得慢），
+       而单独跑这个套件永远是对的 —— 典型的环境相关间歇失败。 */
+    await sw.evaluate(() => IH.Store.loadSettings());
     await sw.evaluate(async (list) => {
       const cur = (await chrome.storage.local.get('ih_settings')).ih_settings || {};
       cur.blockedHosts = list;
@@ -104,6 +111,13 @@ const hostCount = (page) => page.evaluate(() => document.querySelectorAll('[data
       6000
     );
     console.log('  后台看到的排除列表 =', JSON.stringify(got));
+    /* 确认失败就炸掉，不能带着「设置没生效」的状态往下跑 —— 那会让接下来的
+       断言红得莫名其妙（悬停 UI 冒出来了、Alt+点击真保存了），看起来像产品
+       坏了，其实只是设置没写进去。让失败信息指向真正的原因。 */
+    if (JSON.stringify(got) !== JSON.stringify(hosts)) {
+      throw new Error('设置没写进后台：期望 ' + JSON.stringify(hosts)
+        + '，实际读到 ' + JSON.stringify(got));
+    }
     return got;
   }
 
