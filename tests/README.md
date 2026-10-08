@@ -14,7 +14,7 @@ npm run test:all        # 两个入口都跑
 不装 npm 也能跑，直接用 Node 执行入口：
 
 ```bash
-node tests/run-all.js           # Node 套件（需要 Node 18+，DOM 相关测试依赖 jsdom）
+node tests/run-all.js           # Node 套件（需要 Node 22.22.2+，DOM 相关测试依赖 jsdom）
 node tests/run-all-browser.js   # 真实浏览器套件
 ```
 
@@ -194,7 +194,7 @@ NODE_PATH=<node_modules> node tests/browser-merge-tabs.js
 > 注意：jsdom 不会加载 `<link rel="stylesheet">`，所以 `test-hover.js` 里的点击成功，
 > 同时也验证了「即使 `overlay.css` 加载失败，悬停按钮依然可点击」这条降级路径。
 
-## 测试自己会骗人：二十个坑
+## 测试自己会骗人：二十一个坑
 
 前两个是「报绿但没测」，第三、五个是「断言恒真」，第六个是「注入验证根本没跑」，
 第七个是「超时被吞掉，把真 bug 伪装成正常」，第八个是「断言的前提被后来的修复推翻，
@@ -882,4 +882,39 @@ check(partial.every((p) => p.restored !== true), '中间结果里没有「已还
 3. 这和第十九个坑是**一对**：第十九个坑是「断言站错了通道」（红得莫名其妙），
    这个是「断言站对了通道、却没站在被改的那一段上」（绿得毫无意义）。
    一红一绿，都指向同一件事 —— **先想清楚这条断言在测什么，再写它**。
+
+### 第二十一个坑：**本地全绿、CI 全红 —— 因为两边跑测试的 Node 不是同一个版本**
+
+CI（`.github/workflows/ci.yml`）首次上线，Node 套件 job 直接红。本地同一份代码、
+同一份 `package-lock.json`、同一批依赖版本，**15 个套件全绿**。
+
+差别只有一个：**CI 写的是 `node-version: '20'`，本地是 Node 22.22.2。**
+
+Node 20 下 `require('jsdom')` 会直接抛：
+
+```
+TypeError: webidl.util.markAsUncloneable is not a function
+    at new CacheStorage (.../undici/lib/web/cache/cachestorage.js:20:17)
+```
+
+因为 `jsdom@30` 的 engines 是 `^22.22.2 || ^24.15.0 || >=26.0.0` —— Node 20 不在范围内。
+于是**恰好那 5 个 `require('jsdom')` 的套件**（`test-scanner` / `test-hover` /
+`test-blocked` / `test-lightbox-gallery` / `test-lightbox-filter`）全部「中途退出，未跑完」，
+其余 10 个（纯 vm / 纯字符串处理）照常通过。
+
+这个失败形态**极具误导性**：5 个套件、5 套不同的断言，一起变红，看着像 5 个互不相关的
+bug —— 根因却只是「Node 太旧」。
+
+**判据与做法**：
+
+1. **「本地全绿」这句话必须带上「在哪个 Node 上」。** 版本不够时，测试不会报
+   「你的 Node 不对」，它只会**以别的方式**坏掉。`package.json` 的 `engines`
+   现在照抄了 jsdom 的范围，`npm ci` 会给警告；但 warning 不是 error，别指望它拦得住。
+2. **红掉的集合「恰好等于某个特征集合」时，先去找那个共同点。** 这里 5 个红掉的
+   套件恰好是全仓库仅有的 5 个 `require('jsdom')` 的文件 —— 这个巧合不是巧合。
+   换成「红的都是用了某个 API 的套件」，就该去查那个 API。
+3. **拿不到 CI 日志时，用「装一个同版本」来缩小范围。** Actions 的日志 API 要 admin
+   权限（`403 Must have admin rights to Repository.`），job 页面又是懒加载、抓不到日志行。
+   这时从 `nodejs.org/dist/v20.x/` 下一个 zip 解压即用，跑一次就把范围从
+   「CI 与本地的全部差异」缩到「Node 版本」这一条 —— 复现出来的那一刻，根因就不用猜了。
 

@@ -1,7 +1,12 @@
 #!/usr/bin/env node
 /* ImageHunter — 测试总入口
  * 用法： node tests/run-all.js
- * 需要 Node 18+；DOM 相关测试依赖 jsdom。
+ * 需要 Node 22.22.2+；DOM 相关测试依赖 jsdom。
+ *
+ * 为什么门槛不是「Node 18+」这种泛泛的说法：jsdom 30 的 engines 是
+ * `^22.22.2 || ^24.15.0 || >=26.0.0`，低于它 require('jsdom') 会直接抛错
+ * （Node 20 上是 undici 的 markAsUncloneable 不存在）。详见 tests/README.md
+ * 第二十一个坑 —— 那个坑的代价是 CI 首次上线就红了。
  */
 'use strict';
 
@@ -107,7 +112,16 @@ for (const [name, file] of SUITES) {
   } else if (r.signal) {
     reason = '套件被信号 ' + r.signal + ' 终止';
   } else if (!COMPLETION.test(out)) {
-    reason = '套件中途退出，未跑完（没有打印完成标记「通过 N 项，失败 M 项」）';
+    // 区分「跑到一半崩了」和「压根没起来」。后者最常见的原因是 jsdom 加载失败
+    // （Node 版本低于 jsdom 的 engines）—— 这时 5 个 jsdom 套件会各崩一次、
+    // 各打印一遍同样的堆栈，看着像 5 个互不相关的 bug。把根因直接写进失败原因，
+    // 汇总里就能一眼看到。见 tests/README.md 第二十一个坑。
+    if (/markAsUncloneable is not a function|Cannot find module ['"]jsdom['"]/.test(out)) {
+      reason = 'jsdom 加载失败 —— Node 版本可能不满足 jsdom 的 engines'
+        + '（^22.22.2 || ^24.15.0 || >=26.0.0）；见 tests/README.md 第二十一个坑';
+    } else {
+      reason = '套件中途退出，未跑完（没有打印完成标记「通过 N 项，失败 M 项」）';
+    }
   } else if (r.status !== 0) {
     reason = '套件报告失败（退出码 ' + r.status + '）';
   }

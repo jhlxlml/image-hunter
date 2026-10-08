@@ -30,17 +30,26 @@ concurrency:
 
 jobs:
   # ------------------------------------------------------------------ #
-  # Node 套件（14 个）：纯 jsdom / vm，秒级到十几秒，是这个项目的主力防线
+  # Node 套件（15 个）：纯 jsdom / vm，秒级到十几秒，是这个项目的主力防线
   # ------------------------------------------------------------------ #
   node-suites:
-    name: Node 套件（14 个）
+    name: Node 套件（15 个）
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
+      # Node 版本必须满足 jsdom 的 engines：`^22.22.2 || ^24.15.0 || >=26.0.0`。
+      #
+      # 踩过的坑（2026-10-08，CI 首次上线）：这里原本写 '20'。Node 20 下
+      # require('jsdom') 会直接抛 `TypeError: webidl.util.markAsUncloneable
+      # is not a function`（来自 jsdom 依赖的 undici），于是 5 个 jsdom 套件
+      # 全部「中途退出，未跑完」—— 而它们恰好是全仓库仅有的 5 个
+      # require('jsdom') 的文件。失败形态看着像 5 个互不相关的 bug，
+      # 根因却只是 Node 太旧。本地是 22.22.2，恰好命中 `^22.22.2`，
+      # 所以「本地全绿」完全没有预警 —— 见 tests/README.md 第二十一个坑。
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22.22.2'
           cache: npm
 
       - name: 安装开发期依赖
@@ -53,17 +62,19 @@ jobs:
         run: npm test
 
   # ------------------------------------------------------------------ #
-  # 真浏览器套件（24 个）：真加载扩展，覆盖真实落盘 / 真实鼠标框选 / 面板 token / 真键盘导航
+  # 真浏览器套件（25 个）：真加载扩展，覆盖真实落盘 / 真实鼠标框选 / 面板 token / 真键盘导航
   # ------------------------------------------------------------------ #
   browser-suites:
-    name: 真浏览器套件（24 个）
+    name: 真浏览器套件（25 个）
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
+      # 版本约束同 node-suites（说明见那一段）。这个 job 自己不 require jsdom，
+      # 但 `npm ci` 照样会把它装下来，两处版本保持一致，省得将来只改一处。
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22.22.2'
           cache: npm
 
       - name: 安装开发期依赖
@@ -71,13 +82,13 @@ jobs:
 
       # --no-shell 很关键：默认会装 chromium-headless-shell，
       # 而 headless shell **不支持加载扩展**（--load-extension 会被忽略），
-      # 于是 24 个套件会全部卡在「等 service worker」上超时，
+      # 于是 25 个套件会全部卡在「等 service worker」上超时，
       # 报出来的错看起来像「扩展坏了」，其实是浏览器装错了。
       - name: 装一个能加载扩展的 Chromium
         run: npx playwright-core install --with-deps --no-shell chromium
 
       # run-all-browser.js 自己解析浏览器：IH_BROWSER → 各平台常见路径
-      # → Playwright 缓存。解析失败会立刻退出并打印怎么装，不会让 24 个套件
+      # → Playwright 缓存。解析失败会立刻退出并打印怎么装，不会让 25 个套件
       # 各自报一遍 ENOENT 把人淹掉。
       - name: 跑真浏览器套件
         run: npm run test:browser
