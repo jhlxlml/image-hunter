@@ -1,0 +1,34 @@
+{
+  "extName": {
+    "message": "图片猎人 ImageHunter",
+    "description": "扩展名称"
+  },
+  "extDesc": {
+    "message": "悬停一键存原图，全页嗅探、按分辨率筛选、批量下载高清大图。",
+    "description": "扩展描述"
+  },
+  "actionTitle": {
+    "message": "打开图片库（在新标签页中嗅探并挑选图片）",
+    "description": "点击扩展图标时的悬停提示"
+  },
+  "cmdTogglePanel": {
+    "message": "打开 / 关闭图片库面板",
+    "description": "快捷键说明"
+  },
+  "cmdOpenGallery": {
+    "message": "在新标签页打开图片库",
+    "description": "快捷键说明"
+  },
+  "cmdSaveHovered": {
+    "message": "保存鼠标当前悬停的那张图",
+    "description": "快捷键说明"
+  },
+  "ctxSaveOriginal": {
+    "message": "保存此图片（原图）",
+    "description": "图片右键菜单"
+  },
+  "ctxOpenGallery": {
+    "message": "打开图片库（嗅探本页图片）",
+    "description": "页面右键菜单"
+  }
+}

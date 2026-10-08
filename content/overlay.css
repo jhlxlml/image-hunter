@@ -1,0 +1,479 @@
+/* ==========================================================================
+ * ImageHunter — content/overlay.css
+ * 页内 UI 统一样式（全部注入 Shadow DOM，与宿主页面彻底隔离）
+ * 设计语言：现代简约 · 浅色卡片 · 圆角 · 柔和阴影 · 主色点缀
+ * ========================================================================== */
+
+:host,
+.ih-root {
+  --ih-primary: #4f6ef7;
+  --ih-primary-dark: #3b5bdb;
+  --ih-primary-soft: rgba(79, 110, 247, 0.10);
+  --ih-bg: #ffffff;
+  --ih-bg-soft: #f7f8fa;
+  --ih-bg-mute: #eef0f5;
+  --ih-border: #e6e8ee;
+  --ih-border-strong: #d5d9e2;
+  --ih-text: #1f2430;
+  --ih-text-soft: #6b7280;
+  --ih-text-faint: #9aa1ae;
+  --ih-success: #16a34a;
+  --ih-danger: #e5484d;
+  --ih-shadow-sm: 0 1px 2px rgba(17, 24, 39, 0.06), 0 1px 3px rgba(17, 24, 39, 0.05);
+  --ih-shadow-md: 0 4px 14px rgba(17, 24, 39, 0.14), 0 1px 3px rgba(17, 24, 39, 0.08);
+  --ih-shadow-lg: 0 24px 60px rgba(17, 24, 39, 0.28), 0 4px 12px rgba(17, 24, 39, 0.12);
+  --ih-radius: 12px;
+  --ih-font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+
+  font-family: var(--ih-font);
+  -webkit-font-smoothing: antialiased;
+}
+
+.ih-root,
+.ih-root * {
+  box-sizing: border-box;
+}
+
+/* ====================================================================== *
+ * 1. 悬停快捷操作（预览 + 下载）
+ *
+ * .ih-hover 是「定位 + 显隐」的容器，本身不可点；
+ * 真正的按钮是里面的 .ih-hover-btn。
+ * 容器宽度 = 按钮数 × 32 + 间距 6，hover.js 的 BTN_SIZE / BTN_GAP / BAR_W
+ * 必须与此保持一致，否则定位会偏。
+ * ====================================================================== */
+
+.ih-hover {
+  position: fixed;
+  z-index: 2147483646;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  opacity: 0;
+  transform: translateY(-5px) scale(0.92);
+  transition: opacity 0.16s ease, transform 0.16s ease;
+  will-change: transform, opacity;
+  -webkit-user-select: none;
+  user-select: none;
+  /* 宿主元素设了 pointer-events:none 来避免遮挡页面，而该属性会被继承。
+     这里必须显式恢复，否则按钮可见但点击会穿透到页面元素上。
+     隐藏状态下保持 none，避免一排透明按钮拦住页面点击。 */
+  pointer-events: none;
+}
+
+.ih-hover.ih-show {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.ih-hover-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.97);
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  box-shadow: var(--ih-shadow-md);
+  color: var(--ih-primary);
+  font-family: inherit;
+  cursor: pointer;
+  line-height: 0;
+  transition: transform 0.16s ease, box-shadow 0.16s ease,
+    background 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+}
+
+.ih-hover-btn:hover {
+  transform: scale(1.09);
+  box-shadow: 0 8px 22px rgba(17, 24, 39, 0.2), 0 2px 5px rgba(17, 24, 39, 0.1);
+}
+
+.ih-hover-btn:active {
+  transform: scale(0.94);
+}
+
+.ih-hover-btn svg {
+  width: 17px;
+  height: 17px;
+  display: block;
+  pointer-events: none;
+}
+
+.ih-hover-btn.ih-done {
+  background: var(--ih-success);
+  border-color: transparent;
+  color: #fff;
+  animation: ih-pop 0.34s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.ih-hover-btn.ih-error {
+  background: var(--ih-danger);
+  border-color: transparent;
+  color: #fff;
+  animation: ih-shake 0.36s ease;
+}
+
+.ih-hover-btn.ih-saving {
+  cursor: progress;
+}
+
+/* 预览键：点了之后要先整理本页图片，期间按钮里放转圈（图标在 JS 里换） */
+.ih-hover-btn.ih-busy {
+  cursor: progress;
+}
+
+.ih-spinner {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid rgba(79, 110, 247, 0.22);
+  border-top-color: var(--ih-primary);
+  animation: ih-spin 0.7s linear infinite;
+}
+
+@keyframes ih-spin { to { transform: rotate(360deg); } }
+
+@keyframes ih-pop {
+  0% { transform: scale(0.7); }
+  55% { transform: scale(1.16); }
+  100% { transform: scale(1); }
+}
+
+@keyframes ih-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-3px); }
+  75% { transform: translateX(3px); }
+}
+
+/* 保存结果气泡 */
+.ih-bubble {
+  position: fixed;
+  z-index: 2147483646;
+  max-width: 260px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(31, 36, 48, 0.95);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+}
+
+.ih-bubble.ih-show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.ih-bubble.ih-bubble-error {
+  background: rgba(190, 40, 45, 0.96);
+}
+
+/* ====================================================================== *
+ * 2. 大图预览灯箱
+ *
+ * ⚠️ 这一节的样式**两处宿主共用**：
+ *      1. 网页里的内容脚本（content/lightbox.js）
+ *      2. 图库页自己（popup/popup.html 直接加载同一份 lightbox.js）
+ *    改这里的任何一个选择器，都等于同时改这两个地方 —— 而两边的验收用例
+ *    是分开的，很容易只跑了一边就以为没事。改完请**同时**跑：
+ *      node tests/test-hover.js            （jsdom：事件语义、滚动锁、按钮排布）
+ *      node tests/browser-lightbox-local.js（真浏览器：图库页内开、源页面不牵连、
+ *                                            面板模式转发、子 iframe 交回顶层、
+ *                                            背景滚动锁）
+ *      node tests/browser-lightbox-window.js（真浏览器：缩略图条窗口化 + 横向滚动）
+ * ====================================================================== */
+
+.ih-lb {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  display: flex;
+  flex-direction: column;
+  background: rgba(11, 13, 18, 0.9);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  color: #f3f4f6;
+  /* 灯箱是页内模态，滚动链不能传到后面的页面上去。
+     JS 那边已经锁了 documentElement 的 overflow，这里是第二道保险
+     （触摸板惯性滚动 / 到达边界后的 overscroll 不会被 JS 的 wheel 拦全）。 */
+  overscroll-behavior: contain;
+}
+
+.ih-lb.ih-show { opacity: 1; }
+
+.ih-lb-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.5), transparent);
+}
+
+.ih-lb-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 42vw;
+}
+
+.ih-lb-meta {
+  font-size: 12px;
+  color: rgba(243, 244, 246, 0.72);
+  white-space: nowrap;
+}
+
+.ih-lb-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(79, 110, 247, 0.9);
+  color: #fff;
+}
+
+.ih-lb-spacer { flex: 1 1 auto; }
+
+.ih-lb-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  min-width: 32px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.09);
+  color: #f3f4f6;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease, border-color 0.15s ease;
+}
+
+.ih-lb-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+.ih-lb-btn:active { transform: scale(0.96); }
+
+.ih-lb-btn.ih-lb-primary {
+  background: var(--ih-primary);
+  border-color: transparent;
+  color: #fff;
+  font-weight: 600;
+}
+
+.ih-lb-btn.ih-lb-primary:hover { background: var(--ih-primary-dark); }
+
+.ih-lb-btn.ih-lb-icon { padding: 0; width: 32px; }
+
+.ih-lb-btn svg { width: 15px; height: 15px; display: block; }
+
+.ih-lb-btn[disabled] { opacity: 0.35; cursor: default; }
+
+.ih-lb-stage {
+  flex: 1 1 auto;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 8px 64px 8px 64px;
+}
+
+.ih-lb-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 6px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+  transition: transform 0.12s ease-out;
+  transform-origin: center center;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: grab;
+}
+
+.ih-lb-img.ih-dragging { cursor: grabbing; transition: none; }
+
+.ih-lb-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(20, 22, 28, 0.6);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.ih-lb-nav:hover { background: rgba(79, 110, 247, 0.9); }
+.ih-lb-nav:active { transform: translateY(-50%) scale(0.93); }
+.ih-lb-nav svg { width: 20px; height: 20px; }
+.ih-lb-prev { left: 14px; }
+.ih-lb-next { right: 14px; }
+
+.ih-lb-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.ih-lb-loading .ih-spinner {
+  width: 30px;
+  height: 30px;
+  border-width: 3px;
+  border-color: rgba(255, 255, 255, 0.22);
+  border-top-color: #fff;
+}
+
+.ih-lb-strip {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 8px;
+  padding: 12px 18px 16px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.5), transparent);
+  scrollbar-width: thin;
+  /* 条滚到头之后不要把滚动交给后面的页面（lightbox.js 的 onWheel 会把
+     落在条上的滚轮事件原样放行，让浏览器把它转成横向滚动） */
+  overscroll-behavior-x: contain;
+}
+
+.ih-lb-strip::-webkit-scrollbar { height: 6px; }
+.ih-lb-strip::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.22);
+  border-radius: 3px;
+}
+
+.ih-lb-thumb {
+  flex: 0 0 auto;
+  width: 62px;
+  height: 62px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 2px solid transparent;
+  background: rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.ih-lb-thumb:hover { transform: translateY(-2px); }
+.ih-lb-thumb.ih-active { border-color: var(--ih-primary); }
+
+.ih-lb-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.ih-lb-zoom {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 32px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.09);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.ih-lb-zoom button {
+  width: 26px;
+  height: 24px;
+  border: 0;
+  background: transparent;
+  color: #f3f4f6;
+  cursor: pointer;
+  border-radius: 6px;
+  font-size: 14px;
+  line-height: 1;
+  font-family: inherit;
+}
+
+.ih-lb-zoom button:hover { background: rgba(255, 255, 255, 0.16); }
+
+.ih-lb-zoom .ih-lb-zoom-val {
+  min-width: 44px;
+  text-align: center;
+  font-size: 11px;
+  color: rgba(243, 244, 246, 0.8);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ====================================================================== *
+ * 3. 页内图库面板
+ * ====================================================================== */
+
+.ih-panel-host {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100vh;
+  width: 0;
+  overflow: hidden;
+  z-index: 2147483645;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+}
+
+.ih-panel-host.ih-open {
+  width: 432px;
+  pointer-events: auto;
+}
+
+.ih-panel-frame {
+  width: 432px;
+  height: 100%;
+  border: 0;
+  display: block;
+  background: var(--ih-bg-soft);
+  box-shadow: -16px 0 48px rgba(17, 24, 39, 0.22);
+}
+
+.ih-panel-grip {
+  position: absolute;
+  top: 0;
+  left: -3px;
+  width: 3px;
+  height: 100%;
+  background: linear-gradient(to bottom, var(--ih-primary), #8b5cf6);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.ih-panel-host.ih-open .ih-panel-grip { opacity: 1; }

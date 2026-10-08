@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>图片猎人 · 设置</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="page">
+
+    <header class="page-hdr">
+      <div class="brand">
+        <span class="logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3.5v11.5"/><path d="M7 10.5l5 5 5-5"/><path d="M4.5 20h15"/>
+          </svg>
+        </span>
+        <div>
+          <h1>图片猎人 · 设置</h1>
+          <p class="sub">悬停一键存原图 · 全页嗅探 · 批量下载高清大图</p>
+        </div>
+      </div>
+      <div class="hdr-actions">
+        <span class="save-state" id="saveState">已保存</span>
+        <button class="btn ghost" id="btnReset">恢复默认</button>
+      </div>
+    </header>
+
+    <!-- 通用 -->
+    <section class="card">
+      <div class="card-hd">
+        <h2>通用</h2>
+        <p>界面外观与基础偏好</p>
+      </div>
+      <div class="card-bd">
+        <div class="row">
+          <div class="label">
+            <b>主题</b>
+            <span>影响弹窗、面板与设置页的配色</span>
+          </div>
+          <div class="control">
+            <div class="seg" id="segTheme">
+              <button data-v="light">浅色</button>
+              <button data-v="dark">深色</button>
+              <button data-v="auto">跟随系统</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 嗅探 -->
+    <section class="card">
+      <div class="card-hd">
+        <h2>嗅探范围</h2>
+        <p>决定「能发现哪些图片」。开启得越多，越不容易漏图</p>
+      </div>
+      <div class="card-bd">
+        <div class="row">
+          <div class="label">
+            <b>原图还原（推荐）</b>
+            <span>把缩略图地址改写成原图地址。所有候选都会真实加载验证，只有像素更大才采用</span>
+          </div>
+          <div class="control"><label class="switch"><input type="checkbox" data-key="restoreOriginal"><i></i></label></div>
+        </div>
+        <div class="row">
+          <div class="label"><b>页面图片</b><span>扫描 &lt;img&gt; 元素（含 srcset / 懒加载属性）。关掉后只看背景图、链接等其它来源</span></div>
+          <div class="control"><label class="switch"><input type="checkbox" data-key="scanImg"><i></i></label></div>
+        </div>
+        <div class="row">
+          <div class="label"><b>CSS 背景图</b><span>扫描元素的计算样式中的 background-image</span></div>
+          <div class="control"><label class="switch"><input type="checkbox" data-key="scanBackground"><i></i></label></div>
+        </div>
+        <div class="row">
+          <div class="label"><b>伪元素背景图</b><span>扫描 ::before / ::after 上的背景图（更耗性能）</span></div>
+          <div class="control"><label class="switch"><input type="checkbox" data-key="scanPseudo"><i></i></label></div>
+        </div>
+        <div class="row">
+          <div class="label"><b>视频封面</b><span>扫描 video 的 poster 属性</span></div>
+          <div class="control"><label class="switch"><input type="checkbox" data-key="scanPoster"><i></i></label></div>
+        </div>
+        <div class="row">
+          <div class="label"><b>内联 SVG</b><span>把页面里的 SVG 图形转成可保存的图片</span></div>
+          <div class="control"><label class="switch"><input type="checkbox" data-key="scanSvg"><i></i></label></div>
+        </div>
+        <div class="row">
+          <div class="label"><b>链接指向的图片</b><span>扫描 &lt;a href&gt; 指向的图片文件</span></div>
+          <div class="control"><label class="switch"><input type="checkbox" data-key="scanLinks"><i></i></label></div>
+        </div>
+        <div class="row">
+          <div class="label"><b>预加载图片</b><span>扫描 &lt;link rel="preload" as="image"&gt;</span></div>
+          <div class="control"><label class="switch"><input type="checkbox" data-key="scanPreload"><i></i></label></div>
+        </div>
+        <div class="row">
+          <div class="label"><b>社交分享主图</b><span>扫描 og:image / twitter:image</span></div>
+          <div class="control"><label class="switch"><input type="checkbox" data-key="scanOg"><i></i></label></div>
+        </div>
+        <div class="row">
+          <div class="label"><b>尺寸探测并发数</b><span>同时探测多少张图片的真实分辨率，过大可能拖慢页面</span></div>
+          <div class="control">
+            <input type="range" min="2" max="12" step="1" data-key="probeConcurrency">
+            <output data-out="probeConcurrency"></output>
+          </div>
+        </div>
+        <div class="row">
+          <div class="label"><b>单张探测超时</b><span>超过该时间未加载成功即放弃，单位毫秒</span></div>
+          <div class="control">
+            <input type="range" min="1000" max="10000" step="500" data-key="probeTimeout">
+            <output data-out="probeTimeout"></output>
+          </div>
+        </div>
+        <div class="row">
+          <div class="label">
+            <b>多标签页合并嗅探</b>
+            <span>打开后，图库顶部的「扫描目标」可以一次勾选多个标签页，
+              把它们上面的图片合并成一份列表（按图片地址去重，卡片标出来自哪个页面）。
+              关闭时只扫当前选中的那一页</span>
+          </div>
+          <div class="control"><label class="switch"><input type="checkbox" data-key="mergeTabs"><i></i></label></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 还原规则 -->
+    <section class="card">
+      <div class="card-hd">
+        <h2>原图还原规则</h2>
+        <p>内置规则覆盖 WordPress、Cloudinary、七牛、阿里 OSS、又拍云、淘宝 CDN 等常见场景。可追加你自己的规则</p>
+      </div>
+      <div class="card-bd">
+        <div class="builtin">
+          <div class="builtin-title">内置规则</div>
+          <div class="builtin-list" id="builtinRules"></div>
+        </div>
+
+        <div class="sub-title">自定义规则</div>
+        <div class="rules" id="customRules"></div>
+        <div class="rules-actions">
+          <button class="btn" id="btnAddRule">+ 添加规则</button>
+        </div>
+
+        <div class="sub-title">规则调试</div>
+        <div class="tester">
+          <input type="text" id="testUrl" placeholder="粘贴一个缩略图地址，例如 https://blog.x.com/wp-content/uploads/2024/05/hero-1024x768.jpg">
+          <button class="btn" id="btnTest">测试</button>
+        </div>
+        <div class="test-result" id="testResult"></div>
+      </div>
+    </section>
+
+    <!-- 下载 -->
+    <section class="card">
+      <div class="card-hd">
+        <h2>下载</h2>
+        <p>保存行为、命名与鲁棒性</p>
+      </div>
+      <div class="card-bd">
+        <div class="row">
+          <div class="label"><b>同时下载数</b><span>并发过高可能被站点限流</span></div>
+          <div class="control">
+            <input type="range" min="1" max="8" step="1" data-key="concurrency">
+            <output data-out="concurrency"></output>
+          </div>
+        </div>
+        <div class="row">
+          <div class="label"><b>失败重试次数</b><span>单张图片下载失败后的重试次数</span></div>
+          <div class="control">
+            <input type="range" min="0" max="5" step="1" data-key="retries">
+            <output data-out="retries"></output>
+          </div>
+        </div>
+        <div class="row">
+          <div class="label">
+            <b>跳过已下载</b>
+            <span>对相同图片地址 + 尺寸做指纹记录，避免重复保存</span>
+          </div>
+          <div class="control"><label class="switch"><input type="checkbox" data-key="skipDownloaded"><i></i></label></div>
+        </div>
+        <div class="row">
+          <div class="label">
+            <b>防盗链降级（推荐）</b>
+            <span>直链下载失败时，改用扩展页拉取图片再保存，可绕过部分站点的 403 限制</span>
+          </div>
+          <div class="control"><label class="switch"><input type="checkbox" data-key="fetchFallback"><i></i></label></div>
+        </div>
+        <div class="row">
+          <div class="label">
+            <b>文件名模板</b>
+            <span>可用变量：{name} 原文件名 · {ext} 扩展名 · {index} 序号 · {host} 站点 · {w} {h} 尺寸 · {date} 日期。模板里写 <code>/</code> 也会当成子目录</span>
+          </div>
+          <div class="control wide">
+            <input type="text" data-key="filenameTemplate" placeholder="{name}.{ext}">
+          </div>
+        </div>
+        <div class="row">
+          <div class="label">
+            <b>保存到子目录</b>
+            <span>
+              留空即直接存到下载目录。可用变量：<code>{host}</code> 站点 ·
+              <code>{date}</code> 日期 · <code>{index}</code> 序号。
+              例：<code>{host}</code> → 每个站点一个文件夹；<code>{date}/{host}</code> → 按日期再分站点
+            </span>
+          </div>
+          <div class="control wide">
+            <input type="text" data-key="subfolder" placeholder="留空 = 下载目录根">
+          </div>
+        </div>
+        <div class="row">
+          <div class="label">
+            <b>批量下载加序号前缀</b>
+            <span>勾选后文件名形如 <code>001_photo.jpg</code>，保持下载顺序</span>
+          </div>
+          <div class="control"><label class="switch"><input type="checkbox" data-key="batchPrefix"><i></i></label></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 交互 -->
+    <section class="card">
+      <div class="card-hd">
+        <h2>交互</h2>
+        <p>悬停下载图标与大图预览</p>
+      </div>
+      <div class="card-bd">
+        <div class="row">
+          <div class="label">
+            <b>图片右上角下载图标</b>
+            <span>鼠标悬停在图片上时，右上角浮现圆形下载按钮，单击直接保存原图</span>
+          </div>
+          <div class="control"><label class="switch"><input type="checkbox" data-key="hoverEnabled"><i></i></label></div>
+        </div>
+        <div class="row">
+          <div class="label"><b>图标出现延迟</b><span>避免鼠标快速划过时图标闪烁</span></div>
+          <div class="control">
+            <input type="range" min="0" max="600" step="20" data-key="hoverDelay">
+            <output data-out="hoverDelay"></output>
+          </div>
+        </div>
+        <div class="row">
+          <div class="label">
+            <b>最小显示尺寸</b>
+            <span>小于该边长的图片不显示下载图标，用于排除小图标与分隔条</span>
+          </div>
+          <div class="control">
+            <input type="range" min="16" max="256" step="8" data-key="minSize">
+            <output data-out="minSize"></output>
+          </div>
+        </div>
+        <div class="row">
+          <div class="label">
+            <b>大图预览最小尺寸</b>
+            <span>大图预览里只翻到短边不小于该值的图片（按图片真实像素判定，0 为不过滤）。
+              仅影响预览，图库列表与批量下载不受影响</span>
+          </div>
+          <div class="control">
+            <input type="range" min="0" max="256" step="16" data-key="lightboxMinSize">
+            <output data-out="lightboxMinSize"></output>
+          </div>
+        </div>
+        <div class="row">
+          <div class="label">
+            <b>Alt + 点击直接保存</b>
+            <span>无需先悬停出图标，按住 Alt 点击图片即可保存原图</span>
+          </div>
+          <div class="control"><label class="switch"><input type="checkbox" data-key="altClickSave"><i></i></label></div>
+        </div>
+        <div class="row">
+          <div class="label">
+            <b>面板快捷键</b>
+            <span>默认 Alt+Shift+S，可在浏览器扩展快捷键页面修改</span>
+          </div>
+          <div class="control">
+            <button class="btn" id="btnShortcuts">打开快捷键设置</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 站点排除列表 -->
+    <section class="card">
+      <div class="card-hd">
+        <h2>站点排除列表</h2>
+        <p>这些站点上不显示悬停按钮、不响应 Alt+点击、也不打开页内面板</p>
+      </div>
+      <div class="card-bd">
+        <div class="row col">
+          <div class="label">
+            <b>已排除的站点</b>
+            <span>
+              每行一个域名。一条记录会同时匹配它自己和它的所有子域名 ——
+              写 <code>example.com</code> 即可覆盖 <code>www.example.com</code>；
+              直接粘贴完整网址（<code>https://example.com/photo</code>）也会自动取出域名。
+            </span>
+          </div>
+          <textarea id="blockedHosts" rows="5" spellcheck="false"
+            placeholder="example.com&#10;bank.example.cn&#10;docs.google.com"></textarea>
+          <div class="inline-note" id="blockedNote"></div>
+        </div>
+        <div class="row col">
+          <div class="label">
+            <b>这个列表管不到的地方</b>
+            <span>
+              扩展的文件在所有网页上都会被加载（Manifest V3 的
+              <code>content_scripts</code> 是静态声明，没有按站点跳过加载的办法），
+              这里关掉的是<b>界面行为</b>：悬停按钮、Alt+点击、页内面板，以及自动扫描。
+              右键菜单里的「保存这张图片」仍然可用 —— 那是你自己点出来的，不算打扰。
+            </span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 数据 -->
+    <section class="card">
+      <div class="card-hd">
+        <h2>数据与统计</h2>
+        <p>下载记录、去重指纹与设置备份</p>
+      </div>
+      <div class="card-bd">
+        <div class="stats-row" id="statsRow">
+          <div class="mini-stat"><b id="stSaved">0</b><span>累计保存</span></div>
+          <div class="mini-stat"><b id="stFailed">0</b><span>失败</span></div>
+          <div class="mini-stat"><b id="stBytes">—</b><span>累计体积</span></div>
+          <div class="mini-stat"><b id="stHistory">0</b><span>历史记录</span></div>
+          <div class="mini-stat"><b id="stFp">0</b><span>去重指纹</span></div>
+        </div>
+        <div class="row">
+          <div class="label"><b>下载历史</b><span>最近 500 条保存记录</span></div>
+          <div class="control"><button class="btn" id="btnViewHistory">查看</button></div>
+        </div>
+        <div class="row">
+          <div class="label"><b>清除下载历史</b><span>不影响已保存的文件</span></div>
+          <div class="control"><button class="btn danger" id="btnClearHistory">清除</button></div>
+        </div>
+        <div class="row">
+          <div class="label">
+            <b>清除去重指纹</b>
+            <span>清除后，之前下载过的图片会重新被允许下载</span>
+          </div>
+          <div class="control"><button class="btn danger" id="btnClearFp">清除</button></div>
+        </div>
+        <div class="row">
+          <div class="label"><b>备份设置</b><span>导出为 JSON 文件，或从文件导入</span></div>
+          <div class="control">
+            <button class="btn" id="btnExportSettings">导出</button>
+            <button class="btn" id="btnImportSettings">导入</button>
+            <input type="file" id="fileImport" accept="application/json" hidden>
+          </div>
+        </div>
+        <!-- 诊断包：撞到「面板拒绝」「还原失败」「体积探测不出来」时，
+             截图 + 口述很难定位；这份 JSON 里是排障真正需要的那些聚合数字。
+             内容边界（只含聚合数字与主机名，不含图片/页面地址）写在
+             shared/diagnostics.js 的文件头，改之前先读那段。 -->
+        <div class="row">
+          <div class="label">
+            <b>导出诊断包</b>
+            <span>版本、平台、当前设置、最近 20 条下载记录、最近一次扫描统计。
+              只含聚合数字与主机名，不含图片地址与页面地址</span>
+          </div>
+          <div class="control">
+            <button class="btn" id="btnExportDiag">导出诊断包</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <footer class="page-ftr">
+      <span>图片猎人 ImageHunter <b id="ftrVersion">v—</b> · 所有图片均以原始分辨率保存</span>
+      <span class="page-ftr-note">界面目前仅提供中文（<code>_locales</code> 里只有扩展名称与描述，服务 manifest）</span>
+    </footer>
+  </div>
+
+  <div class="modal" id="modal" hidden>
+    <div class="modal-box">
+      <div class="modal-hd">
+        <h3 id="modalTitle">下载历史</h3>
+        <button class="btn ghost" id="modalClose">关闭</button>
+      </div>
+      <div class="modal-bd" id="modalBody"></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="../shared/constants.js"></script>
+  <script src="../shared/utils.js"></script>
+  <script src="../shared/store.js"></script>
+  <script src="../shared/diagnostics.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

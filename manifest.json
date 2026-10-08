@@ -1,0 +1,83 @@
+{
+  "manifest_version": 3,
+  "name": "__MSG_extName__",
+  "description": "__MSG_extDesc__",
+  "version": "1.13.1",
+  "default_locale": "zh_CN",
+  "minimum_chrome_version": "102",
+
+  "permissions": [
+    "downloads",
+    "storage",
+    "contextMenus",
+    "scripting"
+  ],
+  "host_permissions": ["<all_urls>"],
+
+  "background": {
+    "service_worker": "background.js"
+  },
+
+  "action": {
+    "default_title": "__MSG_actionTitle__",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+
+  "options_page": "options/options.html",
+
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": [
+        "shared/constants.js",
+        "shared/utils.js",
+        "shared/store.js",
+        "content/scanner.js",
+        "content/hover.js",
+        "content/lightbox.js",
+        "content/panel.js",
+        "content/main.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ],
+
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "icons/*",
+        "content/overlay.css",
+        "popup/popup.html"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ],
+
+  "commands": {
+    "toggle-panel": {
+      "suggested_key": { "default": "Alt+Shift+S" },
+      "description": "__MSG_cmdTogglePanel__"
+    },
+    "open-gallery": {
+      "suggested_key": { "default": "Alt+Shift+G" },
+      "description": "__MSG_cmdOpenGallery__"
+    },
+    "save-hovered": {
+      "suggested_key": { "default": "Alt+Shift+D" },
+      "description": "__MSG_cmdSaveHovered__"
+    }
+  },
+
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

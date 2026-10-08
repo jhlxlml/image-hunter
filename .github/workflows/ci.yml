@@ -1,0 +1,83 @@
+# ImageHunter — 持续集成
+#
+# 为什么这个文件值得存在（而不是「有空再配」）：
+#
+# 这个项目所有「全绿」「没回归」的结论，都建立在「测试真的跑完了」这个前提上。
+# 而在这个文件出现之前，这个前提**只靠人记得手动跑**。
+# v1.11.0 演示过一次代价：改一个默认值（尺寸滑条 256px），
+# **6 个浏览器套件同时变红**，而且各自坏法不同（超时 / 计数 0 / 文案不符 / 时序失效），
+# 看起来像 6 个不相关的 bug —— 全靠人工逐套件跑才发现的。
+#
+# 测试早在 v1.7.1 就已经全部离线（最后 3 套外网依赖改成本地站），
+# `run-all.js` 也早就强制「每个套件必须打印完成标记，否则判中途退出」。
+# 前置条件早就齐了，缺的只是「每次改动都真的跑一遍」。
+#
+# 两个 job 都是**阻塞**的（没有 continue-on-error）：
+# 一个会失败但被忽略的检查，比没有检查更糟 —— 它会让人以为「有 CI 在看着」。
+
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+# 同一分支连续推送时，取消上一次还在跑的 —— 别让排队掩盖最新一次的结果
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ------------------------------------------------------------------ #
+  # Node 套件（14 个）：纯 jsdom / vm，秒级到十几秒，是这个项目的主力防线
+  # ------------------------------------------------------------------ #
+  node-suites:
+    name: Node 套件（14 个）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: 安装开发期依赖
+        run: npm ci --no-audit --no-fund
+
+      # run-all.js 会校验每个套件都打印了完成标记
+      # （Node 在「事件循环空了但还有 await 挂着」时会静默以退出码 0 结束，
+      #   只看退出码会漏报 —— 见 tests/README.md 第一个坑）
+      - name: 跑 Node 套件
+        run: npm test
+
+  # ------------------------------------------------------------------ #
+  # 真浏览器套件（24 个）：真加载扩展，覆盖真实落盘 / 真实鼠标框选 / 面板 token / 真键盘导航
+  # ------------------------------------------------------------------ #
+  browser-suites:
+    name: 真浏览器套件（24 个）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: 安装开发期依赖
+        run: npm ci --no-audit --no-fund
+
+      # --no-shell 很关键：默认会装 chromium-headless-shell，
+      # 而 headless shell **不支持加载扩展**（--load-extension 会被忽略），
+      # 于是 24 个套件会全部卡在「等 service worker」上超时，
+      # 报出来的错看起来像「扩展坏了」，其实是浏览器装错了。
+      - name: 装一个能加载扩展的 Chromium
+        run: npx playwright-core install --with-deps --no-shell chromium
+
+      # run-all-browser.js 自己解析浏览器：IH_BROWSER → 各平台常见路径
+      # → Playwright 缓存。解析失败会立刻退出并打印怎么装，不会让 24 个套件
+      # 各自报一遍 ENOENT 把人淹掉。
+      - name: 跑真浏览器套件
+        run: npm run test:browser

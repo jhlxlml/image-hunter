@@ -1,0 +1,34 @@
+{
+  "extName": {
+    "message": "ImageHunter",
+    "description": "Extension name"
+  },
+  "extDesc": {
+    "message": "Hover to save the full-resolution image, sniff every image on the page, filter by resolution and batch download.",
+    "description": "Extension description"
+  },
+  "actionTitle": {
+    "message": "Open the image gallery (sniff and pick images in a new tab)",
+    "description": "Tooltip when clicking the extension icon"
+  },
+  "cmdTogglePanel": {
+    "message": "Open / close the image gallery panel",
+    "description": "Command description"
+  },
+  "cmdOpenGallery": {
+    "message": "Open the image gallery in a new tab",
+    "description": "Command description"
+  },
+  "cmdSaveHovered": {
+    "message": "Save the image currently under the cursor",
+    "description": "Command description"
+  },
+  "ctxSaveOriginal": {
+    "message": "Save this image (original)",
+    "description": "Image context menu"
+  },
+  "ctxOpenGallery": {
+    "message": "Open image gallery (sniff this page)",
+    "description": "Page context menu"
+  }
+}

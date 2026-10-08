@@ -1,0 +1,1515 @@
+/* ==========================================================================
+ * ImageHunter — popup/popup.css
+ * 现代简约 · 浅色卡片风格
+ * ========================================================================== */
+
+:root {
+  --primary: #4f6ef7;
+  --primary-dark: #3b5bdb;
+  --primary-soft: rgba(79, 110, 247, 0.10);
+  --primary-soft-2: rgba(79, 110, 247, 0.16);
+
+  --bg: #f4f5f8;
+  --surface: #ffffff;
+  --surface-2: #fafbfc;
+  --surface-3: #f0f1f5;
+
+  --border: #e6e8ef;
+  --border-strong: #d7dae3;
+
+  --text: #1f2430;
+  --text-2: #5b6371;
+  --text-3: #949bab;
+
+  --success: #16a34a;
+  --success-soft: rgba(22, 163, 74, 0.12);
+  --danger: #e5484d;
+  --danger-soft: rgba(229, 72, 77, 0.12);
+  --warn: #d97706;
+
+  --shadow-xs: 0 1px 2px rgba(17, 24, 39, 0.05);
+  --shadow-sm: 0 1px 2px rgba(17, 24, 39, 0.06), 0 2px 6px rgba(17, 24, 39, 0.05);
+  --shadow-md: 0 6px 20px rgba(17, 24, 39, 0.12), 0 2px 6px rgba(17, 24, 39, 0.06);
+
+  --radius-sm: 8px;
+  --radius: 11px;
+  --radius-lg: 14px;
+
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+}
+
+[data-theme="dark"] {
+  --primary: #6b86ff;
+  --primary-dark: #8ba0ff;
+  --primary-soft: rgba(107, 134, 255, 0.16);
+  --primary-soft-2: rgba(107, 134, 255, 0.26);
+
+  --bg: #14161c;
+  --surface: #1c1f27;
+  --surface-2: #21242d;
+  --surface-3: #272b35;
+
+  --border: #2c313c;
+  --border-strong: #3a4150;
+
+  --text: #eef0f4;
+  --text-2: #a8afbd;
+  --text-3: #737b8b;
+
+  --success: #34d17f;
+  --danger: #ff6b6f;
+  --warn: #f0b429;
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font);
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 宿主模式只有 page / panel 两种，class 由 popup/mode.js 在首帧之前设好。
+   原来还有第三种「扩展弹窗」（780×600）的规则 —— manifest 里没有 default_popup，
+   那个入口不存在，已删。validate.js 第 9 节会盯着不让它长回来。 */
+
+body.mode-panel {
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* 独立标签页：整页自然滚动，顶栏 / 底栏吸附 */
+body.mode-page {
+  width: 100%;
+  min-height: 100vh;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+body.mode-page .app {
+  height: auto;
+  min-height: 100vh;
+  overflow: visible;
+  max-width: 1600px;      /* 超宽屏上居中，避免栅格拉得过散 */
+  margin: 0 auto;
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+}
+
+body.mode-page .topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  box-shadow: 0 1px 0 var(--border);
+}
+
+body.mode-page .hdr { padding: 12px 24px; }
+
+body.mode-page .ftr {
+  position: sticky;
+  bottom: 0;
+  z-index: 30;
+}
+
+body.mode-page .grid-wrap {
+  flex: 1 1 auto;
+  overflow: visible;
+  padding: 16px 24px 22px;
+}
+
+body.mode-page .grid {
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: 14px;
+}
+
+body.mode-page .ctrl-bar,
+body.mode-page .filterbar { padding-left: 24px; padding-right: 24px; }
+
+body.mode-page .ctrl-bar { padding-top: 9px; }
+
+body.mode-page .brand-sub { max-width: 220px; }
+body.mode-page .ftr-main { padding-left: 24px; padding-right: 24px; }
+
+/* 扫描目标选择器 —— 收紧宽度，别把顶栏撑满 */
+.target-pick {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 230px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 2px;
+  padding: 3px 8px 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-3);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.target-pick:hover { border-color: var(--primary-soft-2); background: var(--primary-soft); }
+
+.target-pick .tp-ico {
+  flex: 0 0 auto;
+  width: 13px;
+  height: 13px;
+  color: var(--text-3);
+}
+
+.target-pick .tp-ico svg { width: 13px; height: 13px; display: block; }
+
+.target-pick select {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 1px 0;
+  outline: none;
+  cursor: pointer;
+  text-overflow: ellipsis;
+}
+
+.target-pick select:disabled { cursor: default; color: var(--text-3); }
+
+/* ---- 多标签页合并嗅探：目标多选器 ----
+   外观沿用 .target-pick 那个胶囊，内部换成「摘要按钮 + 下拉勾选面板」。
+   只有在设置页打开「多标签页合并嗅探」时才会出现（见 popup.js applyTargetMode）。 */
+.target-pick { position: relative; }        /* 下拉面板的定位基准 */
+
+.target-multi {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.target-multi .tm-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  min-width: 0;
+  padding: 1px 0;
+  border: none;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 11.5px;
+  font-weight: 600;
+  outline: none;
+  cursor: pointer;
+}
+
+/* 摘要文字（「3 个页面」/ 首个页面标题）过长时省略，不能把胶囊撑破 */
+.target-multi .tm-btn > span {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.target-multi .tm-btn .chev { flex: 0 0 auto; width: 12px; height: 12px; color: var(--text-3); }
+
+.target-multi .tm-pop {
+  position: absolute;
+  top: calc(100% + 7px);
+  left: -6px;
+  z-index: 40;
+  width: 268px;
+  max-width: 80vw;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.16);
+}
+
+.target-multi .tm-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 4px 7px;
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.target-multi .tm-acts { display: flex; flex: 0 0 auto; gap: 10px; }
+
+.target-multi .tm-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.target-multi .tm-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.target-multi .tm-row:hover { background: var(--surface-3); }
+.target-multi .tm-row input { flex: 0 0 auto; margin: 0; }
+
+.target-multi .tm-row .tm-txt {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.target-multi .tm-row .tm-host {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  color: var(--text-3);
+}
+
+.target-multi .tm-empty { padding: 10px 6px; font-size: 11.5px; color: var(--text-3); }
+
+button, input, select { font-family: inherit; }
+button { cursor: pointer; }
+
+/* ====================================================================== *
+ * 布局
+ * ====================================================================== */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+/* ---------------------------- 顶栏 ---------------------------- */
+
+.hdr {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 16px;
+  background: transparent;
+  border-bottom: 1px solid var(--border);
+}
+
+.brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+
+.logo {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(145deg, #6b86ff, #4a44d6);
+  color: #fff;
+  box-shadow: 0 3px 10px rgba(79, 110, 247, 0.32);
+}
+
+.logo svg { width: 17px; height: 17px; }
+
+.brand-txt { min-width: 0; }
+
+.brand-name {
+  font-size: 13.5px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  line-height: 1.25;
+  /* 品牌名只有 4 个字，任何宽度下都不该折行。
+     面板模式 380px 下图标行会来抢宽度，没有这一行「图片猎人」会被拆成两行。 */
+  white-space: nowrap;
+}
+
+.brand-sub {
+  font-size: 11px;
+  color: var(--text-3);
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 380px;
+}
+
+.hdr-actions { margin-left: auto; display: flex; align-items: center; gap: 5px; }
+
+.icon-btn {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, #ffffff, var(--surface-2));
+  color: var(--text-2);
+  border-radius: 10px;
+  box-shadow: var(--shadow-xs);
+  transition: all 0.16s cubic-bezier(0.4, 0, 0.2, 1);
+  padding: 0;
+}
+
+[data-theme="dark"] .icon-btn { background: linear-gradient(180deg, var(--surface-3), var(--surface-2)); }
+
+.icon-btn svg { width: 16px; height: 16px; }
+
+.icon-btn:hover {
+  background: var(--primary-soft);
+  border-color: var(--primary-soft-2);
+  color: var(--primary);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(79, 110, 247, 0.18);
+}
+
+.icon-btn:active { transform: translateY(0) scale(0.94); box-shadow: var(--shadow-xs); }
+.icon-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+/* 探测体积进行中：图标持续旋转，一眼能看出在忙 */
+.icon-btn.busy { color: var(--primary); border-color: var(--primary-soft-2); background: var(--primary-soft); }
+.icon-btn.busy svg { animation: spin 0.9s linear infinite; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.panel-only { display: none; }
+body.mode-panel .panel-only { display: inline-flex; }
+
+.page-only { display: none; }
+body.mode-page .page-only { display: inline-flex; }
+body.mode-panel .brand-sub { max-width: 180px; }
+/* 面板模式下顶栏要被 8 个图标挤，品牌区拿不到足够宽度：
+   「图片猎人」会被截成「图片猎…」，下面那行主机名更是只剩「127....」。
+   主机名在「扫描目标」下拉里本来就有，这里删掉不丢信息；
+   品牌名则不该被截，宁可让 logo 缩小给它让路。 */
+body.mode-panel .brand-sub { display: none; }
+body.mode-panel .brand-name { font-size: 12.5px; }
+body.mode-panel .logo { width: 26px; height: 26px; border-radius: 8px; }
+
+/* ---------------------------- 控制区 ---------------------------- */
+
+/* 顶栏 + 控制区作为一个整体（独立页模式下整块吸顶） */
+.topbar {
+  flex: 0 0 auto;
+  background: linear-gradient(180deg, #fbfcff 0%, var(--surface) 60%);
+}
+
+[data-theme="dark"] .topbar { background: var(--surface); }
+
+.ctrl {
+  position: relative;
+  flex: 0 0 auto;
+  background: transparent;
+  border-bottom: 1px solid var(--border);
+}
+
+/* 工具行：搜索图标 · 筛选 · 排序 │ 选择操作组 */
+.ctrl-bar {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px 9px;
+}
+
+/* 竖向分隔线，把「查/筛」和「选」两组动作分开 */
+.vr {
+  flex: 0 0 auto;
+  width: 1px;
+  height: 18px;
+  margin: 0 2px;
+  background: var(--border-strong);
+  opacity: 0.7;
+}
+
+/* 胶囊按钮：筛选 / 排序 统一形态 */
+.pill {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ffffff, var(--surface-2));
+  color: var(--text-2);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: var(--shadow-xs);
+  transition: all 0.16s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+[data-theme="dark"] .pill { background: linear-gradient(180deg, var(--surface-3), var(--surface-2)); }
+
+.pill > svg { width: 14px; height: 14px; flex: 0 0 auto; }
+
+.pill .chev {
+  width: 12px;
+  height: 12px;
+  opacity: 0.55;
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.pill:hover {
+  border-color: var(--primary-soft-2);
+  color: var(--primary);
+  background: var(--primary-soft);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 9px rgba(79, 110, 247, 0.16);
+}
+
+.pill:active { transform: translateY(0) scale(0.97); box-shadow: var(--shadow-xs); }
+
+/* 有生效的筛选条件时常亮 */
+.pill.on {
+  border-color: var(--primary-soft-2);
+  color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.pill.open {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--surface);
+  box-shadow: 0 0 0 3px var(--primary-soft);
+}
+
+.pill.open .chev { transform: rotate(180deg); }
+
+.pill-badge {
+  font-style: normal;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: linear-gradient(145deg, #6b86ff, var(--primary));
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 1px 4px rgba(79, 110, 247, 0.45);
+}
+
+.pill-badge[hidden] { display: none; }
+
+/* 排序：把原生 select 塞进胶囊，视觉与其它按钮一致 */
+.select-pill { padding-right: 5px; }
+
+.select-pill select {
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 0 15px 0 0;
+  max-width: 128px;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23949bab' stroke-width='2.6' stroke-linecap='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 1px center;
+  background-size: 12px;
+  text-overflow: ellipsis;
+}
+
+.select-pill select option { color: var(--text); background: var(--surface); }
+
+/* 选择操作组：分段控件，四个动作平铺，不再藏进二级菜单 */
+.seg {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-3);
+  box-shadow: inset 0 1px 2px rgba(17, 24, 39, 0.04);
+}
+
+.seg-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: all 0.16s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.seg-btn > svg { width: 13px; height: 13px; flex: 0 0 auto; opacity: 0.85; }
+
+.seg-btn em {
+  font-style: normal;
+  font-size: 10.5px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.seg-btn:hover {
+  background: var(--surface);
+  color: var(--primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.seg-btn:hover > svg { opacity: 1; }
+.seg-btn:hover em { color: var(--primary); }
+
+.seg-btn:active { transform: scale(0.96); }
+
+.seg-btn.danger:hover {
+  color: var(--danger);
+  background: var(--danger-soft);
+  box-shadow: none;
+}
+
+.seg-btn:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
+
+/* 摘要：挪到底栏左侧，和「保存选中」待在一起 */
+.sum {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 11.5px;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+
+.sum b { color: var(--text); font-weight: 700; }
+.sum b.accent { color: var(--primary); }
+
+/* 截断提示：本页图片超过上限时，跟在「共 N 张」后面说明差额 */
+.trunc-note { color: var(--warn); }
+
+/* 「复用了缓存」的标记。做成按钮：点一下就是重新嗅探 ——
+   用户看到「这是几分钟前的结果」时，最想干的事就是刷新它。 */
+.cache-note {
+  margin-left: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--text-3);
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+
+.cache-note:hover { color: var(--primary); }
+
+.linkbtn {
+  border: 0;
+  background: transparent;
+  padding: 2px 5px;
+  border-radius: 5px;
+  color: var(--text-2);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: color 0.14s ease, background 0.14s ease;
+}
+
+.linkbtn:hover { color: var(--primary); background: var(--primary-soft); }
+.linkbtn:active { transform: scale(0.97); }
+.linkbtn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+
+/* 筛选条：直接平铺在控制区里，默认展开（不是浮层、也不是二级菜单）
+   五个维度用「内联标签云」排布——宽屏自动并成两行，窄屏自然换行 */
+.filterbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 7px 16px;
+  padding: 10px 14px 11px;
+  background: var(--surface-2);
+  border-top: 1px solid var(--border);
+  animation: panel-in 0.18s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.filterbar[hidden] { display: none; }
+
+@keyframes panel-in {
+  from { opacity: 0; transform: translateY(-5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.fg {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.fg-label {
+  flex: 0 0 auto;
+  padding-top: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+.chips {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+
+/* 尺寸滑条 —— 放在工具行最右侧的空白处，长得像旁边那排 pill / seg：
+   同样是 30px 高、圆角胶囊、极淡的边框，密度与整条工具行一致。
+   刻意把 range 做得像设置页那把（4px 轨道 + 13px 圆钮），但整体压小一档 ——
+   这里是图库顶栏，不该出现一个「大控件」压住别的按钮。
+   margin-left:auto 把它顶到最右；工具行左侧那组动作仍靠左，两边各自成组。 */
+.size-slider {
+  flex: 0 0 auto;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ffffff, var(--surface-2));
+  box-shadow: var(--shadow-xs);
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+[data-theme="dark"] .size-slider { background: linear-gradient(180deg, var(--surface-3), var(--surface-2)); }
+
+/* 悬停 / 聚焦时整枚控件亮起（和 .pill:hover 同一套语言），
+   让「这块也能操作」这件事有反馈 —— 它毕竟不是按钮，光靠一根轨道不够显眼。 */
+.size-slider:hover,
+.size-slider:focus-within {
+  border-color: var(--primary-soft-2);
+  box-shadow: 0 3px 9px rgba(79, 110, 247, 0.14);
+}
+
+.size-slider:hover .ss-ico,
+.size-slider:focus-within .ss-ico { color: var(--primary); opacity: 1; }
+
+/* 左侧小图标：说明这是一把「尺寸」尺子。和其它 pill 的前置图标同尺寸。 */
+.ss-ico {
+  flex: 0 0 auto;
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  color: var(--text-3);
+  opacity: 0.85;
+  transition: color 0.16s ease, opacity 0.16s ease;
+}
+
+.ss-ico > svg { width: 100%; height: 100%; }
+
+.size-slider input[type="range"] {
+  width: 168px;
+  flex: 0 0 auto;
+  height: 4px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--surface-3);
+  border-radius: 3px;
+  outline: none;
+  cursor: pointer;
+}
+
+.size-slider input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--primary);
+  border: 2px solid var(--surface-2);
+  box-shadow: 0 1px 3px rgba(79, 110, 247, 0.4);
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.size-slider input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.15); }
+
+/* 输出值用等宽数字 + 定宽靠右，拖动时右边不会因为字宽变化而抖动。
+   0 时文案是「不过滤」（见 popup.js），比别的值短，靠右对齐才不会跳。 */
+.size-slider output {
+  flex: 0 0 auto;
+  min-width: 56px;
+  text-align: right;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* 被 chips 接管时把滑条压成「禁用外观」——
+   不是真的 disabled：用户仍可以拖它（拖了就自动把 chips 复位回「全部」），
+   所以这里只做视觉降权，不做交互阻断。 */
+.size-slider.overridden input[type="range"] { opacity: 0.4; }
+.size-slider.overridden output { opacity: 0.55; }
+.size-slider.overridden .ss-ico { opacity: 0.45; }
+
+.fg-reset { flex: 0 0 auto; align-self: center; margin-left: auto; }
+
+/* 筛选条件 chips —— 所有维度统一成同一种交互形态 */
+.chip {
+  height: 25px;
+  padding: 0 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: var(--shadow-xs);
+  transition: all 0.16s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.chip:hover {
+  border-color: var(--primary-soft-2);
+  color: var(--primary);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(79, 110, 247, 0.14);
+}
+
+.chip:active { transform: translateY(0) scale(0.96); }
+
+.chip.active {
+  background: linear-gradient(145deg, #6b86ff, var(--primary));
+  border-color: var(--primary);
+  color: #fff;
+  box-shadow: 0 3px 10px rgba(79, 110, 247, 0.34);
+}
+
+.chip em {
+  font-style: normal;
+  opacity: 0.7;
+  margin-left: 3px;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 搜索：平时只是一个图标按钮，点开才在原位展开成输入框（不推动其它控件） */
+.search-wrap { position: relative; flex: 0 0 auto; }
+
+#btnSearch { width: 30px; height: 30px; border-radius: 999px; }
+
+#btnSearch.on {
+  border-color: var(--primary-soft-2);
+  color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.search-pop {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 268px;
+  height: 30px;
+  padding: 0 6px 0 10px;
+  border: 1px solid var(--primary);
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: 0 0 0 3px var(--primary-soft), var(--shadow-md);
+  transform-origin: left center;
+  animation: sp-in 0.18s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.search-pop[hidden] { display: none; }
+
+@keyframes sp-in {
+  from { opacity: 0; transform: scaleX(0.55); }
+  to { opacity: 1; transform: scaleX(1); }
+}
+
+.search-pop > svg { width: 13px; height: 13px; color: var(--primary); flex: 0 0 auto; }
+
+.search-pop input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-size: 11.5px;
+  color: var(--text);
+}
+
+.search-pop input::placeholder { color: var(--text-3); }
+.search-pop input::-webkit-search-cancel-button { display: none; }
+
+.sp-x {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-3);
+  padding: 0;
+  transition: all 0.14s ease;
+}
+
+.sp-x svg { width: 12px; height: 12px; }
+.sp-x:hover { background: var(--danger-soft); color: var(--danger); }
+.sp-x:active { transform: scale(0.9); }
+
+/* ---------------------------- 次要按钮 ---------------------------- */
+
+.tbtn {
+  height: 27px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-2);
+  border-radius: var(--radius-sm);
+  font-size: 11.5px;
+  font-weight: 500;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.tbtn:hover {
+  border-color: var(--primary-soft-2);
+  color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.tbtn:active { transform: scale(0.97); }
+.tbtn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+.tbtn.danger:hover { color: var(--danger); border-color: var(--danger-soft); background: var(--danger-soft); }
+
+/* ---------------------------- 图库 ---------------------------- */
+
+.grid-wrap {
+  flex: 1 1 auto;
+  position: relative;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 12px 14px 16px;
+  scrollbar-width: thin;
+}
+
+.grid-wrap::-webkit-scrollbar { width: 9px; }
+.grid-wrap::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 5px;
+  border: 2px solid var(--bg);
+}
+.grid-wrap::-webkit-scrollbar-track { background: transparent; }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(138px, 1fr));
+  gap: 10px;
+}
+
+body.mode-panel .grid { grid-template-columns: repeat(auto-fill, minmax(122px, 1fr)); gap: 8px; }
+
+/* ---------------------------- 框选 ---------------------------- */
+
+/* 拖拽中：全局禁选文字 + 十字光标 */
+body.ih-selecting,
+body.ih-selecting * {
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: crosshair !important;
+}
+
+/* 框选遮罩层（绝对定位于 .grid-wrap 的 padding box）
+   data-mode: toggle（默认，蓝） / add（Ctrl，绿） / sub（Alt，红） */
+.marquee {
+  position: absolute;
+  z-index: 20;
+  pointer-events: none;
+  border: 1px solid var(--primary);
+  background: var(--primary-soft-2);
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5) inset;
+}
+
+.marquee[data-mode="add"] {
+  border-color: var(--success);
+  background: var(--success-soft);
+}
+
+.marquee[data-mode="sub"] {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+/* 命中数量角标 */
+.marquee .mq-count {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  transform: translateY(108%);
+  min-width: 20px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 15px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(17, 24, 39, 0.2);
+}
+
+.marquee[data-mode="sub"] .mq-count { background: var(--danger); }
+.marquee[data-mode="add"] .mq-count { background: var(--success); }
+
+/* 卡片 */
+
+.card {
+  position: relative;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-xs);
+  cursor: pointer;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+  animation: card-in 0.26s ease both;
+}
+
+@keyframes card-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--border-strong);
+}
+
+.card.selected {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-soft-2), var(--shadow-sm);
+}
+
+/* 「在图库中打开」定位到的那张图：闪一圈，让人一眼看见它在哪。
+   用 ::after 而不是给 .card 再加一个 animation —— .card 上已经挂着入场动画
+   （card-in），再写一条 animation 会把它顶掉，卡片就变成「闪一下才出现」。 */
+.card.ih-focus::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border: 2px solid var(--primary);
+  border-radius: var(--radius);
+  animation: focus-pulse 0.8s ease-in-out 3;
+}
+
+@keyframes focus-pulse {
+  0%, 100% { opacity: 0; }
+  50% { opacity: 1; }
+}
+
+.card .thumb {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.card .thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.3s ease;
+  background: var(--surface-3);
+  -webkit-user-drag: none;   /* 否则从图片上按下拖动会触发浏览器原生拖拽，框选中断 */
+  user-select: none;
+}
+
+.card:hover .thumb img { transform: scale(1.05); }
+
+/* 勾选圈 */
+.card .pick {
+  position: absolute;
+  top: 7px;
+  left: 7px;
+  width: 21px;
+  height: 21px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.9);
+  background: rgba(20, 22, 28, 0.32);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: transparent;
+  transition: all 0.15s ease;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+
+.card .pick svg { width: 12px; height: 12px; }
+
+.card:hover .pick { background: rgba(20, 22, 28, 0.5); }
+
+.card.selected .pick {
+  background: var(--primary);
+  border-color: #fff;
+  color: #fff;
+}
+
+/* 预览按钮 */
+.card .zoom {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 21px;
+  height: 21px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.85);
+  background: rgba(20, 22, 28, 0.36);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  opacity: 0;
+  transform: scale(0.85);
+  transition: all 0.16s ease;
+}
+
+.card .zoom svg { width: 12px; height: 12px; }
+.card:hover .zoom { opacity: 1; transform: scale(1); }
+.card .zoom:hover { background: var(--primary); border-color: var(--primary); }
+
+/* 「还原」按钮
+   只出现在「有原图候选、但这一轮没还原成功」的卡片上 —— 撞上还原时间预算时
+   靠后的图会保持缩略图地址，在这之前用户只有「重新嗅探」一条路，而重跑大概率
+   还是超时。跟预览按钮一样只在悬停时浮现，否则整屏都是按钮。
+   位置选右下：左上勾选、右上预览、左下角标，都不打架。 */
+.card .restore {
+  position: absolute;
+  right: 7px;
+  bottom: 7px;
+  height: 21px;
+  padding: 0 8px;
+  border-radius: 11px;
+  border: 1.5px solid rgba(255, 255, 255, 0.85);
+  background: rgba(20, 22, 28, 0.5);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: inherit;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(0.85);
+  transition: all 0.16s ease;
+}
+
+.card .restore svg { width: 11px; height: 11px; }
+.card:hover .restore { opacity: 1; transform: scale(1); }
+.card .restore:hover { background: var(--primary); border-color: var(--primary); }
+
+/* 还原中：按钮必须一直可见（鼠标移开也能看到进度），并且禁掉重复点击 */
+.card .restore.busy,
+.card .restore:disabled { opacity: 1; transform: scale(1); cursor: progress; }
+.card .restore.busy svg { animation: spin 0.7s linear infinite; }
+
+/* ---- 键盘可达性（v1.13.0）----
+   两件事必须一起做，否则等于没做：
+
+   1. **卡片要能看出焦点在哪。** 卡片原来完全没有 :focus 样式；
+      给它加上 roving tabindex 之后如果不画焦点环，键盘用户就是
+      「按了方向键，但不知道现在停在哪一张」——比不能按还困惑。
+   2. **悬停才出现的按钮，在卡片获得焦点时也必须出现。**
+      这是明确的 WCAG 2.4.7（焦点可见）违规：Tab 能聚焦到 .zoom / .restore，
+      但它们 opacity: 0 —— 用户 Tab 到了一个**看不见的按钮**上。
+      修法不是把它们藏起来，而是让「键盘聚焦这张卡」与「鼠标悬停这张卡」
+      产生同样的可见结果。 */
+.card:focus { outline: none; }        /* 鼠标点出来的焦点不画环，交给下面这条 */
+.card:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.card:focus .zoom,
+.card:focus .restore { opacity: 1; transform: scale(1); }
+.card:focus .pick { background: rgba(20, 22, 28, 0.5); }
+
+/* 图标按钮 / 文字按钮的通用焦点环。
+   原来只有 .btn-empty-action 一条，其余全被各处的 outline: none 抹掉了 ——
+   鼠标用户看不出区别，键盘用户则完全丢失位置感。
+   :focus-visible 只对键盘生效，所以不会给鼠标点击平添一圈描边。 */
+.icon-btn:focus-visible,
+.pill:focus-visible,
+.seg-btn:focus-visible,
+.linkbtn:focus-visible,
+.btn-empty-action:focus-visible,
+.tm-btn:focus-visible,
+.cache-note:focus-visible,
+.primary:focus-visible,
+.tbtn:focus-visible,
+.sp-x:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* 只给读屏器看的文字：视觉上不占位，但无障碍树里读得到。
+   不能用 display: none / visibility: hidden —— 那会把内容从无障碍树里一起删掉，
+   正是「看不见 = 读不到」那个经典反例。 */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* 角标 */
+.badges {
+  position: absolute;
+  left: 7px;
+  bottom: 7px;
+  display: flex;
+  gap: 4px;
+  pointer-events: none;
+}
+
+.badge {
+  height: 17px;
+  padding: 0 6px;
+  border-radius: 5px;
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 17px;
+  letter-spacing: 0.2px;
+  color: #fff;
+  background: rgba(20, 22, 28, 0.55);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+
+.badge.restored { background: rgba(79, 110, 247, 0.92); }
+.badge.downloaded { background: rgba(22, 163, 74, 0.92); }
+.badge.big { background: rgba(217, 119, 6, 0.92); }
+/* 合并嗅探时的「来源页」角标。用中性深灰而不是彩色 ——
+   它是一类**说明性**信息，不该和「原图 / 已下载 / HD」这些状态角标抢注意力。 */
+.badge.page { background: rgba(60, 64, 78, 0.9); max-width: 92px; overflow: hidden; text-overflow: ellipsis; }
+
+/* 信息条 */
+.card .meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  font-size: 10.5px;
+  color: var(--text-2);
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+}
+
+.card .meta .dim {
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card .meta .size { margin-left: auto; color: var(--text-3); white-space: nowrap; }
+
+.card .meta .sizespin {
+  margin-left: auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-strong);
+  border-top-color: var(--primary);
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* 状态页 */
+.state {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 30px;
+  text-align: center;
+  color: var(--text-2);
+}
+
+.state[hidden] { display: none; }
+
+.state p { margin: 0; font-size: 12.5px; }
+.state .hint { font-size: 11px; color: var(--text-3); max-width: 330px; line-height: 1.6; }
+
+.spinner {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2.5px solid var(--border-strong);
+  border-top-color: var(--primary);
+  animation: spin 0.75s linear infinite;
+}
+
+.empty-art {
+  width: 62px;
+  height: 62px;
+  border-radius: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-3);
+  color: var(--text-3);
+  margin-bottom: 4px;
+}
+
+.empty-art svg { width: 32px; height: 32px; }
+
+/* 「一张都不剩」时的一键出口。
+   刻意做得像一条筛选 chip 而不是主按钮 —— 它不是页面主动作的号召，
+   只是把用户从自己设的条件里放出来。 */
+.btn-empty-action {
+  margin-top: 10px;
+  height: 28px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.btn-empty-action[hidden] { display: none; }
+
+.btn-empty-action:hover { background: var(--primary-soft-2); transform: translateY(-1px); }
+.btn-empty-action:active { transform: translateY(0); }
+.btn-empty-action:focus-visible { box-shadow: 0 0 0 3px var(--primary-soft-2); }
+
+/* ---------------------------- 底栏 ---------------------------- */
+
+.ftr {
+  flex: 0 0 auto;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+
+.progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.progress[hidden] { display: none; }
+
+.progress-bar {
+  flex: 1 1 auto;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.progress-bar i {
+  display: block;
+  height: 100%;
+  width: 0%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--primary), #8b5cf6);
+  transition: width 0.25s ease;
+}
+
+.progress-txt {
+  font-size: 11px;
+  color: var(--text-2);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.ftr-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  min-height: 56px;
+}
+
+.ftr-hint {
+  flex: 0 1 auto;
+  font-size: 11px;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-left: 10px;
+  border-left: 1px solid var(--border);
+}
+
+button.primary {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 15px;
+  border: 0;
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, #5f7cf8, var(--primary));
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 600;
+  box-shadow: 0 2px 10px rgba(79, 110, 247, 0.34);
+  transition: all 0.16s ease;
+}
+
+button.primary svg { width: 15px; height: 15px; }
+
+button.primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #6d88fa, var(--primary-dark));
+  box-shadow: 0 4px 16px rgba(79, 110, 247, 0.42);
+  transform: translateY(-1px);
+}
+
+button.primary:active:not(:disabled) { transform: translateY(0) scale(0.985); }
+
+button.primary:disabled {
+  background: var(--surface-3);
+  color: var(--text-3);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+button.primary em {
+  font-style: normal;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.24);
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+}
+
+button.primary:disabled em { background: var(--border); color: var(--text-3); }
+
+/* ---------------------------- Toast ---------------------------- */
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 74px;
+  transform: translate(-50%, 12px);
+  max-width: 78%;
+  padding: 9px 15px;
+  border-radius: 10px;
+  background: rgba(31, 36, 48, 0.94);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.5;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.28);
+  z-index: 50;
+  text-align: center;
+}
+
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+.toast.err { background: rgba(190, 40, 45, 0.95); }
+.toast.ok { background: rgba(21, 128, 61, 0.95); }
+
+/* 面板模式下压缩部分间距（面板宽度有限，控件换行排布） */
+body.mode-panel .ctrl-bar { padding: 8px 11px; gap: 5px 6px; flex-wrap: wrap; }
+body.mode-panel .filterbar { padding: 9px 11px 10px; gap: 6px 12px; }
+body.mode-panel .fg { gap: 6px; }
+body.mode-panel .fg-label { font-size: 10.5px; padding-top: 5px; }
+/* 面板只有 ~340px 宽，滑条不可能和左边那排按钮挤在同一行 ——
+   让它整条换到下一行、吃满宽度：轨道变长、精度变好，
+   左右边缘也和上下的控件对齐。margin-left:auto 在整行时无意义，清掉。 */
+body.mode-panel .size-slider { flex: 1 1 100%; margin-left: 0; }
+body.mode-panel .size-slider input[type="range"] { flex: 1 1 auto; width: auto; min-width: 0; }
+body.mode-panel .size-slider output { min-width: 50px; font-size: 10.5px; }
+body.mode-panel .pill { padding: 0 9px; gap: 5px; }
+body.mode-panel .select-pill select { max-width: 100px; }
+body.mode-panel .search-pop { width: calc(100vw - 22px); }
+body.mode-panel .seg { flex: 1 1 100%; justify-content: space-between; }
+body.mode-panel .seg-btn { flex: 1 1 auto; justify-content: center; padding: 0 6px; }
+body.mode-panel .seg-btn > svg { display: none; }
+body.mode-panel .target-pick { max-width: 150px; }
+/* 面板只有 ~340px 宽，下拉面板默认向左对齐会从右侧溢出 —— 改成右对齐。
+   宽度也跟着收窄，别顶到屏幕边缘。 */
+body.mode-panel .target-multi .tm-pop { left: auto; right: -6px; width: 244px; }
+body.mode-panel .ftr-main { padding: 10px 11px; gap: 8px; }
+body.mode-panel .ftr-hint { display: none; }
+body.mode-panel .grid-wrap { padding: 10px 11px 14px; }

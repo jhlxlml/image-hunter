@@ -1,0 +1,25 @@
+# ===========================================================================
+# ImageHunter —— 行尾与二进制处理
+#
+# 仓库内一律 LF。源码现状就是 LF，这条只是把它**钉住**：
+#   - CI 跑在 Linux 上，本地开发在 Windows / macOS 上；
+#   - 打包脚本有一条「同一份源码打两次，zip 字节相同」的可复现性断言
+#     （tests/test-package.js）。如果某台机器上检出成 CRLF，
+#     这条断言会在那台机器上莫名其妙地红 —— 而且看起来像打包器坏了。
+# 所以统一 eol=lf，而不是交给各平台的默认值。
+# ===========================================================================
+
+* text=auto eol=lf
+
+# 二进制文件：不做行尾转换，diff 里也不逐行显示
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.zip binary
+*.7z binary
+*.woff binary
+*.woff2 binary
+*.ttf binary

@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>图片猎人</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <!-- 必须在所有内容之前：它按 ?mode= 把 body 的 class 定下来，
+       这样第一帧就是对的布局。不能写成内联脚本（MV3 CSP 会拦），
+       详见 popup/mode.js 的头注释。 -->
+  <script src="mode.js"></script>
+  <div class="app">
+
+    <div class="topbar">
+    <!-- 顶栏 -->
+    <header class="hdr">
+      <div class="brand">
+        <span class="logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3.5v11.5"/><path d="M7 10.5l5 5 5-5"/><path d="M4.5 20h15"/>
+          </svg>
+        </span>
+        <div class="brand-txt">
+          <div class="brand-name">图片猎人</div>
+          <div class="brand-sub" id="pageHost" title="">—</div>
+        </div>
+      </div>
+
+      <div class="target-pick page-only">
+        <span class="tp-ico" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+               stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 9.5h18"/>
+          </svg>
+        </span>
+        <select id="selTargetTab" title="选择要嗅探的标签页" aria-label="选择要嗅探的标签页">
+          <option value="">正在读取标签页…</option>
+        </select>
+        <!-- 多标签页合并嗅探（设置页里打开后显示，替换上面的单选下拉）。
+             两个控件说的是同一件事 —— 「扫哪些页面」，只是单选和多选的区别。
+             没合成一个控件，是因为单选（原生 select）和多选（勾选列表）的交互
+             差别太大，硬塞进同一个下拉会让两种模式都别扭；这里用「设置决定用哪个」
+             的互斥显示，反而最不容易让人迷惑。 -->
+        <div class="target-multi" id="targetMulti" hidden>
+          <button type="button" class="tm-btn" id="btnTargets"
+                  aria-haspopup="listbox" aria-expanded="false"
+                  title="选择要合并嗅探的标签页">
+            <span id="targetsSummary">选择页面…</span>
+            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M6 9l6 6 6-6"/>
+            </svg>
+          </button>
+          <div class="tm-pop" id="targetsPanel" hidden>
+            <div class="tm-hd">
+              <span>勾选要合并嗅探的页面</span>
+              <span class="tm-acts">
+                <button type="button" class="linkbtn" id="btnTargetsAll">全选</button>
+                <button type="button" class="linkbtn" id="btnTargetsNone">清空</button>
+              </span>
+            </div>
+            <div class="tm-list" id="targetsList" role="listbox" aria-multiselectable="true"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="hdr-actions">
+        <button id="btnProbe" class="icon-btn" title="探测体积：只读响应头拿真实文件大小，不下载图片"
+                aria-label="探测体积">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3.5a8.5 8.5 0 1 0 8.5 8.5"/>
+            <path d="M12 3.5A8.5 8.5 0 0 1 20.5 12"/><path d="M12 12l4.6-4.6"/>
+          </svg>
+        </button>
+        <button id="btnExport" class="icon-btn" title="导出清单：左键 JSON，右键 CSV"
+                aria-label="导出清单">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3v10"/><path d="M8 9.5l4 4 4-4"/><path d="M4.5 16v3.5h15V16"/>
+          </svg>
+        </button>
+        <span class="vr" aria-hidden="true"></span>
+        <button id="btnRescan" class="icon-btn" title="重新嗅探本页图片" aria-label="重新嗅探">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 5v6h-6"/>
+          </svg>
+        </button>
+        <button id="btnDeep" class="icon-btn" title="深度嗅探：自动滚动整页后再嗅探，用于无限滚动 / 越滚越多的站点（会临时滚动你的页面，结束后会滚回原位）"
+                aria-label="深度嗅探">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3v14"/><path d="M7.5 12.5L12 17l4.5-4.5"/><path d="M4 20.5h16"/>
+          </svg>
+        </button>
+        <button id="btnPanel" class="icon-btn" title="在页面中打开图库面板" aria-label="在页面中打开图库面板">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+               stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M15 4v16"/>
+          </svg>
+        </button>
+        <button id="btnOptions" class="icon-btn" title="设置" aria-label="设置">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+               stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2 2 2 0 1 1-4 0 1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3 15a2 2 0 1 1 0-4 1.7 1.7 0 0 0 1.5-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 4.6a2 2 0 1 1 4 0 1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1A1.7 1.7 0 0 0 21 11a2 2 0 1 1 0 4z"/>
+          </svg>
+        </button>
+        <button id="btnClose" class="icon-btn panel-only" title="关闭面板" aria-label="关闭面板">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"
+               stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- 控制区：搜索（图标展开）· 筛选开关 · 排序 · 选择操作 -->
+    <section class="ctrl" id="ctrl">
+      <div class="ctrl-bar">
+        <!-- 搜索：平时是一个图标，点开才展开成输入框，不占地方 -->
+        <div class="search-wrap">
+          <button class="icon-btn" id="btnSearch" title="搜索文件名 / 图片地址"
+                  aria-label="搜索" aria-expanded="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/>
+            </svg>
+          </button>
+          <div class="search-pop" id="searchPop" hidden>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/>
+            </svg>
+            <input id="search" type="search" placeholder="搜索文件名 / 图片地址…"
+                   aria-label="搜索文件名或图片地址">
+            <button class="sp-x" id="btnSearchClear" title="清空并收起" aria-label="清空并收起搜索">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                   stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <button class="pill" id="btnFilters" title="展开 / 收起筛选条件" aria-expanded="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3.5 6h17"/><path d="M6.5 12h11"/><path d="M10 18h4"/>
+          </svg>
+          <span>筛选</span>
+          <em class="pill-badge" id="filterCount" hidden>0</em>
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+               stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+
+        <label class="pill select-pill" title="排序方式">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M7 4v16"/><path d="M4 17l3 3 3-3"/><path d="M17 20V4"/><path d="M14 7l3-3 3 3"/>
+          </svg>
+          <select id="selSort" aria-label="排序方式">
+            <option value="area">分辨率 大→小</option>
+            <option value="area-asc">分辨率 小→大</option>
+            <option value="size">体积 大→小</option>
+            <option value="order">页面顺序</option>
+            <option value="host">站点</option>
+          </select>
+        </label>
+
+        <span class="vr" aria-hidden="true"></span>
+
+        <!-- 选择操作：平铺成一组，不再藏进二级菜单
+             勾选永远只存在于「当前筛选结果」内，所以「全选」和「选中筛选结果」是同一件事，
+             合并成一个按钮，数量直接写在上面 -->
+        <div class="seg" role="group" aria-label="批量选择">
+          <button class="seg-btn" id="btnSelectAll" title="勾上当前筛选出的全部图片（Ctrl + A）">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="M8 12.2l2.8 2.8L16 9.5"/>
+            </svg>
+            <span>全选</span>
+            <em id="selAllCount">0</em>
+          </button>
+          <button class="seg-btn" id="btnInvert" title="在筛选结果内，把选中与未选中互换">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 8h13"/><path d="M14 5l3 3-3 3"/><path d="M20 16H7"/><path d="M10 13l-3 3 3 3"/>
+            </svg>
+            <span>反选</span>
+          </button>
+          <button class="seg-btn danger" id="btnClear" title="取消全部勾选">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <path d="M6 6l12 12"/><path d="M18 6L6 18"/>
+            </svg>
+            <span>清空</span>
+          </button>
+        </div>
+
+        <!-- 最小尺寸滑条：放在工具行最右侧的空白处（margin-left:auto 把它顶到右边）。
+             它和筛选条里的「尺寸」档位 chips 是同一个维度的两把尺子 ——
+             chips 判宽度、滑条判较短边，互斥且档位优先（见 popup.js applyFilters）。
+             放在这里是因为工具行右侧本来就有大片空档，滑条塞进去不占额外的行高；
+             而筛选条里「尺寸」这一格只剩 chips，和别的 fg 一样高，整条筛选栏更齐。 -->
+        <div class="size-slider" id="sizeSliderRow" title="最小图片尺寸（按短边过滤）">
+          <span class="ss-ico" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <rect x="4" y="4" width="16" height="16" rx="2.5"/>
+              <path d="M8 16V9.5h6.5"/><path d="M8 9.5l7 7"/>
+            </svg>
+          </span>
+          <input type="range" id="sizeMin" min="0" max="4096" step="16"
+                 value="256" aria-label="最小图片尺寸">
+          <output id="sizeMinOut" for="sizeMin">≥ 256px</output>
+        </div>
+      </div>
+
+      <!-- 筛选条：直接平铺在控制区里（默认展开），不是浮层也不是二级菜单 -->
+      <div class="filterbar" id="filterPanel">
+        <div class="fg">
+          <span class="fg-label">尺寸</span>
+          <!-- 只留档位 chips（判宽度）；连续滑条（判较短边）移到了工具行右侧 ——
+               两者仍是**互斥**的：chips 选了非「全部」就听 chips，否则听滑条
+               （见 popup.js 的 applyFilters —— 同一维度两把尺子叠加只会互相打架）。 -->
+          <div class="chips" id="sizePresets"></div>
+        </div>
+        <div class="fg">
+          <span class="fg-label">比例</span>
+          <div class="chips" id="aspectChips"></div>
+        </div>
+        <div class="fg">
+          <span class="fg-label">格式</span>
+          <div class="chips" id="typeChips"></div>
+        </div>
+        <div class="fg">
+          <span class="fg-label">来源</span>
+          <div class="chips" id="sourceChips"></div>
+        </div>
+        <div class="fg">
+          <span class="fg-label">其他</span>
+          <div class="chips" id="flagChips"></div>
+        </div>
+
+        <button class="linkbtn fg-reset" id="btnResetFilters" title="恢复全部默认条件">重置</button>
+      </div>
+    </section>
+    </div>
+
+    <!-- 图库 -->
+    <main class="grid-wrap" id="gridWrap">
+      <!-- 网格是一个多选列表：卡片 = option，选中状态走 aria-selected。
+           键盘交互是「roving tabindex」——整个网格只占**一个** Tab 停靠点，
+           进去之后用方向键在卡片间移动（否则 2000 张图就是 2000 个 Tab 停靠点，
+           比没有键盘支持还难受）。具体按键见 #gridHelp。 -->
+      <div id="grid" class="grid" role="listbox" aria-multiselectable="true"
+           aria-label="图片网格" aria-describedby="gridHelp"></div>
+      <p class="sr-only" id="gridHelp">图片网格：方向键移动，Home / End 到首尾，
+        PageUp / PageDown 翻页，Enter 或空格勾选与取消，P 打开大图预览，
+        R 对没还原成功的图片单独重试</p>
+
+      <!-- 框选遮罩：拖拽时实时显示选区与命中数量 -->
+      <div id="marquee" class="marquee" hidden aria-hidden="true"><span class="mq-count" id="mqCount"></span></div>
+
+      <div id="loading" class="state" role="status">
+        <div class="spinner"></div>
+        <p id="loadingText">正在嗅探本页图片…</p>
+        <p class="hint" id="loadingHint">会分析 srcset、懒加载、背景图，并尝试还原被缩略化的原图</p>
+      </div>
+
+      <div id="empty" class="state" hidden role="status">
+        <div class="empty-art">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+               stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="4" width="18" height="16" rx="2.5"/>
+            <circle cx="8.5" cy="9.5" r="1.6"/><path d="M21 16l-5-5-6 6-3-3-4 4"/>
+          </svg>
+        </div>
+        <p id="emptyText">本页没有发现图片</p>
+        <p class="hint" id="emptyHint">试试点击右上角刷新，或检查是否屏蔽了背景图嗅探</p>
+        <!-- 只在这张是因为「尺寸过滤」而空的时候出现。
+             尺寸滑条默认 256px，商品列表、新闻站的缩略图大量在 200px 上下 ——
+             开箱就撞上「一张都不剩」是很容易发生的。这时光说「没有符合筛选条件的图片」
+             等于把问题丢回给用户；必须说清是哪条条件挡的，并给一个一键出口。 -->
+        <button id="emptyClearSize" class="btn-empty-action" type="button" hidden></button>
+      </div>
+    </main>
+
+    <!-- 底部：摘要 + 保存 -->
+    <footer class="ftr">
+      <div class="progress" id="progress" hidden role="progressbar"
+           aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="保存进度">
+        <div class="progress-bar"><i id="progressFill"></i></div>
+        <div class="progress-txt" id="progressText">准备中…</div>
+        <button class="tbtn danger" id="btnCancel">停止</button>
+      </div>
+      <div class="ftr-main">
+        <span class="sum">
+          共 <b id="statTotal">0</b> 张<span class="trunc-note" id="truncNote" hidden></span> ·
+          符合 <b id="statFiltered">0</b> ·
+          已选 <b class="accent" id="statSelected">0</b> · 合计 <b id="statSize">—</b>
+          <!-- 结果来自缓存时如实标出来，点一下就是重新嗅探 ——
+               「不用等」和「这是新扫的」不能混为一谈 -->
+          <button class="cache-note" id="cacheNote" hidden></button>
+        </span>
+        <span class="ftr-hint" id="ftrHint">网格中拖拽框选 · 框到已勾选的会取消</span>
+        <button class="primary" id="btnSave" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3.5v11.5"/><path d="M7 10.5l5 5 5-5"/><path d="M4.5 20h15"/>
+          </svg>
+          <span>保存选中</span>
+          <em id="saveCount">0</em>
+        </button>
+      </div>
+    </footer>
+
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <!-- 读屏器的「耳朵」：界面上的数字和提示变化得又碎又频繁，
+       直接给底栏统计挂 aria-live 会把每个中间态都念一遍。
+       所以另起一个只读屏器可见的区域，由 JS 在**有意义的时刻**写一句人话进去。 -->
+  <p class="sr-only" id="srStatus" role="status" aria-live="polite" aria-atomic="true"></p>
+
+  <script src="../shared/constants.js"></script>
+  <script src="../shared/utils.js"></script>
+  <script src="../shared/store.js"></script>
+  <!-- 图库页直接复用内容脚本那份灯箱实现：点放大镜在本页开预览，不再跳到原标签页 -->
+  <script src="../content/lightbox.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

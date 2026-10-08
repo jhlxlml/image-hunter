@@ -1,0 +1,21 @@
+{
+  "name": "image-hunter",
+  "version": "1.13.1",
+  "private": true,
+  "description": "图片猎人 ImageHunter —— 浏览器扩展。扩展本体零依赖零构建；这里声明的全是开发期依赖（跑测试用），不进扩展包。",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node tests/run-all.js",
+    "test:browser": "node tests/run-all-browser.js",
+    "test:all": "node tests/run-all.js && node tests/run-all-browser.js",
+    "package": "node tools/package.js",
+    "audit:settings": "node tools/audit-settings.js"
+  },
+  "devDependencies": {
+    "jsdom": "^30.1.1",
+    "playwright-core": "^1.63.0"
+  }
+}
