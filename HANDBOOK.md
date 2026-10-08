@@ -4,6 +4,11 @@
 
 **核心承诺：存下来的永远是原始分辨率的大图，不是缩略图。**
 
+> **本文件原为 `README.md`。** 2026-10-08 更名为 `HANDBOOK.md` ——
+> 仓库的 README 换成了面向 GitHub 的简明版（[`README.md`](README.md)），
+> 这一份保留完整的**功能详解、使用说明、技术要点、24 条常见问题与全部版本历史**。
+> 文中出现的「README」按当时的文件名理解即可（`tests/README.md` 未改名，指向不变）。
+
 ---
 
 ## 功能一览
@@ -535,6 +540,8 @@ node tools/package.js --list   # 只列出会打进包的文件
 
 ```
 image-hunter/
+├── README.md                   # 面向 GitHub 的简明首页
+├── HANDBOOK.md                 # 本文件：完整手册（功能详解 / 使用说明 / FAQ / 全部版本历史）
 ├── manifest.json               # MV3 清单
 ├── background.js               # Service Worker：下载队列、消息路由、历史/指纹、体积探测、扫描摘要
 ├── package.json                # 只声明开发期依赖（jsdom / playwright-core）与测试脚本，扩展运行**不用**它
@@ -564,7 +571,7 @@ image-hunter/
 │       └── bgstub.js           # 后台 vm 测试桩（假 chrome；内容脚本可编程、超时常量可缩短）
 ├── docs/
 │   └── screenshots/            # 界面截图（11 张，由 tests/screenshot.js 生成并纳入版本管理）
-├── _locales/                   # 仅扩展名称与描述（服务 manifest）；界面文案目前只有中文
+├── _locales/                   # 仅扩展名称/描述/命令标题/右键菜单文案（服务 manifest）；界面文案只有中文
 └── icons/                      # 扩展图标
 ```
 
@@ -651,8 +658,9 @@ IH_AUDIT_VERBOSE=1 node tools/audit-settings.js   # 连每个命中位置的行�
 ## 常见问题
 
 **Q：界面有英文版吗？**
-A：**没有，界面文案目前 100% 是中文硬编码。** 仓库里的 `_locales/` 只有 6 个键
-（扩展名称、描述、命令标题），它们是给 manifest 用的，不覆盖任何界面文字。
+A：**没有，界面文案目前 100% 是中文硬编码。** 仓库里的 `_locales/` 只有 8 个键
+（扩展名称、描述、三个命令标题、两个右键菜单文案），它们是给 manifest 用的，
+不覆盖任何界面文字。
 之所以现在做成这样：这个扩展的界面有 300 多条文案，抽取 + 翻译 + 校对是一笔
 不小的投入，而目前没有明确的需求。想要英文界面的话欢迎提 issue。
 
