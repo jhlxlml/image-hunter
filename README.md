@@ -165,6 +165,7 @@ node tools/package.js --list   # 只列出会打进包的文件
 
 ```
 image-hunter/
+├── LICENSE                # AGPL-3.0
 ├── manifest.json          # MV3 清单
 ├── background.js          # Service Worker：下载队列、消息路由、历史/指纹、体积探测
 ├── shared/                # 消息常量、URL 工具、存储封装、诊断包（纯函数）
@@ -251,4 +252,7 @@ npm run audit:settings # 巡检设置项：列出每条设置的读取点 / UI �
 
 ## 许可
 
-MIT（见 [`package.json`](package.json)）。
+**AGPL-3.0** —— 完整文本见 [`LICENSE`](LICENSE)。
+
+你可以自由使用、修改、再分发；但 AGPL 比 GPL 多一条**网络服务条款**：
+如果你把修改后的版本部署成对外提供的网络服务，也必须以同样的许可证公开你的改动。

@@ -542,6 +542,7 @@ node tools/package.js --list   # 只列出会打进包的文件
 image-hunter/
 ├── README.md                   # 面向 GitHub 的简明首页
 ├── HANDBOOK.md                 # 本文件：完整手册（功能详解 / 使用说明 / FAQ / 全部版本历史）
+├── LICENSE                     # AGPL-3.0
 ├── manifest.json               # MV3 清单
 ├── background.js               # Service Worker：下载队列、消息路由、历史/指纹、体积探测、扫描摘要
 ├── package.json                # 只声明开发期依赖（jsdom / playwright-core）与测试脚本，扩展运行**不用**它
