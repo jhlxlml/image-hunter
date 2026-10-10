@@ -81,16 +81,20 @@ body.mode-page .ctrl-bar { padding-top: 9px; }
 body.mode-page .brand-sub { max-width: 220px; }
 body.mode-page .ftr-main { padding-left: 24px; padding-right: 24px; }
 
-/* 扫描目标选择器 —— 收紧宽度，别把顶栏撑满 */
+/* 扫描目标选择器 —— 顶栏里「我现在在扫哪一页」，是**最需要看清楚**的一处信息：
+   选错页面等于整份结果都不是想要的那份。所以给它足够的高度与字号
+   （32px / 12.5px，和顶栏图标按钮等高），而不是原来那个 11.5px 的小胶囊。
+   宽度仍要封顶：页面标题可能很长，不封会把顶栏挤爆。 */
 .target-pick {
   flex: 0 1 auto;
   min-width: 0;
-  max-width: 230px;
+  max-width: 320px;
+  min-height: 32px;
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-left: 2px;
-  padding: 3px 8px 3px 8px;
+  gap: 7px;
+  margin-left: 4px;
+  padding: 0 12px;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--surface-3);
@@ -101,22 +105,25 @@ body.mode-page .ftr-main { padding-left: 24px; padding-right: 24px; }
 
 .target-pick .tp-ico {
   flex: 0 0 auto;
-  width: 13px;
-  height: 13px;
+  width: 14px;
+  height: 14px;
   color: var(--text-3);
 }
 
-.target-pick .tp-ico svg { width: 13px; height: 13px; display: block; }
+.target-pick .tp-ico svg { width: 14px; height: 14px; display: block; }
 
 .target-pick select {
   flex: 1 1 auto;
   min-width: 0;
+  /* 自带上下内边距把可点区域撑满整个胶囊 —— .target-pick 是 div 不是 label，
+     点在内边距上不会展开下拉；让 select 自己占满高度，整条就都能点了。
+     6px 是量出来的：正好让整个胶囊落在 32px（与顶栏图标按钮同高）。 */
+  padding: 6px 0;
   border: none;
   background: transparent;
   color: var(--text-2);
-  font-size: 11.5px;
+  font-size: 12.5px;
   font-weight: 600;
-  padding: 1px 0;
   outline: none;
   cursor: pointer;
   text-overflow: ellipsis;
@@ -138,14 +145,15 @@ body.mode-page .ftr-main { padding-left: 24px; padding-right: 24px; }
 .target-multi .tm-btn {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 7px;
   width: 100%;
   min-width: 0;
-  padding: 1px 0;
+  /* 和单选下拉一样：自带上下内边距撑满胶囊，整条都能点 */
+  padding: 6px 0;
   border: none;
   background: transparent;
   color: var(--text-2);
-  font-size: 11.5px;
+  font-size: 12.5px;
   font-weight: 600;
   outline: none;
   cursor: pointer;
@@ -294,10 +302,13 @@ button { cursor: pointer; }
 }
 
 /* 顶栏动作组：靠 margin-left:auto 顶到最右侧。
-   8 个按钮在窄栏下会挤爆顶栏 —— 面板模式只有 380px，
+   8 个按钮（搜索 + 7 个原动作）在窄栏下会挤爆顶栏 —— 面板模式只有 380px，
    所以下面有一段专门给窄栏的缩减规则（缩按钮、缩间距），
-   而不是再把动作藏进溢出菜单。 */
-.hdr-actions { margin-left: auto; display: flex; align-items: center; gap: 5px; }
+   而不是再把动作藏进溢出菜单。
+   `flex: 0 0 auto` 很关键：不给它的话，宽度不够时浏览器会**先压这组按钮**
+   （图标被挤扁），而不是让左边的品牌名去省略 —— 那是错的取舍，
+   动作组是每天都要点的东西，品牌名省略掉一个字没什么影响。 */
+.hdr-actions { flex: 0 0 auto; margin-left: auto; display: flex; align-items: center; gap: 5px; }
 
 /* 图标按钮：**纯色**底，不再用上下渐变「打光」。
    拟物渐变在浅色下看着像一枚枚小凸起，一排放八个时整条顶栏的视觉重量
@@ -348,7 +359,7 @@ body.mode-panel .brand-sub { display: none; }
 body.mode-panel .brand-name { font-size: 12.5px; }
 body.mode-panel .logo { width: 26px; height: 26px; border-radius: 8px; }
 
-/* 窄栏：7 个按钮 + 品牌挤在 380px 里（面板模式）。
+/* 窄栏：8 个按钮（搜索 + 7 个原动作）+ 品牌挤在 380px 里（面板模式）。
    两件事要一起处理：
    ① 顶栏按钮缩小 —— 减的是**每个按钮自己的**尺寸和间距，不是把动作藏起来
       （藏起来换来的宽度很有限，却要多一次点击，而且「探测体积」的转圈反馈
@@ -358,9 +369,34 @@ body.mode-panel .logo { width: 26px; height: 26px; border-radius: 8px; }
       于是 `.ctrl-bar` 的 `scrollWidth` 冲到 780px、整页出现横向滚动条。
       换行是最省事的解法：滑条独占第二排、依旧靠右，工具行本身不再被撑开。 */
 @media (max-width: 460px) {
+  /* 顶栏的内边距与间距也一起收紧。380px 面板下要同时放下品牌与 8 个 28px 图标：
+       12 + 26(logo) + 10(gap) + (8×28 + 7×1) + 12 = 351 < 380
+     上一版只缩图标尺寸，余量只有个位数，换个字体或缩放就可能溢出。 */
+  .hdr { padding: 11px 12px; gap: 10px; }
   .hdr-actions { gap: 1px; }
   .icon-btn { width: 28px; height: 28px; border-radius: 9px; }
   .icon-btn svg { width: 15px; height: 15px; }
+
+  /* 页面地址那行收起来：窄栏里它只能显示两三个字，信息量为零，
+     却会和品牌名抢宽度、把「图片猎人」切成一半。窄栏下真正该看的是
+     第二行的「扫描目标」（那里有完整页面标题）。 */
+  .brand-sub { display: none; }
+
+  /* **窄栏的页面模式让顶栏换行**：品牌 + 8 个动作占第一行，
+     「扫描目标」独占第二行、占满整宽。
+     一行硬塞的代价是目标被压成两三个字、品牌被切一半 —— 而目标选择器
+     恰恰是**最不能看不清**的一处（选错页面 = 整份结果都不是想要的那份）。
+     换行之后它比宽屏时还宽，正好也是这一版想做的「把选择标签页做大」。
+     用 order 把它排到最后：DOM 顺序是 品牌 → 目标 → 动作，
+     不加 order 的话 flex 会在「目标」那里就断行，动作被挤到第三行。
+     面板模式没有目标选择器（page-only），所以这条对它没有影响。 */
+  body.mode-page .hdr { flex-wrap: wrap; }
+  body.mode-page .target-pick {
+    order: 1;
+    flex: 1 1 100%;
+    max-width: none;
+    margin-left: 0;
+  }
 
   .ctrl-bar { flex-wrap: wrap; row-gap: 7px; }
   /* 换行之后 .size-slider 的 margin-left:auto 会把它推到第二排最右，
@@ -497,6 +533,39 @@ body.mode-panel .logo { width: 26px; height: 26px; border-radius: 8px; }
 }
 
 .select-pill select option { color: var(--text); background: var(--surface); }
+
+/* 排序组：维度胶囊 + 升降序按钮，两个控件挨在一起、当成一个整体看。
+   间距 4px 比工具行的 7px 小 —— 它们是一件事的两半，不该跟旁边的
+   「筛选」一样远。 */
+.sort-group {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 升降序按钮：跟胶囊**同高**（30px）、但做成方形圆角。
+   形状差异是有意的 —— 它是个「按一下就翻面」的开关，不是一个会展开的
+   下拉；方形（而不是胶囊）能把这点说清楚，也不用再配一个箭头。
+   方向靠图标本身表达：降序是「下箭头 + 递减横线」，升序把整个 svg
+   转 180°（下箭头变上箭头、递减变递增）。**不给升序加高亮** ——
+   默认方向是设置里配的，把「升序」当成异常态涂色，等于假设默认永远是降序。 */
+.sort-dir {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  border-color: var(--border);
+  background: var(--surface);
+}
+
+.sort-dir:hover {
+  border-color: var(--primary-soft-2);
+  color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.sort-dir svg { transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
+.sort-dir.asc svg { transform: rotate(180deg); }
 
 /* 选择操作组：分段控件，四个动作平铺，不再藏进二级菜单 */
 .seg {
@@ -782,11 +851,13 @@ body.mode-panel .logo { width: 26px; height: 26px; border-radius: 8px; }
   font-variant-numeric: tabular-nums;
 }
 
-/* 搜索：平时只是一个图标按钮，点开才在原位展开成输入框（不推动其它控件） */
+/* 搜索：平时只是一个图标按钮（在顶栏动作组的最左边），点开才展开成输入框。
+   输入框是**浮层**（absolute），不推动任何一个顶栏按钮 ——
+   否则一展开就会把整排图标挤走，看着像界面跳了一下。 */
 .search-wrap { position: relative; flex: 0 0 auto; }
 
-#btnSearch { width: 30px; height: 30px; border-radius: 999px; }
-
+/* 搜索按钮和别的图标按钮同形（32×32 / 圆角 10），不再单独做成圆形胶囊 ——
+   它现在是顶栏动作组的一员，只有它长得不一样反而像贴错了地方。 */
 #btnSearch.on {
   border-color: var(--primary-soft-2);
   color: var(--primary);
@@ -795,21 +866,40 @@ body.mode-panel .logo { width: 26px; height: 26px; border-radius: 8px; }
 
 .search-pop {
   position: absolute;
-  left: 0;
+  /* 贴在搜索按钮**左侧**展开（按钮本身留在原地、常亮着，一眼能看出
+     「这个框是从哪冒出来的」）。向右开会盖住后面 7 个动作按钮。 */
+  right: calc(100% + 5px);
+  left: auto;
   top: 0;
+  bottom: 0;
   z-index: 8;
   display: flex;
   align-items: center;
   gap: 6px;
   width: 268px;
-  height: 30px;
   padding: 0 6px 0 10px;
   border: 1px solid var(--primary);
-  border-radius: 999px;
+  border-radius: 10px;
   background: var(--surface);
   box-shadow: 0 0 0 3px var(--primary-soft), var(--shadow-md);
-  transform-origin: left center;
+  transform-origin: right center;
   animation: sp-in 0.18s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+/* 窗口窄到放不下这条浮层时（搜索按钮左侧不足 268px），改成横跨整条顶栏。
+   阈值 640px 是算出来的：动作组 8 个 32px 按钮 + 间距 ≈ 291px，
+   加上左右内边距 32px 与浮层宽度 268px，再留一点余量。
+   不这么做的话，中等宽度的窗口里浮层会从左边捅出屏幕。 */
+@media (max-width: 640px) {
+  body.mode-page .search-pop {
+    position: fixed;
+    left: 10px;
+    right: 10px;
+    top: 11px;
+    bottom: auto;
+    width: auto;
+    height: 30px;
+  }
 }
 
 .search-pop[hidden] { display: none; }
@@ -1484,7 +1574,20 @@ body.mode-panel .size-slider input[type="range"] { flex: 1 1 auto; width: auto; 
 body.mode-panel .size-slider output { min-width: 50px; font-size: 10.5px; }
 body.mode-panel .pill { padding: 0 9px; gap: 5px; }
 body.mode-panel .select-pill select { max-width: 100px; }
-body.mode-panel .search-pop { width: calc(100vw - 22px); }
+/* 面板模式下搜索框改成**横跨整条顶栏的浮层**（fixed 相对 iframe 视口）。
+   原来只是「加宽到 100vw - 22px」+ `left:0`，在工具行里够用；
+   现在搜索按钮在动作组最左边、离右边缘只有两百多像素，
+   268px 的浮层不管向左还是向右开都会捅出屏幕 —— 索性占满一整行，
+   展开时像「搜索接管了顶栏」，反而更清楚。 */
+body.mode-panel .search-pop {
+  position: fixed;
+  left: 10px;
+  right: 10px;
+  top: 10px;
+  bottom: auto;
+  width: auto;
+  height: 30px;
+}
 body.mode-panel .seg { flex: 1 1 100%; justify-content: space-between; }
 body.mode-panel .seg-btn { flex: 1 1 auto; justify-content: center; padding: 0 6px; }
 body.mode-panel .seg-btn > svg { display: none; }

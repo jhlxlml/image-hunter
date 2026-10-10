@@ -482,6 +482,127 @@ function collidingIconPairs(prints) {
       '窄栏下「保存选中」仍保有可读宽度（没有被 .sum 按内容宽度抢走）',
       saveBtn && (saveBtn.w + 'px'));
 
+    /* ---------- 7. 搜索在顶栏 · 排序拆成「维度 + 方向」 ---------- */
+    console.log('\n=== 7. 搜索进顶栏 · 排序拆成维度 + 升降序 ===');
+
+    const layout = await narrow.evaluate(() => {
+      const hdr = document.querySelector('.hdr-actions');
+      const bar = document.querySelector('.ctrl-bar');
+      const wrap = document.querySelector('.search-wrap');
+      const sel = document.getElementById('selSort');
+      const dirBtn = document.getElementById('btnSortDir');
+      return {
+        // 搜索：必须在顶栏动作组里，且**不在**工具行里
+        searchInHdr: !!(hdr && hdr.querySelector('#btnSearch')),
+        searchIsDirectChild: !!(hdr && wrap && wrap.parentElement === hdr),
+        searchInBar: !!(bar && bar.querySelector('#btnSearch')),
+        // 排序：工具行里是一个维度下拉 + 一个方向按钮
+        sortInBar: !!(bar && bar.querySelector('#selSort')),
+        dirInBar: !!(bar && bar.querySelector('#btnSortDir')),
+        dims: sel ? Array.from(sel.options).map((o) => o.value) : null,
+        // 方向按钮的可读状态：dataset.dir（比去量 svg 转了多少度可靠）
+        dir: dirBtn ? dirBtn.dataset.dir : null,
+        dirAscClass: dirBtn ? dirBtn.classList.contains('asc') : null,
+        dirTitle: dirBtn ? dirBtn.getAttribute('title') : null,
+        dirAria: dirBtn ? dirBtn.getAttribute('aria-label') : null,
+      };
+    });
+    console.log('  布局 =', JSON.stringify(layout));
+
+    check(layout.searchInHdr, '搜索按钮在顶栏动作组里');
+    check(layout.searchIsDirectChild, '搜索是动作组的直接子元素（不是 .hdr 的独立一项）');
+    check(layout.searchInBar === false, '搜索按钮**不在**工具行里（确实搬走了）');
+    check(layout.sortInBar, '排序维度下拉在工具行里');
+    check(layout.dirInBar, '升降序按钮在工具行里（紧挨排序下拉）');
+
+    /* 维度只剩 4 个 —— 「分辨率 大→小 / 小→大」这类成对选项已经收进方向按钮。
+       这条是这次整合的**核心判据**：只要还留着 `area-asc` 之类的值，
+       就说明方向没有被真正拆出去。 */
+    check(layout.dims && layout.dims.join(',') === 'area,size,order,host',
+      '排序下拉只剩 4 个**维度**（方向不再是下拉里的选项）',
+      layout.dims && layout.dims.join(','));
+
+    // 方向按钮的初始态 + 点一下之后
+    check(layout.dir === 'desc', '升降序按钮初始是降序（data-dir=desc）',
+      String(layout.dir));
+    check(layout.dirAscClass === false, '降序时图标不带 asc 类（不旋转）',
+      String(layout.dirAscClass));
+    check(!!layout.dirTitle && !!layout.dirAria,
+      '方向按钮有 title 与 aria-label（图标太小，必须靠文案说清方向）',
+      layout.dirTitle);
+
+    await narrow.click('#btnSortDir');
+    await sleep(400);
+    const dirAfter = await narrow.evaluate(() => {
+      const b = document.getElementById('btnSortDir');
+      const sel = document.getElementById('selSort');
+      return {
+        dir: b.dataset.dir,
+        asc: b.classList.contains('asc'),
+        title: b.getAttribute('title'),
+        // 维度不该被方向切换带跑
+        dim: sel ? sel.value : null,
+        // 图标真的转了（否则「方向变了」在界面上完全看不出来）
+        rotate: getComputedStyle(b.querySelector('svg')).transform,
+      };
+    });
+    console.log('  切换后 =', JSON.stringify(dirAfter));
+    check(dirAfter.dir === 'asc', '点一下变成升序（data-dir=asc）', dirAfter.dir);
+    check(dirAfter.asc === true, '升序时图标带上 asc 类（整枚 svg 旋转 180°）', String(dirAfter.asc));
+    check(dirAfter.rotate && dirAfter.rotate !== 'none' && dirAfter.rotate !== 'matrix(1, 0, 0, 1, 0, 0)',
+      '升序时 svg 的 transform 真的不是单位矩阵（转了）', dirAfter.rotate);
+    check(dirAfter.title !== layout.dirTitle, '按钮文案跟着方向一起换了', dirAfter.title);
+    check(dirAfter.dim === 'area', '切方向没有把排序维度也改掉', String(dirAfter.dim));
+
+    /* ---------- 8. 设置里的「默认排序」真的被读到 ---------- */
+    console.log('\n=== 8. 图库启动按设置里的默认排序初始化 ===');
+    /* 直接往扩展的 storage 里写一个非默认值，再开一个新页面 ——
+       比去设置页点一遍更直接，测的是「图库读不读这个设置」这件事本身。 */
+    await sw.evaluate(async () => {
+      const cur = await chrome.storage.local.get('ih_settings');
+      const s = (cur && cur.ih_settings) || {};
+      s.defaultSort = 'size:asc';
+      await chrome.storage.local.set({ ih_settings: s });
+    });
+    const withDefault = await ctx.newPage();
+    await withDefault.setViewportSize({ width: 900, height: 800 });
+    await withDefault.goto(`chrome-extension://${extId}/popup/popup.html?mode=page`, {
+      waitUntil: 'domcontentloaded', timeout: 30000
+    });
+    await sleep(2000);
+    const applied = await withDefault.evaluate(() => {
+      const b = document.getElementById('btnSortDir');
+      const sel = document.getElementById('selSort');
+      return { dim: sel ? sel.value : null, dir: b ? b.dataset.dir : null };
+    });
+    console.log('  读到默认排序 =', JSON.stringify(applied));
+    check(applied.dim === 'size' && applied.dir === 'asc',
+      '图库按设置里的 defaultSort（size:asc）初始化了排序控件',
+      JSON.stringify(applied));
+
+    /* 非法值要退回默认，而不是把垃圾透传进比较函数（那会让排序结果乱掉且不报错） */
+    await sw.evaluate(async () => {
+      const cur = await chrome.storage.local.get('ih_settings');
+      const s = (cur && cur.ih_settings) || {};
+      s.defaultSort = 'nonsense:sideways';
+      await chrome.storage.local.set({ ih_settings: s });
+    });
+    const withBad = await ctx.newPage();
+    await withBad.setViewportSize({ width: 900, height: 800 });
+    await withBad.goto(`chrome-extension://${extId}/popup/popup.html?mode=page`, {
+      waitUntil: 'domcontentloaded', timeout: 30000
+    });
+    await sleep(2000);
+    const fallback = await withBad.evaluate(() => {
+      const b = document.getElementById('btnSortDir');
+      const sel = document.getElementById('selSort');
+      return { dim: sel ? sel.value : null, dir: b ? b.dataset.dir : null };
+    });
+    console.log('  非法值 -> ', JSON.stringify(fallback));
+    check(fallback.dim === 'area' && fallback.dir === 'desc',
+      '非法 defaultSort 退回「分辨率 / 降序」，没有透传',
+      JSON.stringify(fallback));
+
   } finally {
     await ctx.close();
     await localSite.close();

@@ -1992,6 +1992,94 @@ console.log('\n=== 20. 顶栏收敛与筛选条默认态 ===');
       bad('找不到滑条是否计入筛选数量的判据 —— 解析可能脱节了');
     }
   }
+  /* (g) 搜索必须搬进**顶栏动作组**里，而且不再出现在工具行里。
+     为什么静态守：这条纯属「DOM 位置」，运行时怎么看都对 ——
+     但一旦有人把它挪回 .ctrl-bar，顶栏就会少一个动作、
+     而工具行会多一个「主动去够东西」的按钮，和旁边那排被动控件不搭。
+     另外它必须是 .hdr-actions 的**直接子元素**（包在 .search-wrap 里），
+     不是 .hdr 的独立一项 —— 后者在 380px 面板下会多一个 12px 间隙把顶栏挤爆。 */
+  {
+    const iA = popupHtml.indexOf('class="hdr-actions"');
+    const iEnd = popupHtml.indexOf('</header>', iA < 0 ? 0 : iA);
+    const hdrBlock = (iA >= 0 && iEnd > iA) ? popupHtml.slice(iA, iEnd) : '';
+    const iBar = popupHtml.indexOf('class="ctrl-bar"');
+    const iBarEnd = popupHtml.indexOf('</div>', iBar < 0 ? 0 : iBar);
+    const barBlock = (iBar >= 0 && iBarEnd > iBar) ? popupHtml.slice(iBar, iBarEnd) : '';
+
+    const inHdr = /id="btnSearch"/.test(hdrBlock);
+    const wrapDirect = /<div class="search-wrap">/.test(hdrBlock);
+    const inBar = /id="btnSearch"/.test(barBlock);
+    if (inHdr && wrapDirect && !inBar) {
+      ok('搜索按钮在顶栏动作组里（且已从工具行搬走）');
+    } else {
+      bad('搜索的位置不对 —— 在顶栏=' + inHdr + '，是动作组直接子元素=' + wrapDirect
+        + '，还在工具行=' + inBar);
+    }
+  }
+
+  /* (h) 排序必须是「一个维度下拉 + 一个升降序按钮」两个控件。
+     核心判据是**下拉里只剩维度** —— 只要还留着 'area-asc' / 'size-asc'
+     这类成对值，就说明方向没有被真正拆出去（那正是这一版要整合的东西）。 */
+  {
+    const selBlock = (popupHtml.match(/<select[^>]*id="selSort"[^>]*>([\s\S]*?)<\/select>/) || [])[1] || '';
+    const vals = Array.from(selBlock.matchAll(/<option[^>]*value="([^"]+)"/g)).map((m) => m[1]);
+    const want = ['area', 'size', 'order', 'host'];
+    const hasDirBtn = /id="btnSortDir"/.test(popupHtml);
+    const pairedLeft = vals.filter((v) => /-(asc|desc)$/.test(v));
+    if (vals.join(',') === want.join(',') && hasDirBtn && !pairedLeft.length) {
+      ok('排序 = 4 个维度下拉 + 1 个升降序按钮（方向已从下拉里拆出去）');
+    } else {
+      bad('排序结构不对 —— 维度=' + (vals.join(',') || '（空）')
+        + '，方向按钮=' + hasDirBtn
+        + (pairedLeft.length ? '，下拉里还留着成对的方向值：' + pairedLeft.join('、') : ''));
+    }
+
+    /* 方向按钮必须真的在工具行里、并且接到 handler 上（搬 DOM 不搬绑定是常见坏法） */
+    const iBar2 = popupHtml.indexOf('class="ctrl-bar"');
+    const iBar2End = popupHtml.indexOf('</div>', iBar2 < 0 ? 0 : iBar2);
+    const bar2 = (iBar2 >= 0 && iBar2End > iBar2) ? popupHtml.slice(iBar2, iBar2End) : '';
+    const js2 = fs.readFileSync(path.join(ROOT, 'popup/popup.js'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    const bound = /\$\('btnSortDir'\)\.addEventListener\('click'/.test(js2);
+    if (/id="btnSortDir"/.test(bar2) && bound) {
+      ok('升降序按钮在工具行里、且真的绑了 click');
+    } else {
+      bad('升降序按钮不对 —— 在工具行=' + /id="btnSortDir"/.test(bar2) + '，绑了 click=' + bound);
+    }
+  }
+
+  /* (i) 「默认排序」这条设置必须三处齐备：默认值、设置页入口、图库读取点。
+     少任何一处都是「静默无效」：设置页改了没反应，或者导出的 JSON 里没这个键。 */
+  {
+    const constSrc2 = fs.readFileSync(path.join(ROOT, 'shared/constants.js'), 'utf8');
+    const optSrc = fs.readFileSync(path.join(ROOT, 'options/options.html'), 'utf8');
+    const js3 = fs.readFileSync(path.join(ROOT, 'popup/popup.js'), 'utf8');
+    const hasDefault = /^\s{4}defaultSort\s*:/m.test(constSrc2);
+    const hasUi = /data-key\s*=\s*["']defaultSort["']/.test(optSrc);
+    // 图库必须**真的**读了它（不是只在注释里提一句）
+    const reads = /Store\.getSettings\(\)\.defaultSort/.test(js3);
+    if (hasDefault && hasUi && reads) {
+      ok('「默认排序」三处齐备（默认值 / 设置页下拉 / 图库读取点）');
+    } else {
+      bad('「默认排序」不完整 —— 默认值=' + hasDefault + '，设置页入口=' + hasUi
+        + '，图库读取点=' + reads);
+    }
+
+    /* 图库那 4 个维度值必须和设置页下拉的 6 个组合**同源**：
+       设置页写 'area:desc' 这种两段式，图库用 parseSort 解析。
+       两边对不上（比如设置页写 'resolution'）就是「选了没效果」。 */
+    const opts = Array.from(optSrc.matchAll(/<option[^>]*value="([^"]+)"[^>]*data-i18n="opt\.sort/g))
+      .map((m) => m[1]);
+    const badSpec = opts.filter((v) => !/^(area|size|order|host):(desc|asc)$/.test(v));
+    const dimsOk = new RegExp('SORT_DIMS\\s*=\\s*\\[[^\\]]*\'area\'[^\\]]*\'size\'[^\\]]*\'order\'[^\\]]*\'host\'', 's')
+      .test(js3);
+    if (opts.length >= 4 && !badSpec.length && dimsOk) {
+      ok('设置页的排序组合（' + opts.length + ' 项）与图库的维度表对得上');
+    } else {
+      bad('设置页排序值与图库对不上 —— 非法项：' + (badSpec.join('、') || '（无）')
+        + '，图库维度表=' + dimsOk);
+    }
+  }
 }
 
 console.log('\n-----------------------------');

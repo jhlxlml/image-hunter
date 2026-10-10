@@ -75,13 +75,50 @@
       </div>
 
       <div class="hdr-actions">
-        <!-- 顶栏动作：重新嗅探 / 探测体积 / 导出清单 / 深度嗅探 / 面板 / 设置，
+        <!-- 顶栏动作：搜索 / 重新嗅探 / 探测体积 / 导出清单 / 深度嗅探 / 面板 / 设置，
              后面还有面板模式下的关闭。
              曾经把「探测体积 / 导出清单 / 深度嗅探」收进过一个「更多」溢出菜单，
              后来发现两点都不划算：一是**多一次点击**，二是「探测体积」工作时
              图标要一直转圈，藏进菜单里就看不见了。
              宽度不够时不再靠菜单，靠下面 .hdr-actions 自己的响应式规则
-             （见 popup.css 的窄栏分支）。 -->
+             （见 popup.css 的窄栏分支）。
+
+             **搜索也搬到了这里**（原来在工具行里）。工具行现在只放「筛选 / 排序 /
+             选择操作」，全是被动作用于当前结果的控件；搜索和这一排动作一样是
+             「主动去够某个东西」，放在动作组里语义更顺。
+             它必须留在动作组**内部**、而不是当成 .hdr 的独立一项 ——
+             面板模式只有 380px，独立一项会多出一个 12px 的间隙，
+             刚好把顶栏挤爆（见 popup.css 窄栏那段注释）。 -->
+        <div class="search-wrap">
+          <button class="icon-btn" id="btnSearch"
+                  data-i18n-title="pop.searchTitle" data-i18n-aria="pop.searchAria"
+                  title="搜索文件名 / 图片地址"
+                  aria-label="搜索" aria-expanded="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/>
+            </svg>
+          </button>
+          <!-- 展开后**向左**打开（right:0）：搜索按钮在动作组最左边，
+               向右开会盖住后面 7 个按钮。面板模式下另有一段规则把它变成
+               横跨整条顶栏的浮层（见 popup.css）。 -->
+          <div class="search-pop" id="searchPop" hidden>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/>
+            </svg>
+            <input id="search" type="search" data-i18n-ph="pop.searchPh"
+                   data-i18n-aria="pop.searchAria"
+                   placeholder="搜索文件名 / 图片地址…"
+                   aria-label="搜索文件名或图片地址">
+            <button class="sp-x" id="btnSearchClear" data-i18n-title="pop.searchClear"
+                    data-i18n-aria="pop.searchClearAria"
+                    title="清空并收起" aria-label="清空并收起搜索">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                   stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>
+            </button>
+          </div>
+        </div>
 
         <!-- 重新嗅探：循环箭头（缺口在右上） -->
         <button id="btnRescan" class="icon-btn"
@@ -160,38 +197,10 @@
       </div>
     </header>
 
-    <!-- 控制区：搜索（图标展开）· 筛选开关 · 排序 · 选择操作 -->
+    <!-- 控制区：筛选开关 · 排序（维度 + 升降序）· 选择操作
+         搜索已移到顶栏（见 .hdr-actions 的说明）。 -->
     <section class="ctrl" id="ctrl">
       <div class="ctrl-bar">
-        <!-- 搜索：平时是一个图标，点开才展开成输入框，不占地方 -->
-        <div class="search-wrap">
-          <button class="icon-btn" id="btnSearch"
-                  data-i18n-title="pop.searchTitle" data-i18n-aria="pop.searchAria"
-                  title="搜索文件名 / 图片地址"
-                  aria-label="搜索" aria-expanded="false">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
-                 stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/>
-            </svg>
-          </button>
-          <div class="search-pop" id="searchPop" hidden>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
-                 stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/>
-            </svg>
-            <input id="search" type="search" data-i18n-ph="pop.searchPh"
-                   data-i18n-aria="pop.searchAria"
-                   placeholder="搜索文件名 / 图片地址…"
-                   aria-label="搜索文件名或图片地址">
-            <button class="sp-x" id="btnSearchClear" data-i18n-title="pop.searchClear"
-                    data-i18n-aria="pop.searchClearAria"
-                    title="清空并收起" aria-label="清空并收起搜索">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
-                   stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>
-            </button>
-          </div>
-        </div>
-
         <!-- 筛选默认**收起**：默认展开时这条占掉近 1/3 的纵向空间，
              而多数人打开图库只是想看图。有生效条件时按钮常亮 + 显示数量，
              不会出现「藏起来了就不知道自己在筛」。展开态用户选过就记住。 -->
@@ -207,19 +216,41 @@
                stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
         </button>
 
-        <label class="pill select-pill" data-i18n-title="pop.sort" title="排序方式">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
-               stroke-linecap="round" stroke-linejoin="round">
-            <path d="M7 4v16"/><path d="M4 17l3 3 3-3"/><path d="M17 20V4"/><path d="M14 7l3-3 3 3"/>
-          </svg>
-          <select id="selSort" data-i18n-aria="pop.sort" aria-label="排序方式">
-            <option value="area" data-i18n="pop.sortArea">分辨率 大→小</option>
-            <option value="area-asc" data-i18n="pop.sortAreaAsc">分辨率 小→大</option>
-            <option value="size" data-i18n="pop.sortSize">体积 大→小</option>
-            <option value="order" data-i18n="pop.sortOrder">页面顺序</option>
-            <option value="host" data-i18n="pop.sortHost">站点</option>
-          </select>
-        </label>
+        <!-- 排序：一个「维度」下拉 + 一个「升降序」图标按钮。
+             原来把「分辨率 大→小 / 分辨率 小→大」当成两个并列选项，
+             五个选项里有两对是同一维度的正反 —— 选完还得回下拉里找另一头。
+             拆成「选维度」+「切方向」之后：
+               · 维度只剩 4 个，下拉短了一半；
+               · 方向一个按钮就切，不必重新展开下拉；
+               · 以后再想加维度（比如「文件名」）也不会把选项数翻倍。 -->
+        <div class="sort-group">
+          <label class="pill select-pill" data-i18n-title="pop.sort" title="排序方式">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <path d="M7 4v16"/><path d="M4 17l3 3 3-3"/><path d="M17 20V4"/><path d="M14 7l3-3 3 3"/>
+            </svg>
+            <select id="selSort" data-i18n-aria="pop.sortAria" aria-label="排序维度">
+              <option value="area" data-i18n="pop.sortArea">分辨率</option>
+              <option value="size" data-i18n="pop.sortSize">文件体积</option>
+              <option value="order" data-i18n="pop.sortOrder">页面顺序</option>
+              <option value="host" data-i18n="pop.sortHost">站点</option>
+            </select>
+          </label>
+          <!-- 升降序：一个按钮在「大到小 / 小到大」之间切。
+               图标是「下箭头 + 右侧递减横线」；升序时整个 svg 旋转 180°
+               （见 popup.css 的 .sort-dir.asc）—— 比准备两套 path 省事，
+               也不会出现两套图形重心对不齐的问题。
+               文案（title / aria-label）是**跟着方向变**的，所以不挂
+               data-i18n —— 那会在切语言时被覆盖成一个固定方向的说法；
+               改由 updateSortDirUI() 在初始化与切语言时各写一次。 -->
+          <button class="icon-btn sort-dir" id="btnSortDir">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <path d="M6 4.5v15"/><path d="M2.5 16L6 19.5 9.5 16"/>
+              <path d="M13.5 6h8"/><path d="M13.5 12h5.5"/><path d="M13.5 18h3"/>
+            </svg>
+          </button>
+        </div>
 
         <span class="vr" aria-hidden="true"></span>
 

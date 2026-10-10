@@ -206,6 +206,15 @@
       el.value = settings[el.dataset.key] != null ? settings[el.dataset.key] : '';
     });
 
+    /* 下拉选择（目前只有 defaultSort 一个）。
+       值不存在时退回**第一个选项**，而不是留空 —— 留空会让 select 显示成
+       空白（浏览器对「值不在选项里」的处理就是什么都不选），
+       用户会以为自己把排序弄坏了。 */
+    $$('select[data-key]').forEach((el) => {
+      const v = settings[el.dataset.key];
+      el.value = v != null && v !== '' ? v : (el.options[0] ? el.options[0].value : '');
+    });
+
     // 站点排除列表（多行文本框，一行一个域名）
     const bh = $('blockedHosts');
     if (bh) bh.value = (settings.blockedHosts || []).join('\n');
@@ -287,6 +296,15 @@
       el.addEventListener('change', () => {
         const key = el.dataset.key;
         persist({ [key]: el.value.trim() || C.DEFAULT_SETTINGS[key] });
+      });
+    });
+
+    /* 下拉选择：change 即存。没有做「非法值退回」—— option 是写死的，
+       用户只能从这 6 个里选；真正要防的是**导入的 JSON**里塞了别的值，
+       那由图库侧的 parseSort 兜底（认不出就回默认）。 */
+    $$('select[data-key]').forEach((el) => {
+      el.addEventListener('change', () => {
+        persist({ [el.dataset.key]: el.value });
       });
     });
 

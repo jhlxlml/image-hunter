@@ -80,7 +80,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     selected: Number(document.getElementById('statSelected').textContent),
     saveCount: Number(document.getElementById('saveCount').textContent),
     saveDisabled: document.getElementById('btnSave').disabled,
-    allCount: document.getElementById('selAllCount').textContent
+    allCount: document.getElementById('selAllCount').textContent,
+    // 排序方向（第 3 节要确认「切方向」这条路径真的生效了）
+    dir: document.getElementById('btnSortDir').dataset.dir
   }));
 
   /** 恒等式：已选数量必须等于「可见卡片中带 .selected 的数量」 */
@@ -142,14 +144,18 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   /* ---------------- 3. 排序变化不影响勾选 ---------------- */
   console.log('\n=== 3. 只改排序，集合没变 → 勾选保持 ===');
+  /* 排序现在是「维度下拉 + 升降序按钮」两个控件：换维度走 select 的 change，
+     换方向点按钮。这里两样都动一下，确保「改排序」这条路径整体没坏。 */
   await gallery.evaluate(() => {
     const sel = document.getElementById('selSort');
-    sel.value = 'area-asc';
+    sel.value = 'area';
     sel.dispatchEvent(new Event('change', { bubbles: true }));
+    document.getElementById('btnSortDir').click();   // 大到小 → 小到大
   });
   await sleep(500);
   s = await checkInvariant('改排序后');
   check(s.selected === 1, '改排序不影响勾选', String(s.selected));
+  check(s.dir === 'asc', '升降序按钮确实把方向切成了升序', String(s.dir));
 
   /* ---------------- 4. 全选 = 当前筛选结果 ---------------- */
   console.log('\n=== 4. 全选 ===');

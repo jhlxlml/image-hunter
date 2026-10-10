@@ -328,6 +328,25 @@
         </div>
         <div class="row">
           <div class="label">
+            <b data-i18n="opt.uxSort">图库默认排序</b>
+            <span data-i18n="opt.uxSortHint">每次打开图库时按这个方式排列图片（在图库里临时改的排序不会记住）</span>
+          </div>
+          <div class="control">
+            <!-- 一个下拉装「维度 + 方向」两件事。没拆成两个控件是因为这里
+                 不常改，一个下拉一眼就能看到全部 6 种组合、不用来回试；
+                 图库里那个才需要拆开（那边要频繁切）。 -->
+            <select class="sel" data-key="defaultSort">
+              <option value="area:desc" data-i18n="opt.sortAreaDesc">分辨率 · 大到小</option>
+              <option value="area:asc" data-i18n="opt.sortAreaAsc">分辨率 · 小到大</option>
+              <option value="size:desc" data-i18n="opt.sortSizeDesc">文件体积 · 大到小</option>
+              <option value="size:asc" data-i18n="opt.sortSizeAsc">文件体积 · 小到大</option>
+              <option value="order:desc" data-i18n="opt.sortOrder">页面顺序</option>
+              <option value="host:desc" data-i18n="opt.sortHost">站点</option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+          <div class="label">
             <b data-i18n="opt.uxShortcut">面板快捷键</b>
             <span data-i18n="opt.uxShortcutHint">默认 Alt+Shift+S，可在浏览器扩展快捷键页面修改</span>
           </div>

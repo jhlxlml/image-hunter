@@ -271,6 +271,34 @@ input[type="text"] {
 
 input[type="text"]:focus { border-color: var(--primary); background: var(--surface); }
 
+/* 下拉选择器（目前只有「图库默认排序」一处）。
+   刻意做成和文本框**同高同圆角同底色** —— 它们出现在同一种行里，
+   一个有边框一个没有、或高矮差几像素，一排看下去就会显得零碎。
+   箭头用内联 SVG（原生 select 的箭头没法调大小和颜色）。 */
+select.sel {
+  height: 34px;
+  padding: 0 30px 0 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background-color: var(--surface-2);
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 600;
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23949bab' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 14px;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+select.sel:hover { border-color: var(--primary-soft-2); }
+
+select.sel:focus { border-color: var(--primary); background-color: var(--surface); }
+
 .seg {
   display: inline-flex;
   padding: 3px;

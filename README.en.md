@@ -60,8 +60,9 @@ lets you switch targets at any time, and switching re-scans.
 - **11 source types**: `<img>`, `srcset`, `<picture>`, lazy-load attributes (`data-src` etc.), CSS background images,
   pseudo-element backgrounds, `video poster`, inline SVG, linked images, `preload`, `og:image` — **including all iframes**
 - **Multi-dimensional filtering**: resolution presets (≥800 / ≥1200 / ≥1920 / ≥2560), a continuous minimum-size slider (0–4096px, **default 256**),
-  aspect ratio, format, source, keyword search
-- **Sorting**: resolution / file size / page order / site
+  aspect ratio, format, source; **keyword search lives in the top bar**, always one click away
+- **Sorting**: dimension (resolution / file size / page order / site) + a one-tap asc/desc toggle;
+  **the default sort is configurable in settings**
 - **Batch actions**: drag-select, select all, clear, batch save; the top bar shows "N selected · X MB total" live
 
 ### 3. Guaranteed original — a three-layer mechanism
@@ -117,8 +118,9 @@ hover buttons must be visible on focus (fixes WCAG 2.4.7), and state changes are
 | **Three global shortcuts** | `Alt+Shift+S` in-page panel / `Alt+Shift+G` open gallery / `Alt+Shift+D` save the currently hovered image |
 | **Self-service diagnostics bundle** | One click in the options page exports JSON. **Aggregate numbers and hostnames only** — no image URLs, page URLs, or file paths |
 | **Chinese / English UI** | Switchable at runtime in the options page ("Interface language": follow browser / 中文 / English). Default follows the browser language |
+| **Configurable default sort** | Pick the default sort in the options page ("Interaction"): resolution / file size × large→small · small→large, page order, or site. The gallery initialises to it **every time it opens**; a sort you change on the fly is not persisted, matching how filters behave |
 | **Customisable theme** | Light / dark / follow-system, six colour schemes (Indigo · Teal · Emerald · Rose · Amber · Slate), or pick any accent colour with the colour picker. Change it once and the gallery, the in-page panel and the lightbox accent colour **all** follow |
-| **UI gets out of the way** | Every top-bar action stays visible and one click away, but the faux-3D gradients are gone; the filter bar is collapsed by default and cards have no border unless hovered — so you see a wall of images first, not a ring of toolbars |
+| **UI gets out of the way** | Every top-bar action stays visible and one click away (search included), but the faux-3D gradients are gone; the filter bar is collapsed by default and cards have no border unless hovered — so you see a wall of images first, not a ring of toolbars |
 
 ---
 

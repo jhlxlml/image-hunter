@@ -113,12 +113,35 @@
     aspect: 'all',
     type: 'all',
     source: 'all',
-    sort: 'area',
+    /* 排序拆成「维度 + 方向」两件事（界面上也是一个下拉 + 一个按钮）。
+       原来把「分辨率 大→小 / 分辨率 小→大」当成两个并列选项 ——
+       五个选项里有两对是同一维度的正反，选完还得回下拉里找另一头；
+       而且每加一个维度就要多两个选项。 */
+    sortKey: 'area',
+    sortDir: 'desc',
     search: '',
     onlyRestored: false,
     hideDownloaded: false,
     maxOnly: false
   };
+
+  /** 合法的排序维度 / 方向。改这里就要同步改设置页那个 select 的 option 值。 */
+  const SORT_DIMS = ['area', 'size', 'order', 'host'];
+  const SORT_DIRS = ['desc', 'asc'];
+
+  /**
+   * 把设置里存的 `'<维度>:<方向>'`（如 `'area:desc'`）解析成 { key, dir }。
+   * 任何不认识的值都退回默认 —— 设置可能是老版本写的、或者用户手改过 JSON，
+   * 不能让它把一个非法值透传进 sort() 的比较函数（那样排序结果会是乱的，
+   * 而且不报错）。
+   */
+  function parseSort(spec) {
+    const parts = String(spec == null ? '' : spec).split(':');
+    return {
+      key: SORT_DIMS.indexOf(parts[0]) >= 0 ? parts[0] : 'area',
+      dir: SORT_DIRS.indexOf(parts[1]) >= 0 ? parts[1] : 'desc'
+    };
+  }
 
   /* 「上次看着是什么样」的界面状态（与 filters 分开：那些是**约束**，
      这些纯粹是**布局偏好**，不该混进 activeFilterCount 或落进导出）。
@@ -334,6 +357,9 @@
     buildStaticChips();
     buildDynamicChips();
     buildSizePresets();
+    // 排序控件按设置里的「默认排序」初始化（必须在 bindEvents 之前，
+    // 免得用户还没操作就被当成「改过了」）
+    applyDefaultSort();
     bindSizeSlider();
     bindEvents();
 
@@ -749,6 +775,8 @@
     buildDynamicChips();
     buildSizePresets();
     renderTargets();
+    // 排序方向按钮的文案是**按当前方向**拼的，I18n.apply 管不到，得单独重写
+    updateSortDirUI();
     // 卡片上的角标、aria-label、底栏统计都嵌着文案 —— 重跑一遍才会换语言
     if (state.all.length) applyFilters();
     else updateStats();
@@ -1022,6 +1050,9 @@
     filters.search = '';
     SWITCHES.forEach((s) => { filters[s.key] = false; });
     if ($('search')) $('search').value = '';
+    /* 排序也一并回到**设置里的默认排序**（不是硬编码的「分辨率 大到小」）——
+       「重置」的语义是「恢复默认」，而默认值现在是可配置的。 */
+    applyDefaultSort();
     buildStaticChips();
     buildDynamicChips();
     buildSizePresets();
@@ -1072,6 +1103,46 @@
   }
 
   /* ------------------------------------------------------------------ *
+   * 排序
+   * ------------------------------------------------------------------ */
+
+  /**
+   * 把当前排序方向同步到那个按钮上：图标旋转 + 文案。
+   *
+   * 文案（title / aria-label）**不挂 data-i18n** —— 它跟着方向变，
+   * 挂上去会在切语言时被覆盖成一个固定方向的说法（I18n.apply 是整段覆写）。
+   * 所以由这里在「初始化」和「切语言」两个时刻各写一次
+   * （见 init 里的调用与 applyLangChange）。
+   */
+  function updateSortDirUI() {
+    const btn = $('btnSortDir');
+    if (!btn) return;
+    const asc = filters.sortDir === 'asc';
+    btn.classList.toggle('asc', asc);
+    const label = t(asc ? 'pop.sortDirAscTitle' : 'pop.sortDirDescTitle');
+    btn.setAttribute('title', label);
+    btn.setAttribute('aria-label', label);
+    // 给测试和调试一个稳定的读点，不必去猜 svg 转了多少度
+    btn.dataset.dir = filters.sortDir;
+  }
+
+  /**
+   * 用设置里的「默认排序」初始化排序控件。
+   *
+   * 图库**每次打开**都回到这个默认值 —— 用户在界面上临时改的排序不落盘，
+   * 和筛选条件一致（只有滑条值与筛选条展开态两个纯布局偏好会记住）。
+   * 这样设置页那一项的效果就是可预期的：改了什么，下次打开就是什么。
+   */
+  function applyDefaultSort() {
+    const s = parseSort(Store.getSettings().defaultSort);
+    filters.sortKey = s.key;
+    filters.sortDir = s.dir;
+    const sel = $('selSort');
+    if (sel) sel.value = filters.sortKey;
+    updateSortDirUI();
+  }
+
+  /* ------------------------------------------------------------------ *
    * 事件绑定
    * ------------------------------------------------------------------ */
 
@@ -1083,7 +1154,21 @@
     // 网格的键盘导航（roving tabindex + 方向键），见 onGridKeydown
     $('grid').addEventListener('keydown', onGridKeydown);
 
-    $('selSort').addEventListener('change', (e) => { filters.sort = e.target.value; applyFilters(); });
+    /* 排序拆成两个控件：下拉选**维度**、按钮切**方向**。
+       两个都只改 filters 再 applyFilters，没有别的副作用 ——
+       排序不参与「生效筛选条件」的计数（角标数的是筛选，不是排序）。 */
+    $('selSort').addEventListener('change', (e) => {
+      filters.sortKey = e.target.value;
+      applyFilters();
+    });
+
+    $('btnSortDir').addEventListener('click', () => {
+      filters.sortDir = filters.sortDir === 'asc' ? 'desc' : 'asc';
+      updateSortDirUI();
+      applyFilters();
+      // 方向只体现在图标旋转上，太轻；补一句播报给读屏器（也是可见 toast）
+      toast(t(filters.sortDir === 'asc' ? 'pop.sortAsc' : 'pop.sortDesc'));
+    });
 
     const search = $('search');
     search.addEventListener('input', U.debounce(() => {
@@ -2237,21 +2322,29 @@
       list = list.filter((c) => keep.has(c.id));
     }
 
-    // 排序
+    /* 排序：先按**维度**比较出一个带符号的差值，再按**方向**整体取反。
+       方向对 area / size 有直观意义（大到小 / 小到大）；对 order / host
+       就是「正序 / 逆序」—— 一样说得通，所以统一支持，不为它们开特例。
+       比较函数只要求符号有意义，所以直接 `flip * r` 就够了。 */
+    const flip = filters.sortDir === 'asc' ? 1 : -1;
     list.sort((a, b) => {
-      switch (filters.sort) {
-        case 'area-asc': return areaOf(a) - areaOf(b);
-        case 'size': return (state.sizes[b.url] || 0) - (state.sizes[a.url] || 0);
-        case 'order': return (a.order || 0) - (b.order || 0);
+      let r;
+      switch (filters.sortKey) {
+        case 'size': r = (state.sizes[a.url] || 0) - (state.sizes[b.url] || 0); break;
+        case 'order': r = (a.order || 0) - (b.order || 0); break;
         /* 「站点」：合并嗅探时先按**来源页**分组 —— 那才是用户勾多个页面时想看的；
            页内再按图片自己的域名。单页扫描时 pageIndex 恒为 0，
            于是退化成「按图片域名排」，也就是这个选项标签本来就该有的行为
-           （此前 c.host 一直是空的，这条排序其实一直在按面积兜底，见 background.js）。 */
-        case 'host': return ((a.pageIndex || 0) - (b.pageIndex || 0))
-          || String(a.host || '').localeCompare(String(b.host || ''))
-          || areaOf(b) - areaOf(a);
-        default: return areaOf(b) - areaOf(a);
+           （此前 c.host 一直是空的，这条排序其实一直在按面积兜底，见 background.js）。
+           同组同域名时再按面积打平，让结果稳定。 */
+        case 'host':
+          r = ((a.pageIndex || 0) - (b.pageIndex || 0))
+            || String(a.host || '').localeCompare(String(b.host || ''))
+            || (areaOf(a) - areaOf(b));
+          break;
+        default: r = areaOf(a) - areaOf(b);
       }
+      return flip * r;
     });
 
     state.filtered = list;
