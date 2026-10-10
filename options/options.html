@@ -4,6 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title data-i18n="opt.title">图片猎人 · 设置</title>
+  <!-- theme.css 必须在 options.css 之前（理由见 popup.html 同处注释） -->
+  <link rel="stylesheet" href="../shared/theme.css">
   <link rel="stylesheet" href="options.css">
 </head>
 <body>
@@ -52,10 +54,16 @@
             </div>
           </div>
         </div>
+        <!-- 主题：三个正交的维度排成三行，各自有独立标签。
+             为什么拆成三行而不是挤在一行：亮暗档、配色方案、自定义主色
+             是三件事（可以只换配色不换亮暗），挤在一行会让人以为
+             「选了一套配色」= 「顺带把亮暗也改了」。
+             配色方案用色卡而不是下拉：六套配色的区别就是颜色本身，
+             让用户看颜色选，比看名字（靛蓝/青碧/翡翠）再想象要直接。 -->
         <div class="row">
           <div class="label">
-            <b data-i18n="opt.theme">主题</b>
-            <span data-i18n="opt.themeHint">影响弹窗、面板与设置页的配色</span>
+            <b data-i18n="opt.themeMode">亮暗模式</b>
+            <span data-i18n="opt.themeHint">亮暗模式与配色方案，影响图库、页内面板与设置页</span>
           </div>
           <div class="control">
             <div class="seg" id="segTheme">
@@ -63,6 +71,40 @@
               <button data-v="dark" data-i18n="cmn.dark">深色</button>
               <button data-v="auto" data-i18n="cmn.auto">跟随系统</button>
             </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="label">
+            <b data-i18n="opt.themePreset">配色方案</b>
+            <span data-i18n="opt.themePresetHint">整体色调。六套预设各自自带浅色与深色两档主色</span>
+          </div>
+          <div class="control">
+            <!-- 色卡由 options.js 按 IH.Theme.presetList() 拼出来 ——
+                 颜色值来自 theme.js 的 PRESETS，不在这里写死一份。
+                 每张色卡是一个 radio（用 role="radiogroup" 表达单选语义），
+                 键盘左右键能切。 -->
+            <div class="swatches" id="themeSwatches" role="radiogroup"
+                 data-i18n-aria="opt.themePreset" aria-label="配色方案"></div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="label">
+            <b data-i18n="opt.themeAccent">自定义主色</b>
+            <span data-i18n="opt.themeAccentHint">覆盖配色方案的主色。其余深浅色与投影会自动跟随</span>
+          </div>
+          <div class="control">
+            <!-- 原生 color input 在设置页里长得太「系统」（各平台差异大），
+                 所以用一个 .accent-pick 外壳包住它，视觉上与其它控件一致。
+                 「跟随配色方案」按钮在没自定义时显示为禁用态 ——
+                 它此时是无操作的，给一个能点的按钮反而会让人多点一次。 -->
+            <label class="accent-pick" id="accentPick">
+              <input type="color" id="themeAccent" value="#4f6ef7">
+              <span class="accent-swatch" id="accentSwatch" aria-hidden="true"></span>
+              <span class="accent-label" data-i18n="opt.themeAccentPick">选一个颜色</span>
+            </label>
+            <button class="btn ghost" id="btnAccentReset" data-i18n="opt.themeAccentReset">恢复跟随配色方案</button>
           </div>
         </div>
       </div>
@@ -407,6 +449,8 @@
   <script src="../shared/store.js"></script>
   <!-- i18n 必须在 store.js 之后：它要读 settings.uiLang 决定用哪种语言 -->
   <script src="../shared/i18n.js"></script>
+  <!-- theme.js 也在 store.js 之后：它要读 settings.theme / themePreset / themeAccent -->
+  <script src="../shared/theme.js"></script>
   <script src="../shared/diagnostics.js"></script>
   <script src="options.js"></script>
 </body>

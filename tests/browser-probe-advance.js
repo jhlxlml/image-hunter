@@ -64,7 +64,7 @@ async function waitIdle(page, budgetMs) {
   let waited = 0;
   while (waited < budgetMs) {
     const t = await page.evaluate(() => ({
-      disabled: document.getElementById('btnProbe').disabled,
+      disabled: (document.getElementById('btnProbe').disabled || document.getElementById('btnProbe').getAttribute('aria-disabled') === 'true'),
       busy: document.getElementById('btnProbe').classList.contains('busy')
     }));
     if (!t.disabled && !t.busy) return true;
@@ -150,7 +150,7 @@ async function targetTab(sw, port) {
     siteA.resetProbeLog();
 
     await gallery.evaluate(() => document.getElementById('btnProbe').click());
-    const during = await gallery.evaluate(() => document.getElementById('btnProbe').disabled);
+    const during = await gallery.evaluate(() => (document.getElementById('btnProbe').disabled || document.getElementById('btnProbe').getAttribute('aria-disabled') === 'true'));
     check(during === true, '点击后按钮立刻进入禁用（探测中）', String(during));
 
     check(await waitIdle(gallery, 60000), '探测结束后按钮恢复可用');
@@ -207,7 +207,10 @@ async function targetTab(sw, port) {
     }
     const alive = await gallery.evaluate(() => {
       const b = document.getElementById('btnProbe');
-      return { disabled: b.disabled, busy: b.classList.contains('busy') };
+      return {
+        disabled: b.disabled || b.getAttribute('aria-disabled') === 'true',
+        busy: b.classList.contains('busy')
+      };
     });
     check(!alive.disabled && !alive.busy, '连续点击后按钮依然可用（没有卡在探测中）',
       JSON.stringify(alive));

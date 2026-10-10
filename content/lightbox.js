@@ -727,6 +727,8 @@
   IH.Lightbox = {
     open, close, save: saveCurrent,
     isOpen: () => !!IH.__lightboxOpen,
+    /* 供 content/main.js 的 syncTheme 用（理由同 hover.js 的同名方法） */
+    host: () => (ui ? ui.host : null),
     /* 过滤现场（只读快照）。测试靠它区分「列表确实被过滤了」和
        「页面本来就只有这几张」—— 只看 DOM 计数分不清这两件事。 */
     lastFilter: () => ({ minSize, dropped, kept: list.length })

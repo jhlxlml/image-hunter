@@ -166,7 +166,27 @@
     'opt.general': '通用',
     'opt.generalSub': '界面外观与基础偏好',
     'opt.theme': '主题',
-    'opt.themeHint': '影响弹窗、面板与设置页的配色',
+    'opt.themeHint': '亮暗模式与配色方案，影响图库、页内面板与设置页',
+
+    'opt.themeMode': '亮暗模式',
+    'opt.themePreset': '配色方案',
+    'opt.themePresetHint': '整体色调。六套预设各自自带浅色与深色两档主色',
+    'opt.themeAccent': '自定义主色',
+    'opt.themeAccentHint': '覆盖配色方案的主色。其余深浅色与投影会自动跟随',
+    'opt.themeAccentAuto': '跟随配色方案',
+    'opt.themeAccentPick': '选一个颜色',
+    'opt.themeAccentReset': '恢复跟随配色方案',
+    'opt.themePreview': '预览',
+    /* 预设名字。为什么不放进 theme.js 的 PRESETS 里：
+       那里已经有 zh / en 两个字段，但界面文案的**唯一入口**是这张表 ——
+       两处都存一份就是又一次「两份会漂移的副本」。
+       这里按 preset 的 key 拼出键名（opt.preset.indigo 等）。 */
+    'opt.preset.indigo': '靛蓝',
+    'opt.preset.teal': '青碧',
+    'opt.preset.emerald': '翡翠',
+    'opt.preset.rose': '玫红',
+    'opt.preset.amber': '琥珀',
+    'opt.preset.slate': '石板',
 
     'opt.scan': '嗅探范围',
     'opt.scanSub': '决定「能发现哪些图片」。开启得越多，越不容易漏图',
@@ -645,7 +665,23 @@
     'opt.general': 'General',
     'opt.generalSub': 'Appearance and basic preferences',
     'opt.theme': 'Theme',
-    'opt.themeHint': 'Applies to the popup, the in-page panel and this settings page',
+    'opt.themeHint': 'Light/dark mode and colour scheme. Applies to the gallery, the in-page panel and this settings page',
+
+    'opt.themeMode': 'Light/dark mode',
+    'opt.themePreset': 'Colour scheme',
+    'opt.themePresetHint': 'Overall hue. Each of the six presets ships its own light and dark accent',
+    'opt.themeAccent': 'Custom accent',
+    'opt.themeAccentHint': 'Overrides the accent of the colour scheme. Shades and shadows follow automatically',
+    'opt.themeAccentAuto': 'Follow the colour scheme',
+    'opt.themeAccentPick': 'Pick a colour',
+    'opt.themeAccentReset': 'Back to the colour scheme',
+    'opt.themePreview': 'Preview',
+    'opt.preset.indigo': 'Indigo',
+    'opt.preset.teal': 'Teal',
+    'opt.preset.emerald': 'Emerald',
+    'opt.preset.rose': 'Rose',
+    'opt.preset.amber': 'Amber',
+    'opt.preset.slate': 'Slate',
 
     'opt.scan': 'What to scan',
     'opt.scanSub': 'Decides which images can be found. The more you enable, the less you miss.',

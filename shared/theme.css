@@ -1,0 +1,233 @@
+/* ==========================================================================
+ * ImageHunter — shared/theme.css
+ *
+ * **全应用唯一的颜色 / 圆角 / 字体来源。**
+ *
+ * 为什么单独抽一个文件（v1.15.0 之前不是这样）：
+ *   原来 popup.css、options.css、content/overlay.css 各自写了一套变量 ——
+ *   三份副本、名字相同值却不同（同一个 --primary-soft-2，图库页是 .16、
+ *   设置页是 .18），设置页还少定义了 --shadow-xs / --success-soft /
+ *   --danger-soft / --warn-soft 四个。谁改一处、漏一处，界面就静默不一致，
+ *   而且**看不出来**（两页不同时出现在屏幕上，色差 .02 人眼分不出）。
+ *   更关键的是「可自定义主题」这个需求根本没法在三份副本上做：
+ *   改一个主色要同时改三处，还必然漏。
+ *
+ * 加载顺序：theme.css 必须在 popup.css / options.css **之前**。
+ *   变量定义在前、组件引用在后，同一条规则被覆盖时才是「组件赢」。
+ *   validate.js 的「主题」一节会盯着这个顺序。
+ *
+ * 深色模式：靠 <html data-theme="dark">，由 shared/theme.js 写。
+ *   `auto` 在 JS 里就解析成了 light / dark，CSS 里不写
+ *   `@media (prefers-color-scheme)` —— 那样会和用户手选的值打架。
+ * ========================================================================== */
+
+:root {
+  /* ---- 主色（可被用户自定义，见 shared/theme.js 的 Theme.apply）----
+     --primary 由用户直接给（取色器 / 预设）；
+     下面三个派生值由 JS 按 HSL 算出来写成内联 style，
+     这里的定义是**没有 JS 时的兜底**（例如设置页被禁用脚本打开）。
+     这样「只改一个颜色，整套界面自洽」—— 用户不需要理解四个变量。
+
+     这几组值不是手挑的，是 Theme._derive('#4f6ef7', 'light') 的**输出**
+     （深色档同理取自 '#6b86ff'）—— 必须与它逐字符相等，
+     否则「没设过预设」与「选了靛蓝预设」会渲染出两个略微不同的颜色。
+     tests/test-theme.js 里有一条断言钉着这个相等关系。 */
+  --primary: #4f6ef7;
+  --primary-dark: #3c5adc;
+  --primary-soft: rgba(79, 110, 247, 0.1);
+  --primary-soft-2: rgba(79, 110, 247, 0.16);
+  /* 主色投影。单独抽出来是因为散在各处的 rgba(79,110,247,…) 有 9 处，
+     改主色时全都会留在原来的蓝色上 —— 那是最刺眼的破绽。 */
+  --primary-shadow: rgba(79, 110, 247, 0.18);
+  --primary-shadow-strong: rgba(79, 110, 247, 0.34);
+  /* 主色圆环（spinner 之类的「转圈轨道」）。介于 soft 与 soft-2 之间，
+     比 soft 看得见、比 soft-2 轻。页内 UI 的 .ih-spinner 用它。 */
+  --primary-ring: rgba(79, 110, 247, 0.22);
+  /* 「不透明主色」—— 给**压在照片上**的元素用（图库卡片角标、灯箱按钮）。
+     不能直接用 --primary：那里需要 90% 上下的不透明度来保证图片透不过来，
+     而这个透明度是分层写死的。单独开一个 token，改主色时它跟着走。 */
+  --primary-solid: rgba(79, 110, 247, 0.92);
+
+  /* ---- 面 ---- */
+  --bg: #f4f5f8;
+  --surface: #ffffff;
+  --surface-2: #fafbfc;
+  --surface-3: #f0f1f5;
+
+  /* ---- 线 ---- */
+  --border: #e6e8ef;
+  --border-strong: #d7dae3;
+
+  /* ---- 字 ---- */
+  --text: #1f2430;
+  --text-2: #5b6371;
+  --text-3: #949bab;
+
+  /* ---- 语义色 ---- */
+  --success: #16a34a;
+  --success-soft: rgba(22, 163, 74, 0.12);
+  --danger: #e5484d;
+  --danger-soft: rgba(229, 72, 77, 0.12);
+  --warn: #d97706;
+  --warn-soft: rgba(217, 119, 6, 0.12);
+
+  /* ---- 阴影 ---- */
+  --shadow-xs: 0 1px 2px rgba(17, 24, 39, 0.05);
+  --shadow-sm: 0 1px 2px rgba(17, 24, 39, 0.06), 0 2px 6px rgba(17, 24, 39, 0.05);
+  --shadow-md: 0 6px 20px rgba(17, 24, 39, 0.12), 0 2px 6px rgba(17, 24, 39, 0.06);
+
+  /* ---- 圆角 ---- */
+  --radius-sm: 8px;
+  --radius: 11px;
+  --radius-lg: 14px;
+
+  /* ---- 字体 ---- */
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+}
+
+/* 深色模式只覆盖**该变的那些**：主色提亮（深底上 #4f6ef7 的对比度不够），
+   面色反转，语义色往亮处走。圆角 / 字体 / 间距与主题无关，不重复声明。 */
+[data-theme="dark"] {
+  /* 同 :root 的说明：这几组是 Theme._derive('#6b86ff', 'dark') 的输出，
+     必须逐字符相等（tests/test-theme.js 守着） */
+  --primary: #6b86ff;
+  --primary-dark: #8a9fff;
+  --primary-soft: rgba(107, 134, 255, 0.16);
+  --primary-soft-2: rgba(107, 134, 255, 0.26);
+  --primary-shadow: rgba(107, 134, 255, 0.22);
+  --primary-shadow-strong: rgba(107, 134, 255, 0.38);
+  --primary-ring: rgba(107, 134, 255, 0.28);
+  --primary-solid: rgba(107, 134, 255, 0.92);
+
+  --bg: #14161c;
+  --surface: #1c1f27;
+  --surface-2: #21242d;
+  --surface-3: #272b35;
+
+  --border: #2c313c;
+  --border-strong: #3a4150;
+
+  --text: #eef0f4;
+  --text-2: #a8afbd;
+  --text-3: #737b8b;
+
+  --success: #34d17f;
+  --success-soft: rgba(52, 209, 127, 0.14);
+  --danger: #ff6b6f;
+  --danger-soft: rgba(255, 107, 111, 0.14);
+  --warn: #f0b429;
+  --warn-soft: rgba(240, 180, 41, 0.14);
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+/* ==========================================================================
+ * 页内 UI（content/overlay.css）的变量映射
+ *
+ * overlay 用的是 --ih-* 前缀（当初为了在宿主页面上不和别的扩展撞名）。
+ * 这里**不重命名那 479 行**，只在 :host 里把 --ih-* 指到共享 token，
+ * 一个前缀映射就同时拿到「单一来源」和「自定义主题」。
+ *
+ * 只在 override 层写，不写进 :root —— 这两个选择器（:host / .ih-root）
+ * 对普通页面是无效选择器，浏览器会整条规则丢弃，不会污染 popup / options。
+ *
+ * 为什么仍然保留 --ih-* 这一层：Shadow DOM 的作用是**隔离**。
+ * 宿主页面如果碰巧也定义了 --bg / --primary（很常见），
+ * 直接让 overlay 用共享变量名会被页面污染；经过 --ih-* 中转一次
+ * 就天然躲开了（--ih-* 在页面上几乎不可能有人用）。
+ * ========================================================================== */
+
+:host,
+.ih-root {
+  --ih-primary: var(--primary);
+  --ih-primary-dark: var(--primary-dark);
+  --ih-primary-soft: var(--primary-soft);
+
+  /* spinner 的圆环：--primary-soft（.10）太淡，当「轨道」看不见；
+     --primary-soft-2（.16）又太实，转起来像实心圆。
+     单独一档 .22 是量出来的中间值 —— 换主色时它会跟着走。 */
+  --ih-primary-ring: var(--primary-ring);
+  /* 灯箱里的主色实底按钮。灯箱恒深色（见下），所以这一档**不吃**深色模式的
+     提亮版主色 —— 它永远用浅色档主色，在深遮罩上刚好够亮。 */
+  --ih-primary-solid: var(--primary);
+
+  --ih-bg: var(--surface);
+  --ih-bg-soft: var(--surface-2);
+  --ih-bg-mute: var(--surface-3);
+
+  --ih-border: var(--border);
+  --ih-border-strong: var(--border-strong);
+
+  --ih-text: var(--text);
+  --ih-text-soft: var(--text-2);
+  --ih-text-faint: var(--text-3);
+
+  --ih-success: var(--success);
+  --ih-danger: var(--danger);
+
+  --ih-shadow-sm: var(--shadow-sm);
+  --ih-shadow-md: var(--shadow-md);
+  /* 灯箱要的是一层厚得多的投影，共享 token 里没有对应档位 —— 就地定义。
+     灯箱是恒深色的（见下面「灯箱例外」），这层阴影不跟主题走。 */
+  --ih-shadow-lg: 0 24px 60px rgba(17, 24, 39, 0.28), 0 4px 12px rgba(17, 24, 39, 0.12);
+  --ih-radius: var(--radius);
+  --ih-font: var(--font);
+}
+
+/* --------------------------------------------------------------------------
+ * 页内 UI 的深色模式
+ *
+ * 内容脚本不能改宿主页面的 <html>（那是别人的页面），所以它把
+ * `data-ih-theme="dark"` 打在**自己的 shadow host 元素**上（见
+ * shared/theme.js 的 applyToHost）。
+ *
+ * 为什么面色要在这里写死一份、不复用上面的 var(--surface) 映射：
+ * 上面那段的 var(--surface) 是**宿主页面的**根变量，而宿主页面没有
+ * data-theme（我们不会去改它），所以它永远是浅色档 —— 深色模式在这里
+ * 必须自己给一套值。主色则不同：主色是内容脚本按设置内联写在 host 上的，
+ * 优先级最高，所以上面 var(--primary) 那几行在深浅两档下都对。
+ *
+ * 这份值必须与 :root / [data-theme="dark"] 里的面色保持一致 ——
+ * 改了一边忘了另一边会「图库深色、悬停按钮浅色」地裂开。
+ * validate.js 的「主题」一节守着这两组值。
+ * -------------------------------------------------------------------------- */
+:host([data-ih-theme="dark"]),
+.ih-root[data-ih-theme="dark"] {
+  --ih-bg: #1c1f27;
+  --ih-bg-soft: #21242d;
+  --ih-bg-mute: #272b35;
+
+  --ih-border: #2c313c;
+  --ih-border-strong: #3a4150;
+
+  --ih-text: #eef0f4;
+  --ih-text-soft: #a8afbd;
+  --ih-text-faint: #737b8b;
+
+  --ih-success: #34d17f;
+  --ih-danger: #ff6b6f;
+
+  --ih-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.35);
+  --ih-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+/* --------------------------------------------------------------------------
+ * 灯箱例外：恒深色
+ *
+ * 灯箱（.ih-lb）是全屏遮罩看大图的地方，`.ih-lb` 自己写死了
+ * `rgba(11,13,18,0.9)` 的背景与浅色文字，**刻意不跟 data-theme 走**。
+ *
+ * 为什么不跟：灯箱里唯一的主体是那张图片。浅色遮罩会让浅底白边的图片
+ * 边缘糊进背景里，「看清图片」这个唯一目的反而受损 —— 深色遮罩是放大
+ * 图片时的通行做法，和用户选了什么界面主题无关。
+ *
+ * 但它的**强调色**（.ih-lb-primary 等按钮）仍然跟随主色：
+ * 自定义了主色的用户不该在灯箱里看到一个孤零零的蓝色按钮。
+ * 所以共享 token 里只取「主色 / 文字色」，不取「面色」。
+ *
+ * 这条不是默认行为，是显式决策 —— 改之前先读 tests/browser-theme.js
+ * 里那条断言（它守着「灯箱背景不随 data-theme 变、主色随」）。
+ * -------------------------------------------------------------------------- */

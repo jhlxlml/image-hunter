@@ -2,30 +2,20 @@
  * ImageHunter — content/overlay.css
  * 页内 UI 统一样式（全部注入 Shadow DOM，与宿主页面彻底隔离）
  * 设计语言：现代简约 · 浅色卡片 · 圆角 · 柔和阴影 · 主色点缀
+ *
+ * --ih-* 这套前缀仍然保留，但**不再自带一套值** —— 它现在是
+ * shared/theme.css 里共享 token 的别名（映射写在那个文件的
+ * `:host, .ih-root` 段）。这样既保住了 Shadow DOM 的隔离性
+ * （宿主页面上的 --bg / --primary 不会污染进来），又让页内 UI
+ * 与图库页 / 设置页共用同一个主题来源。
+ *
+ * 注入顺序见 content/overlay.js：theme.css 在前，本文件在后。
  * ========================================================================== */
 
+/* 字体与抗锯齿仍挂在根上（与变量层分开写：variables 那一段已经搬去
+   shared/theme.css 了，这两条是组件样式，留在这里） */
 :host,
 .ih-root {
-  --ih-primary: #4f6ef7;
-  --ih-primary-dark: #3b5bdb;
-  --ih-primary-soft: rgba(79, 110, 247, 0.10);
-  --ih-bg: #ffffff;
-  --ih-bg-soft: #f7f8fa;
-  --ih-bg-mute: #eef0f5;
-  --ih-border: #e6e8ee;
-  --ih-border-strong: #d5d9e2;
-  --ih-text: #1f2430;
-  --ih-text-soft: #6b7280;
-  --ih-text-faint: #9aa1ae;
-  --ih-success: #16a34a;
-  --ih-danger: #e5484d;
-  --ih-shadow-sm: 0 1px 2px rgba(17, 24, 39, 0.06), 0 1px 3px rgba(17, 24, 39, 0.05);
-  --ih-shadow-md: 0 4px 14px rgba(17, 24, 39, 0.14), 0 1px 3px rgba(17, 24, 39, 0.08);
-  --ih-shadow-lg: 0 24px 60px rgba(17, 24, 39, 0.28), 0 4px 12px rgba(17, 24, 39, 0.12);
-  --ih-radius: 12px;
-  --ih-font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
-    "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
-
   font-family: var(--ih-font);
   -webkit-font-smoothing: antialiased;
 }
@@ -130,7 +120,7 @@
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  border: 2px solid rgba(79, 110, 247, 0.22);
+  border: 2px solid var(--ih-primary-ring);
   border-top-color: var(--ih-primary);
   animation: ih-spin 0.7s linear infinite;
 }
@@ -248,7 +238,7 @@
   border-radius: 999px;
   font-size: 11px;
   font-weight: 600;
-  background: rgba(79, 110, 247, 0.9);
+  background: var(--ih-primary-solid);
   color: #fff;
 }
 
@@ -336,7 +326,7 @@
   transition: background 0.15s ease, transform 0.15s ease;
 }
 
-.ih-lb-nav:hover { background: rgba(79, 110, 247, 0.9); }
+.ih-lb-nav:hover { background: var(--ih-primary-solid); }
 .ih-lb-nav:active { transform: translateY(-50%) scale(0.93); }
 .ih-lb-nav svg { width: 20px; height: 20px; }
 .ih-lb-prev { left: 14px; }
@@ -471,7 +461,7 @@
   left: -3px;
   width: 3px;
   height: 100%;
-  background: linear-gradient(to bottom, var(--ih-primary), #8b5cf6);
+  background: linear-gradient(to bottom, var(--ih-primary), var(--ih-primary-dark));
   opacity: 0;
   transition: opacity 0.3s ease;
 }

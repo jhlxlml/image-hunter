@@ -9,6 +9,22 @@ function ok(label) { pass++; console.log('  ✓ ' + label); }
 function bad(label, extra) { fail++; console.log('  ✗ ' + label + (extra ? '  → ' + extra : '')); }
 function exists(rel) { return fs.existsSync(path.join(ROOT, rel)); }
 
+/* 只认标签本身（`<link rel="stylesheet" href="...">` / `<script src="...">`），
+   不用裸 indexOf 找文件名。
+   为什么：注释里提一句文件名（比如「theme.css 必须在 options.css 之前」）
+   就会让 indexOf 命中那段**注释**，于是「顺序正确」被判成「顺序不对」。
+   这个坑踩过两次 —— v1.15.0 新增主题注释时，先是 options.js / diagnostics.js
+   对不上，紧接着是 options.css / theme.css。凡是拿位置做断言的地方一律走它。
+
+   定义放在文件顶部：下面各节（16 / 19）都要用，写在中间会踩 TDZ
+   （`Cannot access 'tagSrcIdx' before initialization`）。 */
+function tagSrcIdx(html, name) {
+  const esc = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp('<(?:link|script)[^>]+(?:src|href)\\s*=\\s*["\'][^"\']*' + esc + '["\']');
+  const m = html.match(re);
+  return m ? m.index : -1;
+}
+
 /* 把 shared/i18n.js **真的跑一遍**，拿到中英两份文案表。
  *
  * 界面文案搬到 i18n 之后，那些「源码里有没有这句中文」的断言全部失效 ——
@@ -864,8 +880,11 @@ if (noUi.length) {
   console.log('  · 提示：以下设置在设置页里没有开关（不代表是死的，见注释）：' + noUi.join(', '));
 }
 // 反向守卫：这几条已知是「故意没有 data-key 但有其它 UI 形态」的，
-// 一旦它们被误判成"没有界面可以改"，说明 hasUi 的识别又漏了一类形态
-['theme', 'blockedHosts', 'customRules'].forEach((k) => {
+// 一旦它们被误判成"没有界面可以改"，说明 hasUi 的识别又漏了一类形态。
+// themePreset / themeAccent 是 v1.15.0 加的：色卡是 JS 生成的（HTML 里只有
+// 一个空容器 #themeSwatches），取色器靠 id="themeAccent" + persist 认出来。
+// 把它们钉在这里，是为了 next 一次改设置页时别把这两条识别能力碰掉。
+['theme', 'themePreset', 'themeAccent', 'blockedHosts', 'customRules'].forEach((k) => {
   if (hasUi(k)) ok('「' + k + '」被识别为有界面入口（非 data-key 形态也要认得出）');
   else bad('「' + k + '」被误判成没有界面入口 —— hasUi 漏了一类 UI 形态');
 });
@@ -1329,9 +1348,15 @@ console.log('\n=== 16. 诊断包的接线 ===');
   // (f) 设置页有按钮、脚本、绑定
   if (/id\s*=\s*["']btnExportDiag["']/.test(optHtml)) ok('设置页有「导出诊断包」按钮');
   else bad('设置页找不到 #btnExportDiag');
-  const scriptIdx = optHtml.indexOf('shared/diagnostics.js');
-  const optJsIdx = optHtml.indexOf('options.js');
-  if (scriptIdx >= 0 && scriptIdx < optJsIdx) ok('diagnostics.js 在 options.js 之前加载（IH.Diag 先就位）');
+  /* 只认 <script src="..."> 标签本身，不用裸 indexOf 找文件名 ——
+     注释里提一句 "options.js"（比如「色卡由 options.js 拼出来」）
+     就会让 indexOf 命中那段注释，于是「顺序正确」被判成「顺序不对」。
+     这个坑 v1.15.0 踩过一次：新增的主题注释里写了 options.js。
+     实现统一走文件顶部的 tagSrcIdx（同样的坑在 theme.css 上又踩了一次）。 */
+  const scriptSrcIdx = (name) => tagSrcIdx(optHtml, name);
+  const diagIdx = scriptSrcIdx('diagnostics.js');
+  const optJsIdx = scriptSrcIdx('options.js');
+  if (diagIdx >= 0 && optJsIdx >= 0 && diagIdx < optJsIdx) ok('diagnostics.js 在 options.js 之前加载（IH.Diag 先就位）');
   else bad('diagnostics.js 没被引入，或加载顺序在 options.js 之后');
   if (/\$\('btnExportDiag'\)\.addEventListener\('click'/.test(optJs)) ok('按钮绑定了点击处理');
   else bad('#btnExportDiag 没有绑定 —— 按钮点了没反应');
@@ -1634,6 +1659,338 @@ console.log('\n=== 18. 界面语言 ===');
           offenders.join('、'));
       }
     });
+  }
+}
+
+/* ======================================================================
+ * 19. 主题系统的接线（v1.15.0）
+ *
+ * 主题这件事的特点是：**错了也好看**。少引一个 theme.css、变量名拼错一个字母、
+ * 容器忘了加 data-key —— 界面照样渲染，只是颜色悄悄用回了兜底值，或者
+ * 用户改完发现"没反应"。所以这一节全部是「接线」层面的静态断言，
+ * 具体代数（derive / 亮暗判定）在 tests/test-theme.js 里测。
+ * ====================================================================== */
+console.log('\n=== 19. 主题系统的接线 ===');
+{
+  const themeCss = fs.readFileSync(path.join(ROOT, 'shared/theme.css'), 'utf8');
+  const themeJs = fs.readFileSync(path.join(ROOT, 'shared/theme.js'), 'utf8');
+  const optHtml = fs.readFileSync(path.join(ROOT, 'options/options.html'), 'utf8');
+  const popHtml = fs.readFileSync(path.join(ROOT, 'popup/popup.html'), 'utf8');
+  const popCss = fs.readFileSync(path.join(ROOT, 'popup/popup.css'), 'utf8');
+  const optCss = fs.readFileSync(path.join(ROOT, 'options/options.css'), 'utf8');
+  const overlayCss = fs.readFileSync(path.join(ROOT, 'content/overlay.css'), 'utf8');
+  const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'manifest.json'), 'utf8'));
+
+  /* (a) 单一 token 源：组件样式表里**不许**再出现变量定义。
+     这正是这次重构要消灭的东西 —— 三份值各不相同的副本。
+     判据只看「冒号缩进定义」这一种形态，靠 `--x: <值>;` 出现在大括号内的
+     行首位置识别；theme.css 自己是唯一豁免的文件。 */
+  ['popup/popup.css', 'options/options.css', 'content/overlay.css'].forEach((rel) => {
+    const src = rel === 'popup/popup.css' ? popCss
+      : rel === 'options/options.css' ? optCss : overlayCss;
+    /* 判据：大括号里的 `--x: <值>;`。两处容易写错、都踩过：
+       1) 先剥注释再找 —— 否则段落头注释里举的例子（`--primary: #4f6ef7;`）
+          会被当成真的定义。注意剥注释**不能**把行结构也改掉，
+          所以先剥注释、再按行扫。
+       2) 不能只认「行首」的 `--x:` —— `:root { --primary: #4f6ef7; }`
+          这种单行写法会漏掉。真正的判据是「在某个 `{}` 内部」，
+          所以直接在大括号块里扫，而不是按行扫。
+       行尾统一按 \r?\n 切：popup.css 是 CRLF（.gitattributes 钉的是 LF，
+       但工作区里可能被 checkout 成 CRLF），不处理会让 `\r` 留在值里。 */
+    const defs = [];
+    const body = src.replace(/\/\*[\s\S]*?\*\//g, '');
+    Array.from(body.matchAll(/\{([^{}]*)\}/g)).forEach((m) => {
+      Array.from(m[1].matchAll(/(--[a-z0-9-]+)\s*:/gi)).forEach((d) => defs.push(d[1]));
+    });
+    if (!defs.length) ok(rel + ' 里没有变量定义（变量都收在 shared/theme.css）');
+    else bad(rel + ' 里又出现了变量定义，会盖住 shared/theme.css：' + defs.join(', '));
+  });
+
+  /* (b) 加载顺序契约：变量定义必须排在引用它们的组件样式表**之前**。
+     反过来写不会报错，浏览器只是把 var(--primary) 当成无效值丢掉 ——
+     界面上表现为「大片颜色没了」，但看不出是顺序问题。
+     位置一律走 tagSrcIdx：这两个 HTML 的头注释里就写着
+     「theme.css 必须在 options.css 之前」，裸 indexOf 会命中注释。 */
+  {
+    let allOk = true;
+    [['options/options.html', optHtml, 'options.css'],
+      ['popup/popup.html', popHtml, 'popup.css']].forEach(([rel, html, own]) => {
+      const t = tagSrcIdx(html, 'shared/theme.css');
+      const o = tagSrcIdx(html, own);
+      if (t < 0) { bad(rel + ' 没有引入 shared/theme.css'); allOk = false; }
+      else if (o < 0) { bad(rel + ' 找不到自家样式表 ' + own); allOk = false; }
+      else if (t > o) {
+        bad(rel + ' 里 theme.css 排在 ' + own + ' 之后 —— 变量定义会晚于引用，颜色会整片失效');
+        allOk = false;
+      }
+    });
+    if (allOk) ok('两个页面都按「theme.css 在前、组件样式在后」引入了变量层');
+  }
+
+  /* (c) theme.js 必须排在 store.js 之后 —— 它要在 apply() 里读设置。
+     排在前面时 Store 还不存在，apply() 会拿到 undefined 设置，
+     于是界面永远停在默认主题（改了设置不生效，但没有任何报错）。 */
+  {
+    let allOk = true;
+    [['options/options.html', optHtml], ['popup/popup.html', popHtml]].forEach(([rel, html]) => {
+      const storeAt = tagSrcIdx(html, 'shared/store.js');
+      const themeAt = tagSrcIdx(html, 'shared/theme.js');
+      if (themeAt < 0) { bad(rel + ' 没有引入 shared/theme.js'); allOk = false; }
+      else if (storeAt >= 0 && themeAt < storeAt) {
+        bad(rel + ' 里 theme.js 排在 store.js 之前 —— apply() 会读到 undefined 设置');
+        allOk = false;
+      }
+    });
+    if (allOk) ok('两个页面的 theme.js 都排在 store.js 之后（apply 时能读到设置）');
+  }
+
+  /* (d) 内容脚本侧也要有 theme.js，且在 i18n.js 之后（theme.js 自己不发文案，
+     但它与 i18n 同属共享层，顺序写反说明清单被手工动过）。 */
+  {
+    const cs = manifest.content_scripts && manifest.content_scripts[0] && manifest.content_scripts[0].js || [];
+    const ti = cs.indexOf('shared/theme.js');
+    const ii = cs.indexOf('shared/i18n.js');
+    if (ti < 0) bad('manifest 的 content_scripts 里没有 shared/theme.js —— 页内面板切主题不会生效');
+    else if (ii >= 0 && ti < ii) bad('content_scripts 里 theme.js 排在 i18n.js 之前，顺序可疑');
+    else ok('manifest 的 content_scripts 引入了 shared/theme.js（在 i18n.js 之后）');
+  }
+
+  /* (e) web_accessible_resources 必须放行 theme.css。
+     内容脚本用 <link> 往 shadow root 里注入样式表，拿不到访问权的资源
+     会被浏览器拦掉 —— 表现是面板完全没样式，但控制台只有一条被折叠的网络错误。 */
+  {
+    const war = manifest.web_accessible_resources || [];
+    const flat = war.reduce((acc, w) => acc.concat(w.resources || []), []);
+    if (flat.indexOf('shared/theme.css') >= 0) {
+      ok('web_accessible_resources 放行了 shared/theme.css（shadow root 注入要用）');
+    } else {
+      bad('web_accessible_resources 没有放行 shared/theme.css —— 页内面板会丢样式');
+    }
+  }
+
+  /* (f) 散落的主色投影必须走 token。
+     这几处的共同点是「亮色按钮 + 蓝色光晕」看着完全正常，
+     只有把主色改成橙色才会露馅（一圈蓝光围着橙色按钮）。
+     硬编码的 rgba(79,110,247,…) 一旦回流，用户改主色就会看到蓝色残影。 */
+  {
+    const stray = [];
+    const scan = (rel, src) => {
+      /* 行号要按**原始文件**算，不能按剥完注释的那份 ——
+         剥注释会把多行注释压成空串、行数错位，报出来的行号指向别处。
+         先剥注释只为避开注释里举的例子，所以位置还是回到原文里找。 */
+      const stripped = src.replace(/\/\*[\s\S]*?\*\//g, '');
+      const re = /rgba\(\s*79\s*,\s*110\s*,\s*247[^)]*\)/g;
+      let m;
+      while ((m = re.exec(stripped))) {
+        // 用命中片段在原文里定位（主题相关的这几处片段都足够独特）
+        const at = src.indexOf(m[0]);
+        const line = at < 0 ? 0 : src.slice(0, at).split('\n').length;
+        stray.push(rel + ':' + line);
+      }
+    };
+    scan('popup/popup.css', popCss);
+    scan('options/options.css', optCss);
+    scan('content/overlay.css', overlayCss);
+    if (!stray.length) ok('三张样式表里没有硬编码的默认主色 rgba(79,110,247,…)（都走 token 了）');
+    else bad('这些地方还在硬编码默认主色，改主色时会留下蓝色残影：' + stray.join('、'));
+  }
+
+  /* (g) 设置页三行主题控件的挂点必须齐。
+     色卡容器是 JS 生成的，HTML 里只有一个空 div —— 所以只能靠 id 钉。
+     少一个挂点 = 那一行永远空白，而且 JS 里 `$(...)` 返回 null 时不报错。 */
+  {
+    const need = [
+      ['#segTheme', '亮暗模式分段按钮组'],
+      ['#themeSwatches', '配色方案色卡容器'],
+      ['#themeAccent', '自定义主色取色器'],
+      ['#btnAccentReset', '恢复跟随配色方案的按钮']
+    ];
+    const missing = need.filter(([sel]) => optHtml.indexOf('id="' + sel.slice(1) + '"') < 0);
+    if (!missing.length) ok('设置页四个主题挂点齐全（' + need.map(([s]) => s).join(' / ') + '）');
+    else bad('设置页缺少主题挂点：' + missing.map(([s, d]) => s + '（' + d + '）').join('、'));
+  }
+
+  /* (h) theme.css 里的 token 名必须和 theme.js 的 TOKENS 对得上。
+     对不上的后果很隐蔽：apply() 写了一个 CSS 里不存在的变量（没人用），
+     clearAccent() 又漏掉了真正在用的那个（红色清不掉）。 */
+  {
+    const tokensM = themeJs.match(/const TOKENS = \[([^\]]+)\]/);
+    if (!tokensM) {
+      bad('theme.js 里找不到 TOKENS 数组 —— 本节的 token 对齐断言失去意义');
+    } else {
+      const tokens = Array.from(tokensM[1].matchAll(/'(--[\w-]+)'/g)).map((m) => m[1]);
+      const missing = tokens.filter((t) => themeCss.indexOf(t + ':') < 0 && themeCss.indexOf(t + ' :') < 0);
+      if (tokens.length >= 5 && !missing.length) {
+        ok('theme.js 的 ' + tokens.length + ' 个内联 token 都能在 theme.css 里找到');
+      } else if (missing.length) {
+        bad('theme.js 会写这些 theme.css 里不存在的变量：' + missing.join(', '));
+      } else {
+        bad('从 TOKENS 里只解析出 ' + tokens.length + ' 个变量 —— 解析正则可能脱节了');
+      }
+    }
+  }
+
+  /* (i) 内容脚本不能直接改宿主页面 <html> 的主题。
+     这条是「反向守卫」：applyToHost 是唯一允许写主题的地方，
+     它必须只写自己的 shadow host。直接往 document.documentElement 上写
+     会把宿主网站自己的深色模式开关顶掉（视觉上是"这个扩展坏了我的网站"）。 */
+  {
+    const contentFiles = ['content/main.js', 'content/hover.js', 'content/lightbox.js', 'content/panel.js'];
+    const offenders = [];
+    contentFiles.forEach((rel) => {
+      const src = fs.readFileSync(path.join(ROOT, rel), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+      if (/documentElement\.setAttribute\(\s*['"]data-ih-theme['"]/.test(src)) offenders.push(rel);
+    });
+    if (!offenders.length) ok('内容脚本没有直接往宿主页面 <html> 上写主题（只走 applyToHost）');
+    else bad('这些内容脚本直接改了宿主页面的主题属性，会顶掉网站自己的深浅色开关：' + offenders.join('、'));
+  }
+}
+
+console.log('\n=== 20. 顶栏收敛与筛选条默认态 ===');
+{
+  /* 这一节守的是「HTML 与 JS 对同一件事说法一致」。
+     browser-topbar.js 能证明运行起来是对的，但有几处它观测不到 ——
+     尤其是**首帧**（JS 还没跑时）HTML 自带的属性：
+     JS 跑起来之后会把两处都改对，注入验证因此会假绿（我实际踩到了），
+     但用户看到的那一帧闪动是真的。那条只能静态守。 */
+
+  /* (a) 三张组件样式表里不该再有「拟物」的上下渐变底色。
+     判据：.icon-btn / .pill / .size-slider / .topbar 的规则块里出现
+     linear-gradient(180deg, ...) 就是回退了。
+     （主色填充的渐变 —— 角标、选中的 chip、进度条、主按钮 —— 是另一回事，
+     它们本来就是实色块，不在这一节的范围内。） */
+  {
+    const popCss = fs.readFileSync(path.join(ROOT, 'popup/popup.css'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '');
+    const offenders = [];
+    ['.topbar', '.icon-btn', '.pill', '.size-slider'].forEach((sel) => {
+      /* 扫以该选择器**开头**的规则块（可带 [data-theme=...] 前缀的那种另算，
+         这里只看基础块）。用大括号配对，不按行扫 —— 单行写法会漏。 */
+      const re = new RegExp('(^|\\})\\s*' + sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        + '\\s*\\{([^{}]*)\\}', 'g');
+      let m;
+      while ((m = re.exec(popCss))) {
+        if (/linear-gradient\s*\(\s*180deg/.test(m[2])) offenders.push(sel);
+      }
+      // 深色档的覆盖块（[data-theme="dark"] .pill {...}）
+      const re2 = new RegExp('\\[data-theme="dark"\\]\\s*' + sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        + '\\s*\\{([^{}]*)\\}', 'g');
+      let m2;
+      while ((m2 = re2.exec(popCss))) {
+        if (/linear-gradient\s*\(\s*180deg/.test(m2[1])) offenders.push('[dark] ' + sel);
+      }
+    });
+    if (!offenders.length) ok('顶栏 / 图标按钮 / 胶囊 / 滑条都没有拟物渐变底色（回退就会被抓）');
+    else bad('这些控件又用回了线性渐变「打光」，顶栏会比图片还重：' + offenders.join('、'));
+  }
+
+  /* (b) 八个动作必须**全部**是顶栏的直接子元素。
+     曾经试过把三条收进「更多」溢出菜单，后来改回常驻 ——
+     所以这里同时守两件事：id 都在，且**没有**溢出菜单的残留。
+     （残留的 .menu 是绝对定位，会把后面所有东西的层叠顺序搅乱。） */
+  {
+    const need = ['btnRescan', 'btnProbe', 'btnExport', 'btnDeep',
+      'btnPanel', 'btnOptions', 'btnClose'];
+    const missing = need.filter((id) => popupHtml.indexOf('id="' + id + '"') < 0);
+    if (!missing.length) ok('顶栏七个按钮的 id 都在 HTML 里（含独立页不显示的关闭）');
+    else bad('顶栏缺这些 id（按钮会点了不动）：' + missing.join('、'));
+
+    /* 溢出菜单的痕迹：容器类/id、锚点按钮、菜单项标记 */
+    const leftovers = [];
+    if (/id="moreMenu"/.test(popupHtml)) leftovers.push('#moreMenu');
+    if (/id="btnMoreMenu"/.test(popupHtml)) leftovers.push('#btnMoreMenu');
+    if (/\bclass="[^"]*\bmenu-item\b/.test(popupHtml)) leftovers.push('.menu-item');
+    if (!leftovers.length) ok('溢出菜单已彻底移除（没有 #moreMenu / #btnMoreMenu / .menu-item 残留）');
+    else bad('溢出菜单的残留物还在 HTML 里 —— 绝对定位残留会搅乱顶栏层叠：' + leftovers.join('、'));
+
+    /* popup.css 里也不该再有菜单规则块 */
+    const popCss2 = fs.readFileSync(path.join(ROOT, 'popup/popup.css'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '');
+    const cssLeft = [];
+    ['\\.menu\\b', '\\.menu-item\\b', '\\.menu-txt\\b', '\\.menu-name\\b', '\\.menu-sub\\b']
+      .forEach((sel) => { if (new RegExp(sel).test(popCss2)) cssLeft.push(sel.replace(/\\\\/g, '')); });
+    if (!cssLeft.length) ok('popup.css 里也没有菜单样式残留');
+    else bad('popup.css 还留着菜单样式：' + cssLeft.join('、'));
+  }
+
+  /* (c) 三条动作必须是**顶栏的直接子按钮**（不是菜单项、不是别的容器里的）。
+     判据：在 .hdr-actions 到 </header> 之间，三个 id 各自出现在
+     一个 `class="icon-btn"` 的 <button> 上，且 .hdr-actions 里没有任何
+     role="menu" 的容器。 */
+  {
+    const iActions = popupHtml.indexOf('class="hdr-actions"');
+    const iEnd = popupHtml.indexOf('</header>', iActions < 0 ? 0 : iActions);
+    if (iActions >= 0 && iEnd > iActions) {
+      const block = popupHtml.slice(iActions, iEnd);
+      const notIconBtn = ['btnProbe', 'btnExport', 'btnDeep'].filter((id) => {
+        // 找到这个 id 所在的整个开标签，确认它是 icon-btn 的 button
+        const m = block.match(new RegExp('<(\\w+)([^>]*id="' + id + '"[^>]*)>'));
+        if (!m) return true;
+        return m[1].toLowerCase() !== 'button' || !/class="[^"]*\bicon-btn\b/.test(m[2]);
+      });
+      const hasMenuRole = /role="menu"/.test(block);
+      if (!notIconBtn.length && !hasMenuRole) {
+        ok('探测 / 导出 / 深度嗅探都是顶栏的 icon-btn 常驻按钮（不是菜单项）');
+      } else {
+        bad('顶栏结构不对 —— 这些不是常驻 icon-btn：' + (notIconBtn.join('、') || '（无）')
+          + (hasMenuRole ? '；顶栏里仍有 role="menu" 容器' : ''));
+      }
+    } else {
+      bad('找不到 .hdr-actions / </header> 的位置 —— 解析可能脱节了');
+    }
+  }
+
+  /* (d) 筛选条的两个「默认收起」标记必须**同时**是收起态：
+     HTML 上 aria-expanded="false" 与 元素带 hidden。
+     只翻一处，JS 跑起来之前那一帧就是错的（按钮说收起了、条还挂着）。 */
+  {
+    const btnTag = (popupHtml.match(/<button[^>]*id="btnFilters"[^>]*>/) || [''])[0];
+    const panelTag = (popupHtml.match(/<div[^>]*id="filterPanel"[^>]*>/) || [''])[0];
+    const btnCollapsed = /aria-expanded="false"/.test(btnTag);
+    const panelHidden = /\shidden(\s|>)/.test(panelTag);
+    if (btnCollapsed && panelHidden) {
+      ok('筛选条首帧就是收起的（按钮 aria-expanded=false 且面板 hidden，两处一致）');
+    } else {
+      bad('筛选条的默认态两处不一致 —— 按钮说收起=' + btnCollapsed + '，面板 hidden=' + panelHidden
+        + '（首帧会闪一下展开的条）');
+    }
+  }
+
+  /* (e) 三条动作必须真的接到 handler 上（直接 addEventListener，
+     不再是走菜单的 bindMenuItem）。搬 DOM 不搬绑定是这类重构最常见的坏法。 */
+  {
+    const js = fs.readFileSync(path.join(ROOT, 'popup/popup.js'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    const need = [
+      ["$('btnProbe').addEventListener('click'", '探测体积'],
+      ["$('btnExport').addEventListener('click'", '导出清单'],
+      ["$('btnDeep').addEventListener('click'", '深度嗅探']
+    ];
+    const missing = need.filter(([frag]) => js.indexOf(frag) < 0).map(([, label]) => label);
+    if (!missing.length) ok('三个动作都直接绑了 click（不走菜单转发了）');
+    else bad('这些动作没接上 handler，点了不会动：' + missing.join('、'));
+
+    /* 菜单控制器必须清干净 —— 留着就是死代码，而且会被下次改动当成线索 */
+    const dead = ['menuOpen', 'closeMenu', 'setMenu', 'bindMenuItem', 'menuItems']
+      .filter((name) => new RegExp('function\\s+' + name + '\\s*\\(').test(js));
+    if (!dead.length) ok('菜单控制器（setMenu / closeMenu / bindMenuItem …）已删除');
+    else bad('popup.js 里还留着菜单控制器死代码：' + dead.join('、'));
+  }
+
+  /* (f) 滑条停在默认值时不算「在筛」。
+     这条是这一版修补的**真实缺陷**：筛条常驻时角标常显 1 只是噪音，
+     但筛条默认收起后，那个恒亮的「1」会让用户以为自己在筛、
+     打开一看五个维度全是默认。 */
+  {
+    const js = fs.readFileSync(path.join(ROOT, 'popup/popup.js'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    if (/filters\.sizeMin\s*!==\s*SIZE_MIN_DEFAULT/.test(js)) {
+      ok('滑条停在默认值时不计入「生效条件」（角标不会恒亮 1）');
+    } else if (/filters\.sizeMin\s*>\s*0/.test(js)) {
+      bad('滑条又用 `sizeMin > 0` 当判据了 —— 默认值 256 会让角标永远亮着「1」');
+    } else {
+      bad('找不到滑条是否计入筛选数量的判据 —— 解析可能脱节了');
+    }
   }
 }
 

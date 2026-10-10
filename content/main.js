@@ -368,7 +368,32 @@
            · 启动时就被排除 → 这里不 start，于是根本不会有 UI，不需要收
            · 启动时没排除、后来被排除 → hover 已 start，它的 onChange 负责收 */
       if (!isBlocked()) startHover();
+      syncTheme();
     });
+  }
+
+  /**
+   * 把当前主题刷到所有页内 UI 的 shadow host 上。
+   *
+   * 为什么需要这一步：host 上的主题是在**创建时**写一次的（见
+   * U.createShadowHost），而用户在设置页改了主色 / 亮暗档时，
+   * 已经浮出来的悬停按钮和已经打开的灯箱 / 面板不会自己重刷 ——
+   * 表现就是「设置改了，页面上的按钮还是旧颜色」，直到下次重建。
+   * 内容脚本还额外需要这个：它和设置页不在同一个文档里，Theme.apply
+   * 写的是那边的 <html>，跟这里无关。
+   *
+   * 三处 UI 各自持有 host，谁在就刷谁。
+   */
+  function syncTheme() {
+    try {
+      const s = IH.Store.getSettings();
+      const hosts = [
+        IH.Hover && IH.Hover.host && IH.Hover.host(),
+        IH.Panel && IH.Panel.host && IH.Panel.host(),
+        IH.Lightbox && IH.Lightbox.host && IH.Lightbox.host()
+      ];
+      hosts.forEach((h) => { if (h) IH.Theme.applyToHost(h, s); });
+    } catch (e) { /* 某个 UI 没加载时跳过，不影响其它两个 */ }
   }
 
   if (document.readyState === 'loading') {

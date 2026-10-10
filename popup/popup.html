@@ -5,6 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <!-- lang 由 shared/i18n.js 在启动时按当前语言改写 -->
   <title data-i18n="pop.title">图片猎人</title>
+  <!-- theme.css **必须**在 popup.css 之前：变量定义在前、组件引用在后。
+       顺序反了不会报错，只是变量拿到空值 → 整页回退成浏览器默认灰 ——
+       validate.js 的「主题」一节会盯着这个顺序。 -->
+  <link rel="stylesheet" href="../shared/theme.css">
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
@@ -71,26 +75,15 @@
       </div>
 
       <div class="hdr-actions">
-        <button id="btnProbe" class="icon-btn"
-                data-i18n-title="pop.probeTitle" data-i18n-aria="pop.probeAria"
-                title="探测体积：只读响应头拿真实文件大小，不下载图片"
-                aria-label="探测体积">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
-               stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 3.5a8.5 8.5 0 1 0 8.5 8.5"/>
-            <path d="M12 3.5A8.5 8.5 0 0 1 20.5 12"/><path d="M12 12l4.6-4.6"/>
-          </svg>
-        </button>
-        <button id="btnExport" class="icon-btn"
-                data-i18n-title="pop.exportTitle" data-i18n-aria="pop.exportAria"
-                title="导出清单：左键 JSON，右键 CSV"
-                aria-label="导出清单">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
-               stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 3v10"/><path d="M8 9.5l4 4 4-4"/><path d="M4.5 16v3.5h15V16"/>
-          </svg>
-        </button>
-        <span class="vr" aria-hidden="true"></span>
+        <!-- 顶栏动作：重新嗅探 / 探测体积 / 导出清单 / 深度嗅探 / 面板 / 设置，
+             后面还有面板模式下的关闭。
+             曾经把「探测体积 / 导出清单 / 深度嗅探」收进过一个「更多」溢出菜单，
+             后来发现两点都不划算：一是**多一次点击**，二是「探测体积」工作时
+             图标要一直转圈，藏进菜单里就看不见了。
+             宽度不够时不再靠菜单，靠下面 .hdr-actions 自己的响应式规则
+             （见 popup.css 的窄栏分支）。 -->
+
+        <!-- 重新嗅探：循环箭头（缺口在右上） -->
         <button id="btnRescan" class="icon-btn"
                 data-i18n-title="pop.rescanTitle" data-i18n-aria="pop.rescanAria"
                 title="重新嗅探本页图片" aria-label="重新嗅探">
@@ -99,15 +92,48 @@
             <path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 5v6h-6"/>
           </svg>
         </button>
+
+        <!-- 探测体积：只读响应头拿真实大小，不下载图片。
+             图标是「磅秤」—— 读数、量大小，和「重新嗅探」的循环箭头形状完全不同。 -->
+        <button id="btnProbe" class="icon-btn"
+                data-i18n-title="pop.probeTitle" data-i18n-aria="pop.probeAria"
+                title="探测体积：只读响应头拿真实文件大小，不下载图片"
+                aria-label="探测体积">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M7 4.5h9.5"/><path d="M11.5 4.5v2.8"/>
+            <path d="M5 7.3h14A2 2 0 0 1 21 10l-1.7 9.2A2.2 2.2 0 0 1 17.1 21H6.9A2.2 2.2 0 0 1 4.7 19.2L3 10a2 2 0 0 1 2-2.7z"/>
+            <path d="M15 12.5a3 3 0 0 1-6 0"/>
+          </svg>
+        </button>
+
+        <!-- 导出清单：文档 + 向外的箭头（**不是**下载箭头 —— 那个是「保存到本地」，
+             「导出清单」导出的是这份清单本身）。 -->
+        <button id="btnExport" class="icon-btn"
+                data-i18n-title="pop.exportTitle" data-i18n-aria="pop.exportAria"
+                title="导出清单：左键 JSON，右键 CSV" aria-label="导出清单">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M13.5 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8.5z"/>
+            <path d="M13.5 3v5.5H19"/><path d="M8.5 13h4"/><path d="M8.5 16.5h2.5"/>
+            <path d="M17 17.5v-4"/><path d="M15 15.5l2-2 2 2"/>
+          </svg>
+        </button>
+
+        <!-- 深度嗅探：页面 + 向下箭头（滚动含义）。
+             刻意不做成「下载箭头」—— 它不下载任何东西，只是把页面滚一遍。 -->
         <button id="btnDeep" class="icon-btn"
                 data-i18n-title="pop.deepTitle" data-i18n-aria="pop.deepAria"
                 title="深度嗅探：自动滚动整页后再嗅探，用于无限滚动 / 越滚越多的站点（会临时滚动你的页面，结束后会滚回原位）"
                 aria-label="深度嗅探">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
                stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 3v14"/><path d="M7.5 12.5L12 17l4.5-4.5"/><path d="M4 20.5h16"/>
+            <rect x="6" y="3" width="12" height="18" rx="2"/>
+            <path d="M12 6.5v7"/><path d="M9.3 11l2.7 2.7 2.7-2.7"/>
           </svg>
         </button>
+
+        <!-- 在页面中打开图库面板：右侧分栏的窗口 -->
         <button id="btnPanel" class="icon-btn" data-i18n-aria="pop.panelAria"
                 title="在页面中打开图库面板" aria-label="在页面中打开图库面板">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
@@ -115,6 +141,8 @@
             <rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M15 4v16"/>
           </svg>
         </button>
+
+        <!-- 设置：齿轮 -->
         <button id="btnOptions" class="icon-btn" data-i18n-aria="pop.optionsAria"
                 title="设置" aria-label="设置">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
@@ -123,6 +151,7 @@
             <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2 2 2 0 1 1-4 0 1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3 15a2 2 0 1 1 0-4 1.7 1.7 0 0 0 1.5-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 4.6a2 2 0 1 1 4 0 1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1A1.7 1.7 0 0 0 21 11a2 2 0 1 1 0 4z"/>
           </svg>
         </button>
+
         <button id="btnClose" class="icon-btn panel-only" data-i18n-aria="pop.closeAria"
                 title="关闭面板" aria-label="关闭面板">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"
@@ -163,8 +192,11 @@
           </div>
         </div>
 
+        <!-- 筛选默认**收起**：默认展开时这条占掉近 1/3 的纵向空间，
+             而多数人打开图库只是想看图。有生效条件时按钮常亮 + 显示数量，
+             不会出现「藏起来了就不知道自己在筛」。展开态用户选过就记住。 -->
         <button class="pill" id="btnFilters" data-i18n-title="pop.filtersTitle"
-                title="展开 / 收起筛选条件" aria-expanded="true">
+                title="展开 / 收起筛选条件" aria-expanded="false" aria-controls="filterPanel">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
                stroke-linecap="round" stroke-linejoin="round">
             <path d="M3.5 6h17"/><path d="M6.5 12h11"/><path d="M10 18h4"/>
@@ -242,8 +274,9 @@
         </div>
       </div>
 
-      <!-- 筛选条：直接平铺在控制区里（默认展开），不是浮层也不是二级菜单 -->
-      <div class="filterbar" id="filterPanel">
+      <!-- 筛选条：默认隐藏（见 #btnFilters 的说明），点「筛选」原位展开。
+           不是浮层也不是二级菜单 —— 展开后仍平铺在控制区里，和原来一样。 -->
+      <div class="filterbar" id="filterPanel" hidden>
         <div class="fg">
           <span class="fg-label" data-i18n="pop.fgSize">尺寸</span>
           <!-- 只留档位 chips（判宽度）；连续滑条（判较短边）移到了工具行右侧 ——
@@ -361,6 +394,8 @@
   <script src="../shared/store.js"></script>
   <!-- i18n 必须在 store.js 之后：它要读 settings.uiLang 决定用哪种语言 -->
   <script src="../shared/i18n.js"></script>
+  <!-- theme.js 也在 store.js 之后：它要读 settings.theme / themePreset / themeAccent -->
+  <script src="../shared/theme.js"></script>
   <!-- 图库页直接复用内容脚本那份灯箱实现：点放大镜在本页开预览，不再跳到原标签页 -->
   <script src="../content/lightbox.js"></script>
   <script src="popup.js"></script>

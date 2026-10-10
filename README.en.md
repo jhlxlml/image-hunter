@@ -117,6 +117,8 @@ hover buttons must be visible on focus (fixes WCAG 2.4.7), and state changes are
 | **Three global shortcuts** | `Alt+Shift+S` in-page panel / `Alt+Shift+G` open gallery / `Alt+Shift+D` save the currently hovered image |
 | **Self-service diagnostics bundle** | One click in the options page exports JSON. **Aggregate numbers and hostnames only** — no image URLs, page URLs, or file paths |
 | **Chinese / English UI** | Switchable at runtime in the options page ("Interface language": follow browser / 中文 / English). Default follows the browser language |
+| **Customisable theme** | Light / dark / follow-system, six colour schemes (Indigo · Teal · Emerald · Rose · Amber · Slate), or pick any accent colour with the colour picker. Change it once and the gallery, the in-page panel and the lightbox accent colour **all** follow |
+| **UI gets out of the way** | Every top-bar action stays visible and one click away, but the faux-3D gradients are gone; the filter bar is collapsed by default and cards have no border unless hovered — so you see a wall of images first, not a ring of toolbars |
 
 ---
 
@@ -181,7 +183,7 @@ image-hunter/
 ├── popup/                 # Gallery UI (a standalone page; the in-page panel shares the same code)
 ├── options/               # Options page
 ├── tools/                 # Packaging, settings audit
-├── tests/                 # 16 Node suites + 26 real-browser suites
+├── tests/                 # 17 Node suites + 28 real-browser suites
 ├── docs/screenshots/      # UI screenshots
 ├── _locales/              # Only extension name/description/command titles/context-menu strings (serves the manifest); the UI itself is handled by shared/i18n.js
 └── icons/
@@ -195,8 +197,8 @@ For the full directory tree (with each file's responsibility) see [HANDBOOK.md](
 
 ```bash
 npm ci                 # first time: install dev dependencies (jsdom + playwright-core)
-npm test               # Node suites (16)
-npm run test:browser   # real-browser suites (26, needs a local Edge / Chrome)
+npm test               # Node suites (17)
+npm run test:browser   # real-browser suites (28, needs a local Edge / Chrome)
 npm run test:all       # run both entry points
 npm run package        # build the zip
 npm run audit:settings # audit settings: list every setting's read site / UI hook to find dead settings

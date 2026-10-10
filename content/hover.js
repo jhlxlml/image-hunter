@@ -845,6 +845,10 @@
     saveElement,
     preview: openPreview,
     saveHovered,
-    hide: hideNow
+    hide: hideNow,
+    /* 供 content/main.js 的 syncTheme 用：设置改了主色之后要把它重新刷到
+       这个 shadow host 上。UI 还没建时返回 null（那时没什么可刷的，
+       建的时候 createShadowHost 会带上当前主题）。 */
+    host: () => (ui ? ui.host : null)
   };
 })();

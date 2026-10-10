@@ -46,6 +46,7 @@ const SUITES = [
   ['打包脚本测试（清单完整性 / zip 合法性 / 可复现）', 'test-package.js'],
   ['诊断包测试（白名单 / 脱敏 / 自查不变量）', 'test-diagnostics.js'],
   ['界面语言测试（判定 / 降级链 / 填充 / 落盘）', 'test-i18n.js'],
+  ['主题系统测试（兜底值 / 派生 / host 隔离 / 系统跟色）', 'test-theme.js'],
   ['交付完整性校验（manifest / 资源 / 图标）', 'validate.js']
 ];
 

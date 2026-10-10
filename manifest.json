@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "__MSG_extName__",
   "description": "__MSG_extDesc__",
-  "version": "1.14.0",
+  "version": "1.17.0",
   "default_locale": "zh_CN",
   "minimum_chrome_version": "102",
 
@@ -38,6 +38,7 @@
         "shared/utils.js",
         "shared/store.js",
         "shared/i18n.js",
+        "shared/theme.js",
         "content/scanner.js",
         "content/hover.js",
         "content/lightbox.js",
@@ -53,6 +54,7 @@
     {
       "resources": [
         "icons/*",
+        "shared/theme.css",
         "content/overlay.css",
         "popup/popup.html"
       ],

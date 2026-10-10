@@ -40,15 +40,100 @@
 
   /* ------------------------------------------------------------------ *
    * 主题
+   *
+   * 实现在 shared/theme.js —— 原来这里有一份和 popup.js 重复的 applyTheme，
+   * 两份还漂移了（这份挂了系统深浅色监听，图库页没挂）。现在只有一种算法。
+   * 这里保留一个薄壳是为了「设置页独有的那件事」——把当前选择高亮回
+   * #segTheme / 色卡 / 取色器上（DOM 相关，不该塞进共享层）。
    * ------------------------------------------------------------------ */
 
-  function applyTheme(theme) {
-    let t = theme || 'light';
-    if (t === 'auto') {
-      t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  function applyTheme() {
+    const raw = settings.theme || 'light';
+    IH.Theme.apply(document, settings);
+
+    $$('#segTheme button').forEach((b) => b.classList.toggle('active', b.dataset.v === raw));
+    renderThemeControls();
+  }
+
+  /**
+   * 渲染配色方案色卡 + 自定义主色控件。
+   *
+   * 色卡的颜色值从 IH.Theme.presetList() 取（即 theme.js 的 PRESETS），
+   * **不在这里写死一份** —— 否则加一套预设要改两个文件，漏一个就是
+   * 「色卡上有、点了没反应」。
+   *
+   * 亮色档还是深色档的色做色卡？用**当前亮暗档对应的那一档**：
+   * 深色模式下深色档主色才是用户实际会看到的颜色，拿浅色档的色做色卡
+   * 会让人选了之后发现「跟色卡不一样」。
+   */
+  function renderThemeControls() {
+    const presets = IH.Theme.presetList();
+    const cur = IH.Theme.resolve(settings);
+    const box = $('themeSwatches');
+    /* 色卡上的样本色取**当前亮暗档对应的那一档**：
+       深色模式下深色档主色才是用户实际会看到的颜色，拿浅色档的色做样本
+       会让人选了之后发现「跟色卡不一样」。 */
+    const sampleOf = (p) => (cur.mode === 'dark' ? p.dark : p.light);
+
+    if (box) {
+      // 数量对不上才重建 —— 每次 renderSettings 都重建会让色卡闪一下
+      if (box.children.length !== presets.length) {
+        box.innerHTML = '';
+        presets.forEach((p) => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'swatch';
+          btn.setAttribute('role', 'radio');
+          btn.dataset.preset = p.key;
+          box.appendChild(btn);
+        });
+      }
+      presets.forEach((p, i) => {
+        const btn = box.children[i];
+        if (!btn) return;
+        const on = p.key === cur.preset;
+        btn.classList.toggle('active', on);
+        btn.setAttribute('aria-checked', on ? 'true' : 'false');
+        /* roving tabindex：整组只留**一个** Tab 停靠点（当前选中的那个），
+           进去之后用方向键切。六个色卡各占一个 Tab 位等于让用户按六次 Tab
+           才能穿过这个控件 —— 和网格那套做法一致。 */
+        btn.tabIndex = on ? 0 : -1;
+        btn.style.setProperty('--swatch-color', sampleOf(p));
+        /* 名字走 i18n 表（opt.preset.xxx）而不是 PRESETS 里的 zh/en 字段 ——
+           界面文案的唯一入口是 i18n 表，两处都存一份就是又一次会漂移的副本。 */
+        const key = 'opt.preset.' + p.key;
+        btn.title = t(key);
+        btn.setAttribute('aria-label', t(key));
+      });
     }
-    document.documentElement.setAttribute('data-theme', t);
-    $$('#segTheme button').forEach((b) => b.classList.toggle('active', b.dataset.v === theme));
+
+    const pick = $('accentPick');
+    const input = $('themeAccent');
+    const reset = $('btnAccentReset');
+
+    if (input) {
+      // 取色器要有一个具体值才能显示颜色 —— 没有自定义时就显示当前生效的主色
+      input.value = cur.accent;
+      input.setAttribute('aria-label', t('opt.themeAccent'));
+    }
+    if (pick) {
+      pick.classList.toggle('custom', cur.isCustomAccent);
+      const lbl = pick.querySelector('.accent-label');
+      /* 没有自定义时把标签换成「跟随配色方案」——「选一个颜色」是诱导，
+         而此刻的状态是「没在自定义」。 */
+      if (lbl) lbl.textContent = cur.isCustomAccent ? cur.accent : t('opt.themeAccentAuto');
+    }
+    // 没在自定义时「恢复」是个空操作，禁用掉（给个能点的按钮只会让人多点一次）
+    if (reset) reset.disabled = !cur.isCustomAccent;
+  }
+
+  /** 换配色方案。抽出来是为了 click 与键盘（role=radio 的方向键）都能用。 */
+  function pickPreset(key) {
+    if (!IH.Theme.PRESETS[key]) return;
+    settings.themePreset = key;
+    applyTheme();
+    persist({ themePreset: key });
+    flashSaved();
   }
 
   /* ------------------------------------------------------------------ *
@@ -126,7 +211,7 @@
     if (bh) bh.value = (settings.blockedHosts || []).join('\n');
     renderBlockedNote();
 
-    applyTheme(settings.theme);
+    applyTheme();
   }
 
   /**
@@ -207,7 +292,10 @@
 
     $$('#segTheme button').forEach((b) => {
       b.addEventListener('click', () => {
-        applyTheme(b.dataset.v);
+        /* 先写进 settings 再 applyTheme —— 新的 applyTheme 不带参数，
+           它读的是 settings（applyTheme(v) 那种签名已经收进 Theme 了）。 */
+        settings.theme = b.dataset.v;
+        applyTheme();
         persist({ theme: b.dataset.v });
       });
     });
@@ -215,6 +303,69 @@
     $$('#segLang button').forEach((b) => {
       b.addEventListener('click', () => { switchLang(b.dataset.v); });
     });
+
+    /* ---- 配色方案色卡 ----
+       点击换预设。键盘（方向键 / Home / End）在 role="radiogroup" 上按
+       「单选组」的惯例切 —— 色卡是 button 不是 radio，那套默认行为要自己给，
+       否则键盘用户 Tab 进来是一片「没有名字也动不了」的圆点。 */
+    const swatchBox = $('themeSwatches');
+    if (swatchBox) {
+      swatchBox.addEventListener('click', (e) => {
+        const btn = e.target.closest && e.target.closest('.swatch');
+        if (btn) pickPreset(btn.dataset.preset);
+      });
+      /* button 元素上 Enter / 空格本来就会触发 click，不用另写一份。
+         这里只补方向键那套（button 没有默认的方向键行为）。 */
+      swatchBox.addEventListener('keydown', (e) => {
+        const keys = ['ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp', 'Home', 'End'];
+        if (keys.indexOf(e.key) < 0) return;
+        e.preventDefault();
+        const items = Array.prototype.slice.call(swatchBox.children);
+        const at = items.indexOf(e.target.closest ? e.target.closest('.swatch') : null);
+        if (at < 0) return;
+        let next = at;
+        if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = (at + 1) % items.length;
+        else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = (at - 1 + items.length) % items.length;
+        else if (e.key === 'Home') next = 0;
+        else if (e.key === 'End') next = items.length - 1;
+        if (items[next]) {
+          /* roving tabindex 要跟着走：只挪焦点不挪 Tab 落点的话，
+             用户切到第 5 张色卡后按 Tab 出去，再 Shift+Tab 回来会跳回原来那张。
+             方向键只挪焦点，**不顺手改选中的那套配色** —— 这是单选组的惯例
+             （参考 WAI-ARIA radio group：方向键移动即选中；但色卡这种
+             「一眼就能看出选没选中」的控件，移动焦点即选中会让人来不及比较。
+             所以这里只移焦点，选中仍由 Enter / 空格 / 点击决定）。 */
+          items.forEach((b, i) => { b.tabIndex = i === next ? 0 : -1; });
+          items[next].focus();
+        }
+      });
+    }
+
+    /* ---- 自定义主色 ----
+       取色器的 input 事件在拖动过程中会连续触发（原生取色器会实时回报），
+       所以这里**只更新界面**不落盘；落盘放到 change（用户确认选色之后）。
+       否则拖一次会写几十遍 storage。 */
+    const accentInput = $('themeAccent');
+    if (accentInput) {
+      accentInput.addEventListener('input', () => {
+        settings.themeAccent = accentInput.value;
+        applyTheme();
+      });
+      accentInput.addEventListener('change', () => {
+        persist({ themeAccent: accentInput.value });
+        flashSaved();
+      });
+    }
+
+    const btnAccentReset = $('btnAccentReset');
+    if (btnAccentReset) {
+      btnAccentReset.addEventListener('click', () => {
+        settings.themeAccent = '';
+        applyTheme();
+        persist({ themeAccent: '' });
+        flashSaved();
+      });
+    }
 
     // 站点排除列表：输入时就存（防抖），失焦时把规范化结果回填
     const bhEl = $('blockedHosts');
@@ -649,12 +800,11 @@
     // 其他页面改了设置时同步
     Store.onChange(() => { refreshStats(); });
 
-    if (window.matchMedia) {
-      const mq = window.matchMedia('(prefers-color-scheme: dark)');
-      const onScheme = () => { if (settings.theme === 'auto') applyTheme('auto'); };
-      if (mq.addEventListener) mq.addEventListener('change', onScheme);
-      else if (mq.addListener) mq.addListener(onScheme);
-    }
+    /* 系统深浅色监听收进了 shared/theme.js（图库页此前缺这条，见那边的注释）。
+       系统从浅切深、theme 仍是 'auto' 时，Theme.watch 会重算 data-theme；
+       设置页的三个亮暗按钮高亮本来就不该动（用户选的还是 auto），
+       所以这里不需要额外回调。 */
+    IH.Theme.watch(document, () => settings);
   }
 
   init().catch((e) => {

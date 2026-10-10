@@ -6,8 +6,8 @@
 
 ```bash
 npm ci                  # 首次：装开发期依赖（jsdom + playwright-core）
-npm test                # Node 套件（16 个）
-npm run test:browser    # 真实浏览器套件（26 个，需要本机 Edge / Chrome）
+npm test                # Node 套件（17 个）
+npm run test:browser    # 真实浏览器套件（28 个，需要本机 Edge / Chrome）
 npm run test:all        # 两个入口都跑
 ```
 
@@ -24,7 +24,7 @@ node tests/run-all-browser.js   # 真实浏览器套件
 > **浏览器套件第一次跑要先装一份完整 Chromium**：
 > `npx playwright-core install --with-deps --no-shell chromium`。
 > **`--no-shell` 不能省** —— headless shell 不支持 `--load-extension`，
-> 装错的话 26 个套件会全部卡在「等 service worker」超时，报错看起来像扩展坏了。
+> 装错的话 28 个套件会全部卡在「等 service worker」超时，报错看起来像扩展坏了。
 
 CI 在 `.github/workflows/ci.yml`：`push` / `pull_request` 都跑这两个入口，
 两个 job 都**不允许 `continue-on-error`**。失败时会把汇总里的 ✗ 行做成
@@ -50,7 +50,12 @@ CI 在 `.github/workflows/ci.yml`：`push` / `pull_request` 都跑这两个入�
 | `test-package.js` | 打包脚本 `tools/package.js`：**自己按 ZIP 规范独立写了一个读取器**（只认中央目录，不参考写入器的布局，否则等于拿写入器验写入器）。5 节：清单完整性 + 孤儿检测（`collectFiles` 从 manifest 递归展开，磁盘上多出来的运行时文件必须被抓到）/ zip 合法性 + 逐个条目 CRC + 与磁盘文件逐字节比对 / **可复现**（同源码打两次字节相同）/ `crc32` 标准测试向量（`''`→`0`、`'123456789'`→`0xCBF43926`、quick brown fox→`0x414FA339`） |
 | `test-diagnostics.js` | **诊断包（纯函数，无需 jsdom）**。守的不是功能而是**边界** —— 诊断包是要被用户贴到公开 issue 里的文件，所以它最重要的性质是「里面不可能出现完整地址」。9 节 59 项：`hostOf` 只取主机名（丢路径 / 查询 / 锚点，保留端口）；`scrub` 把任何 `scheme://…` 换成 `[url]`（含 `chrome-extension://`）且**无状态**（连调两次结果一致 —— 正则带 `g` 会让 `lastIndex` 残留）；`sanitizeDownload` 结果只含白名单字段、`host` 从 `url` 现算、未列入白名单的 `referer` / `cookie` **连键都不出现**；`sanitizeScan` 丢掉 `pageUrl` / `title`、`sourceCounts` 只保留数字值；`sanitizeSettings` 把 `blockedHosts` 换成条数；`build` 的缺省与垃圾输入过滤；`audit` 的路径定位（`$.list[1].bad`）。第 8 节是**注入式端到端断言**：故意塞 `referer` / `cookie` / 完整 URL / 内网主机名 / 页面标题，要求序列化后连一个 `http://` 都不出现 |
 | `test-i18n.js` | **界面多语言（jsdom，44 项 / 7 节）**。守的不是「有没有翻译」而是**取词的语义**：① 浏览器语言判定（`zh` / `zh-CN` / `zh-TW` / `ZH-HANS` → 中文；`en-US` / `ja-JP` → 英文；**没有 `navigator` 时也要有答案**，不能抛）；② **设置优先于浏览器**（`uiLang: 'en'` 时浏览器是 `zh-CN` 也走英文）；③ **降级链 `当前语言 → 中文 → key 本身`** —— 这一节是**注入式**的：删掉英文某条 → 断言退回中文 → 补回去 → 断言又走英文；两种语言都没有 → 返回 key（**故意返回 key 而不是空串**：界面出现 `pop.saveSelected` 一眼看出漏翻译）；占位符替换含 `{n: 0}` 这种「假值」参数；④ `apply()` 的五种属性（`data-i18n` / `-html` / `-ph` / `-aria` / `-title`）真的填了、`-aria` 同时写 `aria-label` 与 `title`、**`<html lang>` 跟着变**、切语言后重填一遍；⑤ `setLang` 落盘（走 `Store`）、非法值退回 `auto`；⑥ `sourceLabel` / `ruleLabel`（内置规则名要能翻译，**规则 id 本身不许被翻译** —— 它是数据，翻译了就认不出来了）；⑦ `uiLang` 必须在 `DEFAULT_SETTINGS` 里。**注意**：这个套件必须先 `await Store.loadSettings()` —— `I18n.lang()` 读的是 Store 缓存，缓存没加载时 `uiLang` 还是默认的 `auto`，会退回 `navigator.language`（jsdom 恒为 `en-US`），中文断言会整体翻成英文 |
-| `validate.js` | 交付完整性：manifest 引用、HTML 资源、元素 id、`getURL` 路径、PNG 尺寸、内容脚本加载顺序、i18n 键、`MSG.*` 常量正反向校验、图库宿主模式（无弹窗残留 + 首帧布局）、还原候选实现唯一性；第 12 节静态钉住「在图库中打开 / 扫描缓存 / 快捷键」的接线（命令声明、后台分支、`SAVE_HOVERED` 必须广播给所有 frame、内容脚本接线、灯箱导出 `save`）；第 13 节静态钉住**「没有死设置」**——遍历 `DEFAULT_SETTINGS` 的每个键，在产品代码里找读取点，一个都没有才算死；并给三条**非 `data-key` 形态**的界面入口（分段按钮 `theme`、富文本控件 `blockedHosts` / `customRules`）加反向守卫。注入一条零读取的 `__deadProbe` 后第 13 节如实变红。**v1.11.0 又追加两组守卫**：① 图库尺寸滑条的契约（HTML 的 `min/max/step/value` 必须与 `popup.js` 的 `SIZE_MIN_*` 常量逐一对上，`min=0`/`max=4096`/`value=256` 三个需求硬指标单独钉，视图状态键 `ih_gallery_view` 不得混进 `DEFAULT_SETTINGS`）；② **跨套件夹具守卫** —— 静态扫描所有浏览器用例的 `startServer({...imgW,imgH...})` 字面量，带 `thumbPath: true` 的按短边减半算，短边必须严格大于滑条默认阈值，否则报红并指明文件与尺寸。真正的例外走文件级白名单或行内 `// fixture-ok: <理由>` 标记，理由必须写出来，且白名单引用了不存在的文件也会报红（防腐烂）。注入一个 200×150 的夹具后如实变红。**v1.12.0 再追加第 14 节**：静态钉住「多标签页合并嗅探」的 11 条接线 —— `mergeTabs` 默认值必须是 `false`（需求就是「提供开关」，默认必须是关的）、设置页必须有 `data-key="mergeTabs"`、单选 `#selTargetTab` 与多选 `#targetMulti` / `#targetsList` 三个节点都在、两者按设置互斥显示、`popup.js` 里真的读了这个设置、只在 `MODE === 'page'` 时启用、合并路径每页都传 `finalOnly: true`（否则多页并发时「先出图后升级」的广播会互相盖掉）、单页路径未被改动、去重确实按 `U.normalizeUrl(img.url)`、空态文案含「还没有勾选要嗅探的页面」。注入「默认值改成 true」与「去掉合并路径的 finalOnly」各红 1 项。**v1.13.0 再追加第 15 节（键盘与读屏器接线，19 条）**：断言一律打在**去注释后的源码**上（整块 `/* */` 与整行 `//` 先抹掉）—— 否则一句「这里本来该写 `onGridKeydown`」的注释就能把守卫骗过去；内容覆盖 listbox 语义、`#gridHelp` 是 `sr-only` 且按键说明写全、`#srStatus` 的三件套、`progress[role=progressbar]` + `aria-valuenow`、`.card:focus` 必须让 `.zoom` / `.restore` 显形、`.card:focus-visible` 必须有 `outline`、**`.sr-only` 不得用 `display:none` / `visibility:hidden`**、roving tabindex 的三元表达式、移动键与动作键接全、`keydown` 真的绑在 `#grid` 上、`announce()` 有防抖、勾选同步到 `aria-selected`、`.pick` 对读屏器隐藏、`.zoom` / `.restore` 不占 Tab 顺序。**第 16 节（诊断包接线，19 条）**：`MSG.GET_DIAGNOSTICS` 定义唯一、后台真的处理它、真扫描与缓存命中**两条路**都记摘要、扫描摘要里**没有** `pageUrl` / `title`（只留 `pageHost`）、`probeStats` 只累计计数、设置页有按钮且脚本加载顺序在 `options.js` 之前、`build` + `audit` 都在、**`audit` 挡在落盘前面**、`sanitizeDownload` 走 `pick(白名单)` 而**不是** `Object.assign` 整体透传、`DOWNLOAD_FIELDS` 里没有 `url`、`SETTINGS_OMIT` 排除了 `blockedHosts`、`URL_RE` **不带 `g` 标志**、`IH.Diag` 导出齐全、新套件已登记进 `run-all.js`。注入 7 项：删焦点显现规则 / 删四个方向键分支 / 所有卡片 `tabIndex=0` / 白名单退化成整体透传 / 摘要塞回 `pageUrl` / `URL_RE` 加 `g`，各红 1 项**v1.13.1 再追加第 17 节（扫描结论的三态，13 条）**：钉的是**接线**而不是行为 —— `finalizeScan` 的 `ok` 不能退回裸的 `!session.blocked`（那样「没扫成」又会冒充「没有图」）、`noReply` 判据必须在、`SCAN_NO_REPLY` 的文案里**不许出现**「没有发现图片」这种会被读成「这页没图」的说法、图库的「嗅探失败」分支必须排在「本页没有发现图片」**之前**、内容脚本里不再有 `error: 'busy'` 这条路径、中间结果的回报必须排在补尺寸**之前**；另外两条是「测试资产自身的完整性」：后台 vm 桩只能有一份（`tests/lib/bgstub.js`，缓存套件不许自己再养一份），以及浏览器回归套件必须以 `browser-` 开头（总入口靠这个前缀自动发现，名字起错了不会报错，它只是永远不被跑）。**v1.14.0 再追加第 18 节（界面语言，含 6 组守卫）**：① 中英两份文案表**齐平**且没有空串（空串比缺键更隐蔽 —— `t()` 静默返回空串，界面上就是一小片空白）；② 产品代码里引用的每个键都真的存在（**断言打在「键」上，不是「中文句子」上** —— 文案搬进 i18n 后，`/图库里没有这张图/.test(src)` 这类写法全部失效；同时先剥注释、正则用 `(?<![\w$.])t\(`，否则 `createElement('div')`、`params.get('mode')`、`'opt.' + k` 都会误报）；③ `uiLang` 必须在 `DEFAULT_SETTINGS` 里（否则导出→导入会把它静默过滤掉，用户切了英文、导入一次备份就回到中文）；④ 设置页有 `#segLang` 三档；⑤ `i18n.js` 的加载顺序必须排在 `store.js` **之后**（它要读 `settings.uiLang`）；⑥ **所有浏览器套件都固定了 `locale: 'zh-CN'`**、加载内容脚本的 jsdom 套件都加载了 `i18n.js` 且把 `uiLang` 钉成中文。第 ⑥ 组的存在理由是「本地全绿、CI 全红」：界面默认跟随浏览器，开发机是 `zh-CN`、CI runner 是 `en-US`、jsdom 的 `navigator.language` 恒为 `en-US` —— 不钉死，断言里的中文会整体翻掉。**(f) 另有一条 HTML 结构守卫**：用 jsdom 解析两个页面，断言每个 `[data-i18n]` 元素的 `children.length === 0` —— `data-i18n` 是整段 `textContent` 覆写，兜底文案里写没转义的标签会被连子树一起删掉，写 `<a>` 更会把**后面整篇文档**吞成它的子节点（见第二十三个坑）。**注入验证**：把 `&lt;a href&gt;` 改回裸 `<a href>` → 报 `opt.scanLinksHint → <a>`，1 项变红 |
+| `test-theme.js` | **主题系统（jsdom，94 项 / 10 节）**。守的是 `shared/theme.js` 与 `shared/theme.css` 的**机制**，不是「哪个颜色好看」。它要挡住的是几类「看起来没坏、其实是错的」情形：
+
+① **`theme.css` 的兜底值 === `derive()` 的推导值**（14 条断言，逐字符相等）。这是本套件最值钱的一条：没有 JS 时（设置页被禁用脚本打开、或脚本报错）界面用的是 `theme.css` 里手写的那套值，有 JS 时用的是算出来的。两者只要差一个字符，就是「同一个默认主题、两种颜色」—— 而差得越小越难发现。② 亮暗档判定（`light` / `dark` / `auto` + `rawMode` 保留用户原值）。③ `apply()` 真的把 `data-theme` 与 8 个 token 写到了 `<html>` 上。④ **自定义主色只改主色、不改派生值** —— 散落的 `rgba(79,110,247,…)` 有 9 处是主色投影，用户换成橙色之后它们若还留在蓝色上，就是「一圈蓝光围着橙色按钮」，而单看按钮是**对的**。所以断言派生值确实跟着主色变了（含 `--primary-solid`，那是角标底色，面积小最容易漏）。⑤ **「跟随预设」切得回去** —— `themeAccent` 从 `#ff0000` 变回 `''` 时，内联 `--primary` 若没被换掉，红色会一直赖着（界面看着正常，用户的操作为什么都没生效无迹可循）；`clearAccent` 单独测一遍「八个变量全清掉」。⑥ 非法 `themeAccent` 的 7 种输入（明显非法 / 空串 / 颜色名 / 位数不对 / 八位 hex / 恶意串 / 带尾空格的合法值）全部退回预设而不是原样透传。⑦ 预设表完整性（至少 4 套、默认值在表里、深浅两档不同且都是合法 hex）。⑧ **「切回跟随预设 + 系统跟色」的退化情形** —— 打桩时要注意桩的闭包必须读到那个旋钮（见第二十五个坑）。
+
+**注意**：jsdom 的 vm context 上 `navigator` / `window` / `matchMedia` 都只有 getter，直接赋值会抛 `Cannot set property X ... which has only a getter`；要注入就用 `Object.defineProperty`。**注入验证做了 10 项**：`theme.css` 深色主色漂 1 位、`derive` 的饱和度系数不再压档、`apply` 不写派生值、非法 accent 原样透传、`watch` 去掉 `auto` 守卫、`watch` 单例守卫去掉、`applyToHost` 污染宿主 `<html>`、`clearHost` 不清、`DEFAULT_SETTINGS` 缺 `themePreset`、`themeAccent` 默认改成 `undefined` —— 每项都如实变红。 |
+| `validate.js` | 交付完整性：manifest 引用、HTML 资源、元素 id、`getURL` 路径、PNG 尺寸、内容脚本加载顺序、i18n 键、`MSG.*` 常量正反向校验、图库宿主模式（无弹窗残留 + 首帧布局）、还原候选实现唯一性；第 12 节静态钉住「在图库中打开 / 扫描缓存 / 快捷键」的接线（命令声明、后台分支、`SAVE_HOVERED` 必须广播给所有 frame、内容脚本接线、灯箱导出 `save`）；第 13 节静态钉住**「没有死设置」**——遍历 `DEFAULT_SETTINGS` 的每个键，在产品代码里找读取点，一个都没有才算死；并给三条**非 `data-key` 形态**的界面入口（分段按钮 `theme`、富文本控件 `blockedHosts` / `customRules`）加反向守卫。注入一条零读取的 `__deadProbe` 后第 13 节如实变红。**v1.11.0 又追加两组守卫**：① 图库尺寸滑条的契约（HTML 的 `min/max/step/value` 必须与 `popup.js` 的 `SIZE_MIN_*` 常量逐一对上，`min=0`/`max=4096`/`value=256` 三个需求硬指标单独钉，视图状态键 `ih_gallery_view` 不得混进 `DEFAULT_SETTINGS`）；② **跨套件夹具守卫** —— 静态扫描所有浏览器用例的 `startServer({...imgW,imgH...})` 字面量，带 `thumbPath: true` 的按短边减半算，短边必须严格大于滑条默认阈值，否则报红并指明文件与尺寸。真正的例外走文件级白名单或行内 `// fixture-ok: <理由>` 标记，理由必须写出来，且白名单引用了不存在的文件也会报红（防腐烂）。注入一个 200×150 的夹具后如实变红。**v1.12.0 再追加第 14 节**：静态钉住「多标签页合并嗅探」的 11 条接线 —— `mergeTabs` 默认值必须是 `false`（需求就是「提供开关」，默认必须是关的）、设置页必须有 `data-key="mergeTabs"`、单选 `#selTargetTab` 与多选 `#targetMulti` / `#targetsList` 三个节点都在、两者按设置互斥显示、`popup.js` 里真的读了这个设置、只在 `MODE === 'page'` 时启用、合并路径每页都传 `finalOnly: true`（否则多页并发时「先出图后升级」的广播会互相盖掉）、单页路径未被改动、去重确实按 `U.normalizeUrl(img.url)`、空态文案含「还没有勾选要嗅探的页面」。注入「默认值改成 true」与「去掉合并路径的 finalOnly」各红 1 项。**v1.13.0 再追加第 15 节（键盘与读屏器接线，19 条）**：断言一律打在**去注释后的源码**上（整块 `/* */` 与整行 `//` 先抹掉）—— 否则一句「这里本来该写 `onGridKeydown`」的注释就能把守卫骗过去；内容覆盖 listbox 语义、`#gridHelp` 是 `sr-only` 且按键说明写全、`#srStatus` 的三件套、`progress[role=progressbar]` + `aria-valuenow`、`.card:focus` 必须让 `.zoom` / `.restore` 显形、`.card:focus-visible` 必须有 `outline`、**`.sr-only` 不得用 `display:none` / `visibility:hidden`**、roving tabindex 的三元表达式、移动键与动作键接全、`keydown` 真的绑在 `#grid` 上、`announce()` 有防抖、勾选同步到 `aria-selected`、`.pick` 对读屏器隐藏、`.zoom` / `.restore` 不占 Tab 顺序。**第 16 节（诊断包接线，19 条）**：`MSG.GET_DIAGNOSTICS` 定义唯一、后台真的处理它、真扫描与缓存命中**两条路**都记摘要、扫描摘要里**没有** `pageUrl` / `title`（只留 `pageHost`）、`probeStats` 只累计计数、设置页有按钮且脚本加载顺序在 `options.js` 之前、`build` + `audit` 都在、**`audit` 挡在落盘前面**、`sanitizeDownload` 走 `pick(白名单)` 而**不是** `Object.assign` 整体透传、`DOWNLOAD_FIELDS` 里没有 `url`、`SETTINGS_OMIT` 排除了 `blockedHosts`、`URL_RE` **不带 `g` 标志**、`IH.Diag` 导出齐全、新套件已登记进 `run-all.js`。注入 7 项：删焦点显现规则 / 删四个方向键分支 / 所有卡片 `tabIndex=0` / 白名单退化成整体透传 / 摘要塞回 `pageUrl` / `URL_RE` 加 `g`，各红 1 项**v1.13.1 再追加第 17 节（扫描结论的三态，13 条）**：钉的是**接线**而不是行为 —— `finalizeScan` 的 `ok` 不能退回裸的 `!session.blocked`（那样「没扫成」又会冒充「没有图」）、`noReply` 判据必须在、`SCAN_NO_REPLY` 的文案里**不许出现**「没有发现图片」这种会被读成「这页没图」的说法、图库的「嗅探失败」分支必须排在「本页没有发现图片」**之前**、内容脚本里不再有 `error: 'busy'` 这条路径、中间结果的回报必须排在补尺寸**之前**；另外两条是「测试资产自身的完整性」：后台 vm 桩只能有一份（`tests/lib/bgstub.js`，缓存套件不许自己再养一份），以及浏览器回归套件必须以 `browser-` 开头（总入口靠这个前缀自动发现，名字起错了不会报错，它只是永远不被跑）。**v1.14.0 再追加第 18 节（界面语言，含 6 组守卫）**：① 中英两份文案表**齐平**且没有空串（空串比缺键更隐蔽 —— `t()` 静默返回空串，界面上就是一小片空白）；② 产品代码里引用的每个键都真的存在（**断言打在「键」上，不是「中文句子」上** —— 文案搬进 i18n 后，`/图库里没有这张图/.test(src)` 这类写法全部失效；同时先剥注释、正则用 `(?<![\w$.])t\(`，否则 `createElement('div')`、`params.get('mode')`、`'opt.' + k` 都会误报）；③ `uiLang` 必须在 `DEFAULT_SETTINGS` 里（否则导出→导入会把它静默过滤掉，用户切了英文、导入一次备份就回到中文）；④ 设置页有 `#segLang` 三档；⑤ `i18n.js` 的加载顺序必须排在 `store.js` **之后**（它要读 `settings.uiLang`）；⑥ **所有浏览器套件都固定了 `locale: 'zh-CN'`**、加载内容脚本的 jsdom 套件都加载了 `i18n.js` 且把 `uiLang` 钉成中文。第 ⑥ 组的存在理由是「本地全绿、CI 全红」：界面默认跟随浏览器，开发机是 `zh-CN`、CI runner 是 `en-US`、jsdom 的 `navigator.language` 恒为 `en-US` —— 不钉死，断言里的中文会整体翻掉。**(f) 另有一条 HTML 结构守卫**：用 jsdom 解析两个页面，断言每个 `[data-i18n]` 元素的 `children.length === 0` —— `data-i18n` 是整段 `textContent` 覆写，兜底文案里写没转义的标签会被连子树一起删掉，写 `<a>` 更会把**后面整篇文档**吞成它的子节点（见第二十三个坑）。**注入验证**：把 `&lt;a href&gt;` 改回裸 `<a href>` → 报 `opt.scanLinksHint → <a>`，1 项变红。**v1.16.0 再追加第 20 节（顶栏结构 + 筛选条默认态，9 条）**：(a) `.topbar` / `.icon-btn` / `.pill` / `.size-slider` 的规则块里不许再出现 `linear-gradient(180deg, …)` 拟物底（**扫大括号块、不按行扫**，并额外扫深色档的 `[data-theme="dark"] …` 覆盖块）；(b) 顶栏七个按钮的 id 都在 HTML 里，且**溢出菜单的残留物一件都不许有** —— `#moreMenu` / `#btnMoreMenu` / `.menu-item` 在 HTML 里、`.menu*` 规则块在 `popup.css` 里（绝对定位的残留元素会把整个顶栏的层叠顺序搅乱）；(c) 探测 / 导出 / 深度嗅探必须是 `.hdr-actions` 里 `class="icon-btn"` 的 `<button>`（**解析开标签确认标签名与 class**，不是「文件里出现过这个 id 就算过」），且顶栏里不许有 `role="menu"` 容器；(d) **筛选条首帧就是收起的** —— `#btnFilters` 上是 `aria-expanded="false"` 且 `#filterPanel` 带 `hidden`，**两处必须同时是收起态**（这条是唯一守得住首帧的，见第二十七个坑）；(e) 三个动作都直接绑了 `addEventListener('click')`（不走菜单转发），且 `setMenu` / `closeMenu` / `bindMenuItem` / `menuItems` **这些菜单控制器必须已删除**（留着就是死代码，还会被下一次改动当成线索）；(f) 滑条停在 `SIZE_MIN_DEFAULT` 时不计入「生效条件」。**注入验证做了 6 项**：图标按钮用回拟物渐变、溢出菜单容器塞回 HTML（连带 CSS 的 `.menu*` 规则块，红 3 项）、只翻按钮属性不翻面板、三个动作的 `addEventListener` 换回 `bindMenuItem`、把 `closeMenu` / `bindMenuItem` 塞回 `popup.js` 当死代码 —— 各红 1 项 |
 | `tools/audit-settings.js` | **设置项巡检（辅助脚本，不在 `run-all.js` 里）**：把每条设置的「定义点 / 读取点 / UI 挂点 / 写入点」连**行号**列出来，把候选缩到一小撮。加 `IH_AUDIT_VERBOSE=1` 打印每条的全部命中位置。**它不做判断** —— 判定仍要人打开文件看原代码，因为反向读取（`!== false`）、属性链（`settings.batchPrefix`）、整体透传（`scanTab(tabId, opts)`）都不是简单字符串匹配能覆盖的。写它时三次把 `theme` / `blockedHosts` / `customRules` 误报成「没有界面入口」—— 分别是分段按钮组、按 id 挂的 textarea、动态列表根节点，每次都是识别方式漏了一类形态 |
 
 ### 可选：真实浏览器测试
@@ -118,6 +123,11 @@ NODE_PATH=<node_modules> node tests/browser-merge-tabs.js
 | `browser-blocked.js` | **站点排除列表的四道门（离线）**：写设置后**轮询确认后台真的读到了**再开测（这一步不能省 —— 第一版只 `set` 不等待，2 项失败，反而暴露了上面那条真实竞态）。断言被排除的站点：悬停不出宿主、Alt+点击不保存、页内面板拒绝打开、后台连注入都省了；对照组站点一切照常；**显式保存仍然可用**（右键路径不受黑名单影响）；图库扫出来是空的时候如实说明「该站点已被排除」而不是「这页没图」 |
 | `browser-subfolder.js` | **保存到子目录（离线）**：劫持 `chrome.downloads.download` 记录 filename，断言 `{host}` / `{date}` / `{index}` 渲染正确、`batchPrefix` 加在文件名而不是目录名上、路径穿越（`../`、盘符、超过 3 层）被清洗掉。**注意**：CDP 接管下载会丢掉子目录（只取最后一段），所以这里断言的是「交给 `chrome.downloads` 的 filename」＋「Chrome 接受了它（`state === complete`）」，**不是**「文件落在 `下载目录/子目录/` 下」—— 后者在这套脚手架里测不到，原因见下面第五个坑 |
 | `browser-preview-all.js` | **悬停预览能翻本页全部图片**：本地站用 `thumbPath` （页面给 `/thumb/`、还原候选是更大的 `/img/`）＋ `imgDelay` 让还原真的发生且不瞬时。悬停**第 6 张**（故意不挑第一张）后点预览，断言灯箱计数是「6 / 12」（列表是本页全部图片、起始下标落在鼠标压着那张，而不是 `1 / 1`）、打开的是**还原后的** `/img/5.png`、缩略图条 12 张**全是原图地址**、`→`/`←`/按钮都能翻且末尾绕回首张；**加载态**必须在灯箱打开**之前**高频轮询才抓得到（等开了再看转圈早就解除，断言恒真）；末节关掉再开一次，断言仍不退化成 1 张。末节（第 4 节）验「大图预览最小尺寸」：从 service worker 侧把 `lightboxMinSize` 写进 `chrome.storage.local`，断言阈值真的被内容脚本读进内存并作用在灯箱列表上（`9999` → 12 张滤剩 1 张、meta 写出「已按 9999px 过滤 11 张」、缩略图条整条收起；改回 `0` → 12 张全部回来且定位仍正确）。注入「只送 1 张」的旧行为后 **9 项**变红 |
+| `browser-theme.js` | **主题系统（离线，40 项 / 10 节）**。真浏览器 + 真扩展，钉死 `locale: 'zh-CN'` 与 `colorScheme: 'light'`，断言打在 **`getComputedStyle` 的实际颜色**上（不是 class 名 —— `data-theme` 挂着但选择器写错一个字符时，属性断言全绿而界面还是白的）。① 设置页色卡渲染出 6 张（数量与 `PRESETS` 对齐）、默认高亮第 1 张、没自定义时「恢复」按钮是禁用态；② 切深色 → `--bg` 的**实际颜色**变了，而且确实更暗（不是换成了另一种浅色）；③ 换预设（靛蓝 → 翡翠）→ 高亮移过去、主色真的变绿、`--primary-solid` 也写上了；④ 取色器设成 `#ff8800` → 主色变橙、按钮解禁、标签显示当前色值；⑤ **恢复跟随预设** → 橙色真的没了，且断言内联值就是预设色（`apply()` 的契约是「内联永远写下当前生效的主色」，**不是**「清空内联」—— 后者只在 `derived` 为空时发生，预设永远不为空。这条一开始写错成「内联应为空」，见第二十五个坑）；⑥ `auto` 在系统浅色偏好下落 `light`；⑦ **跨页面**：图库启动就跟着设置走（深色 + teal 深色档）；⑧ **设置页改动，已开着的图库当场跟着变**（浅色 + 玫红），且**卡片数不掉**；⑨ **内容脚本那条独立路径**：从 service worker 发 `IH_TOGGLE_PANEL` 唤起页内面板（不按 `Alt+Shift+S` —— `chrome.commands` 由浏览器自己派发，`page.keyboard.press` 在 persistent context 里打不通），断言 host 上写的是 `data-ih-theme`（**不是** `data-theme`，后者会撞上宿主页面自己的主题）、`--ih-primary` 别名映射生效、以及**三条「不污染宿主」**：宿主 `<html>` 上没有 `data-theme` / 没有 `data-ih-theme` / 没有内联主色；⑩ **灯箱恒深色** —— 在浅色主题下打开灯箱，断言遮罩仍是 `rgba(11,13,18,0.9)`、文字仍是浅色、灯箱元素本身不带 `data-theme`。这一节守的是**显式设计决策**（浅色遮罩会让图片边缘糊进背景），防止有人「顺手统一」掉它。
+
+**注入验证做了 6 项**：灯箱遮罩改浅色、内容脚本往宿主 `<html>` 写主题、`applyToHost` 不写内联主色、图库不跟设置页变、角标底色写死蓝、换预设不写设置 —— 每项都如实变红。 |
+| `browser-topbar.js` | **顶栏结构 + 图标区分度 + 窄栏不溢出 + 筛选条默认收起（离线，34 项 / 6 节）**。真浏览器 + 真扩展，`locale: 'zh-CN'`。这一套守的全是**静态守卫看不见**的东西：① **顶栏里的按钮正好是这 7 个、顺序未变**（重新嗅探 / 探测体积 / 导出清单 / 深度嗅探 / 面板 / 设置 / 关闭）—— 分成两个数断言：「DOM 里有几个」和「用户看到几个」，因为 `#btnClose` 是 `panel-only`、独立页里 DOM 有它但 `display:none`，把一个会随模式变化的数字写成硬编码就是下一次改动的绊脚石；同时断言页面里**没有**溢出菜单的残留（`.menu` / `#moreMenu` / `#btnMoreMenu`）。② **图标区分度** —— 把每个按钮的 `path` / `rect` / `circle` 的几何属性**规范化后求指纹**（数字尾随 0 抹掉、空白压成一个空格），两两比对；再单独把底栏的 `#btnSave` 捞出来和 `#btnExport` 比（它们原来用的**是同一条 path**，都是「下箭头 + 托盘」），并断言 `#btnDeep` 的指纹以 `rect:` 打头（是「页面 + 箭头」而不是裸的下载箭头）。③ **三个动作都接着 handler** —— 判据是 **toast 文案变了**（不是「按钮进 busy」：`probeSizes` 在「已全探过」时会 early-return，按钮根本不进 busy，那样断言会假红在一个**行为正确**的实现上）；导出直接 `waitForEvent('download')`；深度嗅探看 `#loadingText` 变成它独有的「正在深度嗅探…」。④ **筛选条默认收起**：`hidden` 与 `aria-expanded` 两处一致、展开后**真的占了高度**（防「hidden=false 但高 0」）。⑤ **收起后仍看得出在筛**：没筛时按钮不常亮、角标隐藏；点一个 chip 后常亮 + 角标 ≥1。⑥ **窄栏 380px 下不溢出**：仍是同样 6 个可见按钮；判据是 **`.ctrl-bar` 的 `scrollWidth <= clientWidth`** 与 **`documentElement.scrollWidth <= 视口宽`** （**不是** `.hdr-actions` 的 —— 它有 `margin-left:auto`，在 flex 行里被压到内容宽度，`scrollWidth` 恒等于 `clientWidth`，塞多少东西都全绿，第一版就栽在这儿，见第二十八个坑）；外加底栏「保存选中」的**真折行**判据 —— 看 `#btnSave` 的 **`scrollHeight`（49）是否超过 `clientHeight`（34）**，因为 `.ftr-main` 是 `align-items:center` 的 flex 行，按钮被压扁时 `getBoundingClientRect().height` 仍被钉在 34px，量高度测不到症状（见第二十九个坑）。注意 `.sum` 必须带上长文本才能构造出最坏情况（本套件前几节留下的深度嗅探「滚动上限」提示正好是这个）；**不要照空态截图判断** —— 尺寸过滤清空时按钮本来就窄（90px），那是正常的单行窄按钮。**注入验证 7 项**：`#btnExport` 图标改回 `#btnSave` 那条 path（指纹撞车，红 1 项）、三个动作的 `addEventListener` 换回 `bindMenuItem`（红 1 项）、窄栏媒体查询整个删掉（`.ctrl-bar` 撑到 792、整页 793 vs 380，红 2 项）、摘掉底栏 `.sum{flex:1 1 0}` + `button.primary{nowrap;flex:0 0 auto}`（按钮 90px、`scrollHeight` 49 vs 34，红 1 项）；守卫侧另 3 项见 `validate.js` 第 20 节 |
+
 | `browser-size-slider.js` | **图库尺寸滑条（离线）**：本地站用 `sizeByIndex` 造出四种尺寸循环（`128×128` / `300×80` / `400×300` / `900×600`），24 张。9 节：① 控件本身 —— 存在、`min/max/step/value` 与 JS 常量一致，**外加位置契约**（`#sizeSliderRow` 必须挂在 `.ctrl-bar` 里、**不**在 `.filterbar` 里、且紧跟在选择操作组 `.seg` 之后 —— 见下条布局说明）；② **默认即过滤** —— 打开图库（未动任何控件）可见卡片就应只剩短边 ≥ 256 的那 12 张；③ **较短边判据** —— `300×80` 这张**宽度 300 > 256 但短边 80 不够**，必须被拦；反证是把滑条降到 80 后它出现（若实现误用宽度判据，第 ③ 节两条断言一正一反必然有一条红）；④ `0` = 不过滤、24 张全回来；⑤ 档位优先 —— 点 `≥ 800px` 后再拖滑条应自动把档位复位成「全部」，档位生效时 `#sizeSliderRow` 带 `overridden` 类做视觉降权（**不是** `disabled`，仍可拖）；⑥ 重置按钮把滑条打回 256（不是 0）；⑦ 跨会话持久化 —— 改值后关标签页重开，值仍在（走 `chrome.storage.local` 的 `ih_gallery_view`，**不**进 `DEFAULT_SETTINGS`）；⑧ **空态出口必须落盘** —— 阈值 700 把 24 张全滤掉 → 出现「显示全部 24 张」→ 点击后全部回来 → **关掉重开仍全部**（这一节是回归测试，见第十四个坑：出口以前只改内存不落盘，表现成「面板打开后一张卡都没有」）。注入「短边判据改成宽度判据」后 7 项变红；注入「撤掉 `syncSizeSlider()`」后 1 项变红；注入「删掉出口里的 `saveViewState()`」后 2 项变红。同一份 `sizeByIndex` 必须同时作用于 ① HTML 的 `width/height` 属性 ② 服务端真正返回的 PNG 像素 ③ lazy 批次追加脚本 —— 三处只要有一处不一致，测出来的就是假象（见下面第十一个坑） |
 | `browser-merge-tabs.js` | **多标签页合并嗅探（离线，39 项 / 10 节）**：`mergeTabs` 是**默认关**的开关（设置页里开），打开后图库顶部的「扫描目标」从单选下拉变成多选勾选列表。两个本地站 —— **A 是同站两页**（`pages: [{path:'/', imageIndexes:[0..5]}, {path:'/b', imageIndexes:[3..7]}]`，故意让第 3/4/5 张**两页都有**）、**B 换 host**（`host:'localhost'`，跨站地址必然不同、永远没有重叠，用来验「合并」而不是「去重」）。① 默认关：单选在、多选不在、6 张、无来源页角标；② 打开设置**当场生效**（不用刷新）、默认勾 1 个、列表 3 行；③ 勾同源两页 → **8 张而不是 11**（去重按 `U.normalizeUrl` 的规范化地址），`/img/3.png` 全列表只出现一次；④ 每张卡片带来源页角标、顶栏写「2 个页面」；⑤ 跨站 A+B = 10 张（**没有重叠**，证明第 ③ 节的 8≠11 不是「少扫了」而是真的去重）；⑥ 只勾一个 → 退回 6 张、角标消失、顶栏回域名；⑦ 全取消 → 空态说「还没有勾选要嗅探的页面」（**不是**「这些页面没有图片」）；⑧ 搜 `localhost` → 只剩 B 站的 4 张（搜索要连来源页一起匹配）；⑨ 导出 CSV 带「来源页」列且 10 条；⑩ **切扫描目标**（图库开着时再点一次图标）—— 合并模式下勾选收缩成一个，单选模式下也必须真的换过去（**回归测试**，见第十三个坑的续记）。**注入验证**：去掉跨页去重（`if (false && prev)`）→ 红 3 项；去掉来源页角标 → 红 1 项；把 `loadTabList()` 的单选分支改回「用 `targetIds` 覆盖 `tabId`」→ 第 10 节红 2 项。夹具里的 `pages` / `host` 见下面的选项表 |
 | `browser-a11y.js` | **键盘与读屏器（离线，50 项 / 10 节）**。静态守卫只能证明「代码写了」，证明不了「真的能用」—— roving tabindex 写错会变成「整个网格完全 Tab 不进去」，`:focus` 显隐规则写错会变成「Tab 到一个看不见的按钮上」，这两种错都不影响截图和鼠标操作。所以这里用**真键盘**走一遍：① 语义骨架（`role="listbox"` / `aria-multiselectable` / `aria-describedby` / `#gridHelp` 是 `sr-only` 且宽度 ≤ 1px / `#srStatus` 的 `role`+`aria-live`+`aria-atomic` / `#progress` 是 `progressbar` 且有 `aria-valuenow`）；② **整个网格只有 1 个 Tab 停靠点**（`#grid` 内 `tabIndex >= 0` 的元素计数 === 1，30 张卡片不是 30 个停靠点），且 `Tab` / `Shift+Tab` 都能正常进出；③ 方向键真的移动焦点（`→` +1、`↓` +列数、边界不越界）且 roving 停靠点跟着挪（`zeroCount` 恒为 1）；④ `Home` / `End`；⑤ `:focus-visible` 匹配、`outline` 是 `solid ≥ 2px`、**聚焦卡片上 `.zoom` 的 `opacity` 真的是 1**（WCAG 2.4.7），而未聚焦未悬停的卡片上仍是 0（焦点规则没有误伤全局）；⑥ `Enter` / `空格` 勾选（`class` 与 `aria-selected` 双写）且读屏器播报「已勾选 1 张」（要等过 180ms 防抖）；⑦ `P` 打开灯箱、`Esc` 关掉；⑧ `.pick` 的 `aria-hidden` + `tabIndex=-1`、`.zoom` / `.restore` 不占 Tab 顺序、卡片可访问名称以「第 1 张」开头且**不含**勾选状态；⑨ 搜索把列表清空后没有残留的 `tabindex=0`，恢复后停靠点被夹回第一张。**注入验证**：让所有卡片都 `tabIndex = 0` → **50 → 45/5** |
@@ -198,7 +208,7 @@ NODE_PATH=<node_modules> node tests/browser-merge-tabs.js
 > 注意：jsdom 不会加载 `<link rel="stylesheet">`，所以 `test-hover.js` 里的点击成功，
 > 同时也验证了「即使 `overlay.css` 加载失败，悬停按钮依然可点击」这条降级路径。
 
-## 测试自己会骗人：二十三个坑
+## 测试自己会骗人：二十九个坑
 
 前两个是「报绿但没测」，第三、五个是「断言恒真」，第六个是「注入验证根本没跑」，
 第七个是「超时被吞掉，把真 bug 伪装成正常」，第八个是「断言的前提被后来的修复推翻，
@@ -206,8 +216,15 @@ NODE_PATH=<node_modules> node tests/browser-merge-tabs.js
 第十个是「**错误的行为被写成断言，把 bug 固化成预期**」，
 第十六个是「**守卫扫到了它自己的注释**」，
 第十七个是「**断言把『关掉』的判据写错了**」，
-第十八个是「**手写清单漏掉一个套件时不会报错**」。
-共同点是**失败时不出声** —— 而一个不出声的测试比没有测试更危险。
+第十八个是「**手写清单漏掉一个套件时不会报错**」，
+第二十四个是「**裸 `indexOf` 找文件名，注释里提一句就把顺序判反**」，
+第二十五个是「**测试的『模拟』改的是一个没人读的副本，红得像产品 bug**」，
+第二十六个是「**守卫的判据写成行首匹配，换个排版就静默漏掉**」，
+第二十七个是「**JS 跑起来会覆盖 HTML 的默认值，于是『改坏 HTML 默认态』的注入验证假绿**」，
+第二十八个是「**断言打在我改的那个元素上，而不是症状出现的地方**」，
+第二十九个是「**量错了尺寸：flex 行把高度钉死，要量 `scrollHeight` 才看得见折行**」。
+共同点是**失败时不出声** —— 而一个不出声的测试比没有测试更危险；
+第二十四到二十六还多一层：**红的是守卫自己，报错却指向没问题的东西**。
 
 ### 1. 裸 `await` 等一个永远不来的响应 → Node 静默退出，runner 报绿
 
@@ -1063,4 +1080,306 @@ agency）会把 `<a>` 复活**，包住它之后的**整篇文档** —— 包�
    把 `&lt;a href&gt;` 改回裸 `<a href>` → 报
    `opt.scanLinksHint → <a>`，1 项变红；还原后 244 项全绿。
 
+
+
+### 第二十四个坑：**「裸 indexOf 找文件名」——注释里提一句就把顺序判反了**
+
+做主题重构时，`options.html` / `popup.html` 的 `<head>` 里要保证
+`theme.css` 排在组件样式表**之前**（变量定义在前、引用在后）。于是写了断言：
+
+```js
+const t = html.indexOf('shared/theme.css');
+const own = html.indexOf('options.css');
+if (t > own) bad('theme.css 排在 options.css 之后');
+```
+
+它红了，但**顺序明明是对的**：
+
+```
+  ✗ options/options.html 里 theme.css 排在 options.css 之后
+```
+
+因为我在那个 `<head>` 里刚写了注释：
+
+```html
+<!-- theme.css 必须在 options.css 之前（理由见 popup.html 同处注释） -->
+```
+
+`indexOf('options.css')` 命中的是**注释里的那个词**（位置 209），
+而真正的 `<link href="options.css">` 在 283 之后。注释在前、真货在后，
+于是「顺序正确」被判成「顺序不对」。
+
+**这个坑一小时内踩了两次**：先是 `options.js` / `diagnostics.js`
+（我在主题注释里写了 "options.js"，`indexOf` 命中注释 3151，而
+`diagnostics.js` 的 script 标签在 19045），改完那一处之后，
+紧接着在 `theme.css` / `options.css` 上原样复发。
+
+**判据与做法**：
+
+1. **凡是拿「位置先后」做断言，一律匹配标签本身，不要匹配文件名。**
+   `tests/validate.js` 顶部收了一个 `tagSrcIdx(html, name)`：
+   `<link>` / `<script>` 的 `src`/`href` 属性里出现该文件名的位置。
+   各节都走它，不再各写各的 `indexOf`。
+2. **同一个 helper 写在文件顶部。** 我第一版把它写在用到它的那一节旁边，
+   于是前面第 16 节调用时报
+   `Cannot access 'tagSrcIdx' before initialization`（TDZ）——
+   在 `const` 之前调用 `const` 声明的函数，报错信息是指向调用点，
+   而根因是**声明位置**。
+3. **这条守卫做过注入验证**：把 `theme.css` 的 `<link>` 移到 `popup.css` 之后
+   → 报「theme.css 排在 popup.css 之后」，1 项变红；还原后 261 项全绿。
+
+### 第二十五个坑：**测试的「模拟」改的是一个没人读的副本 —— 断言红得像产品 bug**
+
+`test-theme.js` 要验「系统切深浅色时界面跟着变」。第一版这么模拟：
+
+```js
+autoEnv.prefersDark = true;              // 改一个字段
+autoEnv.ctx.matchMedia = (q) => ({ ... }); // 再盖掉 matchMedia
+autoEnv.listeners.forEach((fn) => fn());   // 手动触发回调
+```
+
+红了：
+
+```
+  ✗ auto 时系统切深色 → 界面跟着变  → got "light" / want "dark"
+```
+
+看起来像 `theme.js` 的监听坏了。但把同一段逻辑单独抽成脚本跑，**完全正常**。
+差别在于「桩」的构造：套件里那个桩是
+
+```js
+const prefersDark = !!o.prefersDark;                    // ← 闭包抓的是 const
+const matchMediaStub = (q) => ({ matches: ..., ? prefersDark : ... });
+```
+
+`prefersDark` 是**闭包捕获的常量**，事后改 `env.prefersDark` 与它无关；
+而 `ctx.matchMedia = ...` 这个赋值又是**静默失败**的（jsdom 的 vm context 上
+多数内建属性只有 getter，赋值在非严格模式下一声不响）。
+
+于是「模拟系统切换」整体变成了**空操作**：开关没动、桩没换，
+回调跑了一遍读到的还是旧值 —— 界面当然不动。
+
+**判据与做法**：
+
+1. **桩要留一个「能改的旋钮」，而且那个旋钮必须被桩的闭包读到。**
+   现在写成 `const sys = { dark: !!o.prefersDark };` + `setDark(v)`，
+   桩读 `sys.dark`。测试里只调 `setDark()`，不再去碰 `ctx.matchMedia`。
+2. **jsdom 的 vm context 上，赋值常常是静默失败的。**
+   `navigator` / `window` / `matchMedia` 都会抛
+   `Cannot set property X ... which has only a getter`（严格模式）
+   或干脆没反应。要替换就用 `Object.defineProperty`，
+   而且**替换之后要确认旧引用有没有被别处缓存**。
+3. **「测试红了」先怀疑测试，别急着改产品。** 这条和第十七、二十个坑是同一族：
+   断言红不出来的原因常常在断言自己身上。最快的分诊法是
+   **把同样的逻辑抽成一个独立脚本再跑一遍** —— 独立脚本绿、套件红，
+   那就一定是上下文构造的差异，不是产品。
+4. **再加一条「监听确实挂上了」的前置断言**（`listeners.length > 0`）。
+   没有它的话，后面那两条「界面跟着变」在监听压根没挂的情况下
+   也可能因为别的原因碰巧是绿的 —— 那才是真正危险的假绿。
+
+### 第二十六个坑：**守卫的判据写成「行首匹配」——单行写法静默漏掉**
+
+`validate.js` 第 19 节要守「组件样式表里不许再定义变量」（变量都收进
+`shared/theme.css` 了）。第一版判据是按行扫：
+
+```js
+body.split('\n').forEach((line) => {
+  const m = line.match(/^\s*(--[a-z0-9-]+)\s*:/i);   // ← 只认行首
+  if (m) defs.push(m[1]);
+});
+```
+
+注入验证时把 `:root { --primary: #4f6ef7; }` 追加进 `popup.css`，
+守卫**没报**。两个原因叠在一起：
+
+1. **只认行首。** `:root { --primary: ... }` 写成一行时，
+   `--primary` 前面还有 `:root { `，匹配不上。真正的判据是
+   「在某个 `{}` 内部」，应该在大括号块里扫，而不是按行扫。
+2. **工作区是 CRLF。** `popup.css` 在磁盘上是 `\r\n`
+   （`.gitattributes` 钉的是 LF，但 checkout 出来的工作区可能是 CRLF）。
+   `split('\n')` 会让每行尾巴留一个 `\r`，任何以 `$` 锚定的正则都会失配。
+
+改成先剥注释、再 `matchAll(/\{([^{}]*)\}/g)` 在大括号块里找变量名，
+两个问题一起解决。
+
+**判据与做法**：
+
+1. **判据要写「语义」而不是「排版」。** 「变量定义」的语义是
+   「出现在某个规则块里」，不是「出现在行首」。
+   任何 `^` / `$` 锚定的判据都要先问一句：**换个排版还成立吗？**
+2. **处理文本前先统一行尾，或者干脆不要按行切。**
+   这个项目里 `tests/test-shared.js` 早就吃过 CRLF 的亏
+   （`.gitattributes` 就是为它加的），静态守卫同样要防。
+3. **注入验证要挑「反例是另一种写法」的例子。** 我原来只试了
+   「在文件末尾加一行 `--x: 1;`」，那种写法确实会命中；
+   换成单行 `:root { ... }` 才暴露出来。**注入的样本要覆盖排版变体。**
+
+### 第二十七个坑：**JS 跑起来会覆盖 HTML 的默认值 —— 「改坏 HTML 默认态」的注入验证假绿**
+
+做第 2 步（筛选条从「默认展开」改成「默认收起」）时，改动落在**两处**：
+HTML 上给 `#filterPanel` 加 `hidden` 属性、给 `#btnFilters` 把
+`aria-expanded` 改成 `"false"`；JS 里 `init()` 调 `setPanel(viewState.filtersOpen)`。
+两处都改完，注入验证来了：把 HTML 的 `hidden` **删掉**，跑 `browser-topbar.js` ——
+**48 项全绿，一项没红。**
+
+原因很简单：`setPanel()` 在 `init()` 里跑，它会把 `panel.hidden` 按
+`viewState.filtersOpen`（默认 `false`）**重新写一遍**。HTML 上那个 `hidden`
+只在 JS 跑起来之前起作用，而浏览器套件所有的断言都是在
+`waitUntil: 'domcontentloaded'` **之后**、`init()` 早就跑完了才读的。
+
+也就是说：这条断言的**观测点在 JS 覆盖之后**，而它想守的东西全在
+**覆盖之前**。中间隔着的那一帧 —— 用户第一次打开图库时看到的那个瞬间 ——
+正好是唯一会出问题的地方（面板会闪一下展开的条），而它恰恰是测试看不到的。
+
+**修法不是换一条更强的浏览器断言**（那一帧太短、抓不稳），
+而是把「HTML 两处默认态一致」这件事**降级成静态守卫**，
+写进 `validate.js` 第 20 节 (d)：直接读 `popup.html` 的原始文本，
+断言 `<button id="btnFilters">` 上是 `aria-expanded="false"`、
+`<div id="filterPanel">` 上带 `hidden`。这一条再注入就红了。
+
+**判据与做法**：
+
+1. **注入验证的前提是「观测点在你改坏的那一层」。** 改坏 HTML 属性、
+   断言的却是 `init()` 跑完之后的 DOM —— 那不是「没覆盖」，是**观测点错位**。
+   每次注入前先问：**我这次的改动，会在断言读取之前被谁覆盖掉？**
+2. **「JS 会改写的属性」不要只在浏览器里测。** 首帧、默认态、
+   加载顺序这些一律静态守（读源文件），运行时的留给浏览器套件。
+   两者守的是同一件事的**不同时刻**，不能互相替代。
+3. **假绿和假红一样危险，但更难发现** —— 假红你会去查，假绿你不会。
+   所以注入验证的结论只有两种：**红了**（覆盖了）、**没红，且我能说清为什么**
+   （行为等价 / 观测点错位 → 补一条静态守卫）。说不出原因就是没覆盖。
+
+### 第二十八个坑：**断言打在「我改的那个元素」上，而不是「症状出现的地方」—— 又一个假绿**
+
+同一个套件（`browser-topbar.js`）的第 6 节要守「窄栏 380px 下不溢出」。
+我写的断言是：
+
+```js
+// 错：观测点选错了
+check(box.scrollWidth <= box.clientWidth, '顶栏动作组没有横向溢出');
+// box = document.querySelector('.hdr-actions')
+```
+
+注入验证：把窄栏的 `@media (max-width: 460px)` 整段**删掉** ——
+顶栏按钮从 28×28 变回 32×32，正是要抓的回退。跑出来 **28 项全绿**。
+
+原因是 `.hdr-actions` 有 `margin-left: auto`（靠右），它是 flex 行里的一个
+**可压缩**子项。内容多了它就被压扁，`scrollWidth` 永远等于 `clientWidth` ——
+塞 3 个按钮还是 30 个，这个判据都是绿的。**它是一个恒真式，不是断言。**
+
+真正的症状在别的地方：
+
+```
+.ctrl-bar    scrollWidth = 780  /  clientWidth = 378   ← 被撑到两倍宽
+documentElement.scrollWidth = 781  /  视口 = 380        ← 整页多出横向滚动条
+size-slider  right = 781                                ← 元凶：margin-left:auto 且 flex:0 0 auto
+```
+
+（这个溢出**在 HEAD 上就已经存在**，不是这次改出来的 —— 先用 `git stash`
+把我的改动挪开复现了一次，才确认它是既有缺陷，顺手一起修了。）
+
+**修法**：换观测点 + 修产品。
+
+1. 断言改成打在**症状出现的地方**：`.ctrl-bar` 的 `scrollWidth <= clientWidth`
+   （容器被撑开）和 `documentElement.scrollWidth <= innerWidth`
+   （整页横向滚动条）。前者能指认哪个容器坏了，后者是最终判据 ——
+   容器可以是 `overflow: hidden` 把问题藏起来，整页的滚动条藏不住。
+2. 产品侧：窄栏里让 `.ctrl-bar { flex-wrap: wrap }`、`.size-slider { order: 99 }`，
+   滑条换行独占第二排。改完 `documentElement.scrollWidth` 从 781 回到 380。
+
+**判据与做法**：
+
+1. **先问「这个元素真的会表现为溢出吗」。** `margin-left:auto`、`flex-shrink: 1`、
+   `min-width: 0`、`overflow: hidden` —— 这些属性都会让**容器自身**的
+   `scrollWidth === clientWidth` 恒成立。要抓溢出，就去看那个**不肯收缩的
+   子元素跑到哪去了**，或者直接看 `documentElement`。
+2. **同一件事要有「指认」和「判据」两条断言。** `.ctrl-bar` 的宽度差告诉你
+   是哪个容器坏了（可调试），`documentElement.scrollWidth` 告诉你用户会不会
+   看到滚动条（不可辩驳）。只有前者会漏（别的容器也能撑爆整页），
+   只有后者会难以定位。
+3. **注入验证之后多问一句「为什么它会红/绿」。** 这一条第 1 次没红时，
+   如果我只把断言改强一点（比如加 1px 容差）就收工，真缺陷会一直在。
+   **「没红」的标准反应是去看真实数值**（我打了 `.ctrl-bar` 与
+   `documentElement` 两个宽度才看见 780）—— 数值会直接告诉你观测点错在哪。
+
+---
+
+### 第二十九个坑：**量错了尺寸 —— flex 行把高度钉死，要看 `scrollHeight` 才看得见折行**
+
+做顶栏这轮时，看一眼 `gallery-panel.png` 截图，觉得底栏的「保存选中」
+被左边那串统计文字挤成了**竖排**（一个字占一行）。于是加了三条 CSS 去"修"：
+`button.primary { white-space: nowrap; flex: 0 0 auto }`、
+`body.mode-panel .sum { flex: 1 1 0 }`、`.brand-name { nowrap }`，
+并写了断言：
+
+```js
+// 错：量的是被 flex 行强制的高度
+const r = b.getBoundingClientRect();
+check(r.height <= 44, '窄栏下「保存选中」没有变成竖排');
+check(r.width >= 70, '窄栏下「保存选中」没有被挤扁');
+```
+
+注入验证：把刚加的三条 CSS **全部摘掉**，跑 `browser-topbar.js` ——
+**34 项全绿，一项没红。**
+
+情况比第二十八个坑更绕，因为**症状是真的存在的**，只是我量错了维度：
+
+```
+#btnSave（缺陷态）  w = 90   h = 34   scrollHeight = 49   clientHeight = 34
+#btnSave（修复态）  w = 127  h = 34   scrollHeight = 34   clientHeight = 34
+                              ↑ 两边都是 34
+```
+
+`.ftr-main` 是 `align-items: center` 的 flex 行，行高由最高的子元素决定。
+按钮被压到 90px 时文字折了行，**内容层高 49px**，但 flex 行仍然把按钮的
+盒子高度撑在 34px（多出来的内容溢出到盒子外）。所以：
+
+- `getBoundingClientRect().height` 恒为 34 → `h <= 44` **恒真**；
+- `getBoundingClientRect().width` 在缺陷态 90 / 修复态 127 → `w >= 70` **也恒真**。
+
+两条断言都是恒真式，和没有一样。**唯一能反映「折行」的是
+`scrollHeight > clientHeight`。**
+
+中间还有一段更危险的弯路：为了搞清状况，我单独写了个探针脚本去量，
+结果它报「修复态和缺陷态数值完全一样」，我一度**把三条 CSS 当冗余删掉了**。
+后来才发现探针用的是另一个夹具 —— `.sum` 里没有那句长文本，
+**没构造出最坏情况**，于是缺陷根本不出现。同一个观察点，
+**夹具不同，结论就反了**：
+
+```
+真面板 48 张卡片、.sum = "共 48 张 · 符合 48 · 已选 0 · 合计 —"      → 按钮 119px，不折
+topbar 套件（.sum 里挂着深度嗅探的「已达滚动上限」长提示）           → 按钮 90px，折行
+```
+
+**判据与做法**：
+
+1. **量一个症状之前，先问「这个维度会不会被父容器锁死」。**
+   flex/grid 行会把子项的 `height` / `width` 按对齐规则钉住，
+   `getBoundingClientRect()` 读到的是**被钉之后的盒子**，不是内容的真实需求。
+   文字折行看 `scrollHeight`、文字被截断看 `scrollWidth`、
+   「有没有溢出容器」看 `offsetTop + offsetHeight` —— 都不是 `rect`。
+2. **构造最坏情况才有资格下结论。** 这次绕的弯路全在夹具上：
+   缺陷要同时满足「`.sum` 文本够长」+「底栏够窄」，缺一个就不复现。
+   用探针做对照实验时，**先把修复态和缺陷态的原始数值都打印出来比一比**，
+   数值一样不等于「规则冗余」，很可能是**探针没打到那个分支**。
+3. **截图只能用来发现「这里有情况」，不能用来确认「这就是症状」。**
+   竖排是真看到了，但它在截图上的成因和我以为的不一样 ——
+   **截图是线索，测量才是证据**。定断言前必须回到 DOM 量一次。
+4. **删除一段"看起来没用"的防御代码之前，注入验证必须走完整闭环**：
+   绿 → 摘掉变红 → 还原变绿。这次差点就凭一个夹具不当的探针把它删了 ——
+   而它其实真的在干活。
+
+---
+
+**这六条的共同点**（第二十四到二十九）：它们全都是**测试或守卫自己写错了**，
+而不是产品坏了。而且四条的表现都是「红色的报错指向一个没问题的东西」，
+第二十八条更隐蔽 —— 它连红都不红。
+
+配套的做事方式只有一条，但这个项目里已经反复证明它最值钱：
+
+> **写完一条断言，立刻把它指向的行为改坏一次，确认它真的会红。**
+> 不红就说明那段没被覆盖 —— 无论当时套件多绿。
+>
+> 不红的时候**不要先改断言**：先把真实数值打出来，
+> 看它指向哪里 —— 「观测点错位」和「行为等价」是两件完全不同的事。
 

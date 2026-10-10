@@ -98,7 +98,7 @@ async function cardSizes(page) {
   /* ---------- 3. 点击「探测体积」 ---------- */
   console.log('\n=== 3. 点击「探测体积」 ===');
   const btnState = await gallery.evaluate(() => ({
-    disabled: document.getElementById('btnProbe').disabled,
+    disabled: (document.getElementById('btnProbe').disabled || document.getElementById('btnProbe').getAttribute('aria-disabled') === 'true'),
     busy: document.getElementById('btnProbe').classList.contains('busy')
   }));
   check(btnState.disabled === false && btnState.busy === false, '按钮初始可用', JSON.stringify(btnState));
@@ -108,7 +108,7 @@ async function cardSizes(page) {
   // 立刻看一眼：按钮应处于「探测中」禁用态（图标按钮用 busy 类，不再是改文案）
   await sleep(120);
   const during = await gallery.evaluate(() => ({
-    disabled: document.getElementById('btnProbe').disabled,
+    disabled: (document.getElementById('btnProbe').disabled || document.getElementById('btnProbe').getAttribute('aria-disabled') === 'true'),
     busy: document.getElementById('btnProbe').classList.contains('busy')
   }));
   console.log('探测中按钮: ' + JSON.stringify(during));
@@ -119,7 +119,7 @@ async function cardSizes(page) {
   let waited = 0;
   while (waited < 30000) {
     const t = await gallery.evaluate(() => ({
-      disabled: document.getElementById('btnProbe').disabled,
+      disabled: (document.getElementById('btnProbe').disabled || document.getElementById('btnProbe').getAttribute('aria-disabled') === 'true'),
       busy: document.getElementById('btnProbe').classList.contains('busy')
     }));
     if (!t.disabled && !t.busy) break;
@@ -174,7 +174,7 @@ async function cardSizes(page) {
   const toast2 = await gallery.evaluate(() => document.getElementById('toast').textContent);
   console.log('提示文案: ' + toast2);
   check(/没有需要探测的图片|已获取/.test(toast2), '重复点击给出合理提示', toast2);
-  const stillOk = await gallery.evaluate(() => !document.getElementById('btnProbe').disabled);
+  const stillOk = await gallery.evaluate(() => !(document.getElementById('btnProbe').disabled || document.getElementById('btnProbe').getAttribute('aria-disabled') === 'true'));
   check(stillOk, '按钮恢复可用，没有卡在探测中');
 
   console.log('\n通过 ' + pass + ' 项，失败 ' + fail + ' 项');

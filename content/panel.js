@@ -113,5 +113,12 @@
     return show().then(() => true);
   }
 
-  IH.Panel = { show, hide, toggle, isOpen: () => isOpen };
+  IH.Panel = {
+    show, hide, toggle, isOpen: () => isOpen,
+    /* 供 content/main.js 的 syncTheme 用（理由同 hover.js 的同名方法）。
+       注意面板的 host 里装的是一个 iframe（图库页 ?mode=panel），
+       iframe 里那份 popup.js 自己会读设置并应用主题 —— 所以严格说
+       这个 host 上的变量主要影响面板自己的边框/圆角等外壳。 */
+    host: () => host
+  };
 })();

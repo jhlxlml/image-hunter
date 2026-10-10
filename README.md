@@ -112,6 +112,8 @@
 | **三个全局快捷键** | `Alt+Shift+S` 页内面板 / `Alt+Shift+G` 打开图库 / `Alt+Shift+D` 保存当前悬停的那张 |
 | **自助排障诊断包** | 设置页一键导出 JSON。**只含聚合数字与主机名**，不含图片地址 / 页面地址 / 文件路径 |
 | **中英双语界面** | 设置页「界面语言」可运行时切换（跟随浏览器 / 中文 / English），默认跟随浏览器 |
+| **可自定义主题** | 亮色 / 深色 / 跟随系统三档，六套配色方案（靛蓝 · 青碧 · 翡翠 · 玫红 · 琥珀 · 石板），或用取色器指定任意主色。改一处，图库、页内面板、灯箱强调色**同时**跟着变 |
+| **界面为图片让路** | 顶栏动作全部常驻、一点就到，但去掉了拟物渐变；筛选条默认收起；卡片默认无描边 —— 打开图库先看到的是一片图片，而不是一圈工具栏 |
 
 ---
 
@@ -176,7 +178,7 @@ image-hunter/
 ├── popup/                 # 图库主界面（独立页面 / 页内面板共用同一份代码）
 ├── options/               # 设置页
 ├── tools/                 # 打包、设置项巡检
-├── tests/                 # 16 个 Node 套件 + 26 个真实浏览器套件
+├── tests/                 # 17 个 Node 套件 + 28 个真实浏览器套件
 ├── docs/screenshots/      # 界面截图
 ├── _locales/              # 仅扩展名称/描述/命令标题/右键菜单文案（服务 manifest）；界面文案由 shared/i18n.js 负责
 └── icons/
@@ -190,8 +192,8 @@ image-hunter/
 
 ```bash
 npm ci                 # 首次：装开发期依赖（jsdom + playwright-core）
-npm test               # Node 套件（16 个）
-npm run test:browser   # 真实浏览器套件（26 个，需要本机 Edge / Chrome）
+npm test               # Node 套件（17 个）
+npm run test:browser   # 真实浏览器套件（27 个，需要本机 Edge / Chrome）
 npm run test:all       # 两个入口都跑
 npm run package        # 打包
 npm run audit:settings # 巡检设置项：列出每条设置的读取点 / UI 挂点，找死设置

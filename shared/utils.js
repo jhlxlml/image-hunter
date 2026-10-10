@@ -620,18 +620,39 @@
   }
 
   /**
-   * 创建一个带 Shadow DOM 的宿主元素，并注入扩展的 overlay.css
-   * 这样页内 UI 与宿主页面样式完全隔离，互不污染
+   * 创建一个带 Shadow DOM 的宿主元素，并注入扩展的页内 UI 样式。
+   * 这样页内 UI 与宿主页面样式完全隔离，互不污染。
+   *
+   * 注入**两张**样式表，顺序不能反：
+   *   1. shared/theme.css  —— 里面那段 `:host, .ih-root { --ih-*: var(--共享token) }`
+   *      的映射必须先进来，overlay.css 里 var(--ih-*) 才取得到值。
+   *      （--primary 这些 token 本身写在 :root 上，会**继承**穿过 shadow 边界，
+   *      所以不需要把整份 :root 再抄一遍；但 --ih-* 这一层是 shadow 内的别名，
+   *      必须显式注入。）
+   *   2. content/overlay.css —— 组件样式
+   * 反过来的话页面 UI 会整块失去颜色（变量拿到空值 → 回退到浏览器默认），
+   * 而「明明注入成功了」会让人往别处找原因。
    */
   function createShadowHost(hostStyle) {
     const host = document.createElement('div');
     host.setAttribute('data-ih-host', '1');
     if (hostStyle) host.style.cssText = hostStyle;
     const root = host.attachShadow({ mode: 'open' });
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = extUrl('content/overlay.css');
-    root.appendChild(link);
+    for (const href of ['shared/theme.css', 'content/overlay.css']) {
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = extUrl(href);
+      root.appendChild(link);
+    }
+    /* 主题写在 host 元素上（不是宿主页面的 <html> —— 那是别人的页面）。
+       变量从这里继承进 shadow 树，既拿到了当前主题，也不污染页面。
+       utils 不认识 settings，所以只做「有 IH.Theme 就用」的可选调用：
+       utils.js 是共享层里加载最早的一个，不该反过来依赖 theme.js。 */
+    try {
+      if (IH.Theme && IH.Theme.applyToHost && IH.Store && IH.Store.getSettings) {
+        IH.Theme.applyToHost(host, IH.Store.getSettings());
+      }
+    } catch (e) { /* 主题不可用时退回 theme.css 的浅色默认值 */ }
     return { host, root };
   }
 

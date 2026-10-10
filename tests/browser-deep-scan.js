@@ -153,8 +153,10 @@ async function waitTotal(page, n, budgetMs) {
     check(Number(firstTotal) === site2.perBatch,
       '图库打开时（普通嗅探）只有首屏 ' + site2.perBatch + ' 张', firstTotal);
 
+    /* 「深度嗅探」是顶栏的常驻图标（v1.17.0 起；中间短暂收进过「更多」菜单，
+       后来又搬回来了 —— 常驻才是一点就到）。 */
     const hasBtn = await gallery.evaluate(() => !!document.getElementById('btnDeep'));
-    check(hasBtn, '顶栏存在「深度嗅探」按钮');
+    check(hasBtn, '「深度嗅探」按钮存在');
 
     await gallery.click('#btnDeep');
 

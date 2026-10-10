@@ -1,70 +1,12 @@
 /* ==========================================================================
  * ImageHunter — popup/popup.css
  * 现代简约 · 浅色卡片风格
+ *
+ * 颜色 / 圆角 / 字体变量全部在 shared/theme.css（本文件之前加载）。
+ * 这里只写组件样式 —— 原来自带的那套 :root / [data-theme="dark"]
+ * 变量层已删（v1.15.0）：三份副本值不一致是「界面静默走样」的根源，
+ * 而且自定义主题没法在三份副本上做。
  * ========================================================================== */
-
-:root {
-  --primary: #4f6ef7;
-  --primary-dark: #3b5bdb;
-  --primary-soft: rgba(79, 110, 247, 0.10);
-  --primary-soft-2: rgba(79, 110, 247, 0.16);
-
-  --bg: #f4f5f8;
-  --surface: #ffffff;
-  --surface-2: #fafbfc;
-  --surface-3: #f0f1f5;
-
-  --border: #e6e8ef;
-  --border-strong: #d7dae3;
-
-  --text: #1f2430;
-  --text-2: #5b6371;
-  --text-3: #949bab;
-
-  --success: #16a34a;
-  --success-soft: rgba(22, 163, 74, 0.12);
-  --danger: #e5484d;
-  --danger-soft: rgba(229, 72, 77, 0.12);
-  --warn: #d97706;
-
-  --shadow-xs: 0 1px 2px rgba(17, 24, 39, 0.05);
-  --shadow-sm: 0 1px 2px rgba(17, 24, 39, 0.06), 0 2px 6px rgba(17, 24, 39, 0.05);
-  --shadow-md: 0 6px 20px rgba(17, 24, 39, 0.12), 0 2px 6px rgba(17, 24, 39, 0.06);
-
-  --radius-sm: 8px;
-  --radius: 11px;
-  --radius-lg: 14px;
-
-  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
-    "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
-}
-
-[data-theme="dark"] {
-  --primary: #6b86ff;
-  --primary-dark: #8ba0ff;
-  --primary-soft: rgba(107, 134, 255, 0.16);
-  --primary-soft-2: rgba(107, 134, 255, 0.26);
-
-  --bg: #14161c;
-  --surface: #1c1f27;
-  --surface-2: #21242d;
-  --surface-3: #272b35;
-
-  --border: #2c313c;
-  --border-strong: #3a4150;
-
-  --text: #eef0f4;
-  --text-2: #a8afbd;
-  --text-3: #737b8b;
-
-  --success: #34d17f;
-  --danger: #ff6b6f;
-  --warn: #f0b429;
-
-  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.35);
-  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.5);
-}
 
 * { box-sizing: border-box; }
 
@@ -322,9 +264,9 @@ button { cursor: pointer; }
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(145deg, #6b86ff, #4a44d6);
+  background: linear-gradient(145deg, var(--primary), var(--primary-dark));
   color: #fff;
-  box-shadow: 0 3px 10px rgba(79, 110, 247, 0.32);
+  box-shadow: 0 3px 10px var(--primary-shadow-strong);
 }
 
 .logo svg { width: 17px; height: 17px; }
@@ -351,37 +293,41 @@ button { cursor: pointer; }
   max-width: 380px;
 }
 
+/* 顶栏动作组：靠 margin-left:auto 顶到最右侧。
+   8 个按钮在窄栏下会挤爆顶栏 —— 面板模式只有 380px，
+   所以下面有一段专门给窄栏的缩减规则（缩按钮、缩间距），
+   而不是再把动作藏进溢出菜单。 */
 .hdr-actions { margin-left: auto; display: flex; align-items: center; gap: 5px; }
 
+/* 图标按钮：**纯色**底，不再用上下渐变「打光」。
+   拟物渐变在浅色下看着像一枚枚小凸起，一排放八个时整条顶栏的视觉重量
+   比下面的图片网格还重 —— 而顶栏只是外壳，主体是图。
+   去掉渐变后靠 hover 的着色和按住时的缩放来表达「这是能点的」，够了。 */
 .icon-btn {
   width: 32px;
   height: 32px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--border);
-  background: linear-gradient(180deg, #ffffff, var(--surface-2));
+  border: 1px solid transparent;
+  background: transparent;
   color: var(--text-2);
   border-radius: 10px;
-  box-shadow: var(--shadow-xs);
-  transition: all 0.16s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color 0.15s ease, color 0.15s ease,
+              border-color 0.15s ease, transform 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   padding: 0;
 }
-
-[data-theme="dark"] .icon-btn { background: linear-gradient(180deg, var(--surface-3), var(--surface-2)); }
 
 .icon-btn svg { width: 16px; height: 16px; }
 
 .icon-btn:hover {
-  background: var(--primary-soft);
-  border-color: var(--primary-soft-2);
+  background: var(--surface-2);
+  border-color: var(--border);
   color: var(--primary);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 10px rgba(79, 110, 247, 0.18);
 }
 
-.icon-btn:active { transform: translateY(0) scale(0.94); box-shadow: var(--shadow-xs); }
-.icon-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+.icon-btn:active { transform: scale(0.92); }
+.icon-btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
 
 /* 探测体积进行中：图标持续旋转，一眼能看出在忙 */
 .icon-btn.busy { color: var(--primary); border-color: var(--primary-soft-2); background: var(--primary-soft); }
@@ -394,7 +340,6 @@ body.mode-panel .panel-only { display: inline-flex; }
 
 .page-only { display: none; }
 body.mode-page .page-only { display: inline-flex; }
-body.mode-panel .brand-sub { max-width: 180px; }
 /* 面板模式下顶栏要被 8 个图标挤，品牌区拿不到足够宽度：
    「图片猎人」会被截成「图片猎…」，下面那行主机名更是只剩「127....」。
    主机名在「扫描目标」下拉里本来就有，这里删掉不丢信息；
@@ -403,15 +348,37 @@ body.mode-panel .brand-sub { display: none; }
 body.mode-panel .brand-name { font-size: 12.5px; }
 body.mode-panel .logo { width: 26px; height: 26px; border-radius: 8px; }
 
-/* ---------------------------- 控制区 ---------------------------- */
+/* 窄栏：7 个按钮 + 品牌挤在 380px 里（面板模式）。
+   两件事要一起处理：
+   ① 顶栏按钮缩小 —— 减的是**每个按钮自己的**尺寸和间距，不是把动作藏起来
+      （藏起来换来的宽度很有限，却要多一次点击，而且「探测体积」的转圈反馈
+      会跟着一起消失）。
+   ② 工具行的尺寸滑条**换行**到第二排。它带着 `margin-left: auto` 靠右，
+      在窄栏里会把整行内容撑到两倍宽 —— 而且它是 `flex: 0 0 auto` 不肯收缩，
+      于是 `.ctrl-bar` 的 `scrollWidth` 冲到 780px、整页出现横向滚动条。
+      换行是最省事的解法：滑条独占第二排、依旧靠右，工具行本身不再被撑开。 */
+@media (max-width: 460px) {
+  .hdr-actions { gap: 1px; }
+  .icon-btn { width: 28px; height: 28px; border-radius: 9px; }
+  .icon-btn svg { width: 15px; height: 15px; }
 
-/* 顶栏 + 控制区作为一个整体（独立页模式下整块吸顶） */
-.topbar {
-  flex: 0 0 auto;
-  background: linear-gradient(180deg, #fbfcff 0%, var(--surface) 60%);
+  .ctrl-bar { flex-wrap: wrap; row-gap: 7px; }
+  /* 换行之后 .size-slider 的 margin-left:auto 会把它推到第二排最右，
+     但它上面一行可能还留着半行空白 —— 用 order 把它钉在最后，
+     并且不许它把上面那行「拉长」。 */
+  .size-slider { order: 99; }
 }
 
-[data-theme="dark"] .topbar { background: var(--surface); }
+/* ---------------------------- 控制区 ---------------------------- */
+
+/* 顶栏 + 控制区作为一个整体（独立页模式下整块吸顶）。
+   底色用 --bg（和图片网格同一层），不再叠一层「比页面亮一点」的渐变 ——
+   顶栏原本靠一道高光把自己和内容区分开，结果整条顶栏比图片还抢眼。
+   现在改用一条 1px 分隔线（.ctrl 的 border-bottom）来划层次，重量轻得多。 */
+.topbar {
+  flex: 0 0 auto;
+  background: var(--bg);
+}
 
 .ctrl {
   position: relative;
@@ -438,7 +405,8 @@ body.mode-panel .logo { width: 26px; height: 26px; border-radius: 8px; }
   opacity: 0.7;
 }
 
-/* 胶囊按钮：筛选 / 排序 统一形态 */
+/* 胶囊按钮：筛选 / 排序 统一形态。
+   同样是纯色底 —— 一排在顶栏里，渐变会让每个胶囊看起来厚一档。 */
 .pill {
   flex: 0 0 auto;
   display: inline-flex;
@@ -448,16 +416,13 @@ body.mode-panel .logo { width: 26px; height: 26px; border-radius: 8px; }
   padding: 0 10px;
   border: 1px solid var(--border);
   border-radius: 999px;
-  background: linear-gradient(180deg, #ffffff, var(--surface-2));
+  background: var(--surface);
   color: var(--text-2);
   font-size: 11.5px;
   font-weight: 600;
   white-space: nowrap;
-  box-shadow: var(--shadow-xs);
-  transition: all 0.16s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
-
-[data-theme="dark"] .pill { background: linear-gradient(180deg, var(--surface-3), var(--surface-2)); }
 
 .pill > svg { width: 14px; height: 14px; flex: 0 0 auto; }
 
@@ -472,11 +437,9 @@ body.mode-panel .logo { width: 26px; height: 26px; border-radius: 8px; }
   border-color: var(--primary-soft-2);
   color: var(--primary);
   background: var(--primary-soft);
-  transform: translateY(-1px);
-  box-shadow: 0 3px 9px rgba(79, 110, 247, 0.16);
 }
 
-.pill:active { transform: translateY(0) scale(0.97); box-shadow: var(--shadow-xs); }
+.pill:active { transform: scale(0.97); }
 
 /* 有生效的筛选条件时常亮 */
 .pill.on {
@@ -488,8 +451,7 @@ body.mode-panel .logo { width: 26px; height: 26px; border-radius: 8px; }
 .pill.open {
   border-color: var(--primary);
   color: var(--primary);
-  background: var(--surface);
-  box-shadow: 0 0 0 3px var(--primary-soft);
+  background: var(--primary-soft);
 }
 
 .pill.open .chev { transform: rotate(180deg); }
@@ -500,14 +462,14 @@ body.mode-panel .logo { width: 26px; height: 26px; border-radius: 8px; }
   height: 16px;
   padding: 0 4px;
   border-radius: 999px;
-  background: linear-gradient(145deg, #6b86ff, var(--primary));
+  background: linear-gradient(145deg, var(--primary-dark), var(--primary));
   color: #fff;
   font-size: 10px;
   font-weight: 700;
   line-height: 16px;
   text-align: center;
   font-variant-numeric: tabular-nums;
-  box-shadow: 0 1px 4px rgba(79, 110, 247, 0.45);
+  box-shadow: 0 1px 4px var(--primary-shadow-strong);
 }
 
 .pill-badge[hidden] { display: none; }
@@ -651,7 +613,7 @@ body.mode-panel .logo { width: 26px; height: 26px; border-radius: 8px; }
   align-items: flex-start;
   gap: 7px 16px;
   padding: 10px 14px 11px;
-  background: var(--surface-2);
+  background: var(--bg);
   border-top: 1px solid var(--border);
   animation: panel-in 0.18s cubic-bezier(0.4, 0, 0.2, 1) both;
 }
@@ -704,19 +666,16 @@ body.mode-panel .logo { width: 26px; height: 26px; border-radius: 8px; }
   padding: 0 11px;
   border: 1px solid var(--border);
   border-radius: 999px;
-  background: linear-gradient(180deg, #ffffff, var(--surface-2));
-  box-shadow: var(--shadow-xs);
-  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+  background: var(--surface);
+  transition: border-color 0.16s ease, background-color 0.16s ease;
 }
-
-[data-theme="dark"] .size-slider { background: linear-gradient(180deg, var(--surface-3), var(--surface-2)); }
 
 /* 悬停 / 聚焦时整枚控件亮起（和 .pill:hover 同一套语言），
    让「这块也能操作」这件事有反馈 —— 它毕竟不是按钮，光靠一根轨道不够显眼。 */
 .size-slider:hover,
 .size-slider:focus-within {
   border-color: var(--primary-soft-2);
-  box-shadow: 0 3px 9px rgba(79, 110, 247, 0.14);
+  background: var(--primary-soft);
 }
 
 .size-slider:hover .ss-ico,
@@ -755,7 +714,7 @@ body.mode-panel .logo { width: 26px; height: 26px; border-radius: 8px; }
   border-radius: 50%;
   background: var(--primary);
   border: 2px solid var(--surface-2);
-  box-shadow: 0 1px 3px rgba(79, 110, 247, 0.4);
+  box-shadow: 0 1px 3px var(--primary-shadow-strong);
   cursor: pointer;
   transition: transform 0.15s ease;
 }
@@ -803,16 +762,16 @@ body.mode-panel .logo { width: 26px; height: 26px; border-radius: 8px; }
   border-color: var(--primary-soft-2);
   color: var(--primary);
   transform: translateY(-1px);
-  box-shadow: 0 3px 8px rgba(79, 110, 247, 0.14);
+  box-shadow: 0 3px 8px var(--primary-shadow);
 }
 
 .chip:active { transform: translateY(0) scale(0.96); }
 
 .chip.active {
-  background: linear-gradient(145deg, #6b86ff, var(--primary));
+  background: linear-gradient(145deg, var(--primary-dark), var(--primary));
   border-color: var(--primary);
   color: #fff;
-  box-shadow: 0 3px 10px rgba(79, 110, 247, 0.34);
+  box-shadow: 0 3px 10px var(--primary-shadow-strong);
 }
 
 .chip em {
@@ -1001,17 +960,22 @@ body.ih-selecting * {
 .marquee[data-mode="sub"] .mq-count { background: var(--danger); }
 .marquee[data-mode="add"] .mq-count { background: var(--success); }
 
-/* 卡片 */
-
+/* 卡片：**让图片自己当主角**。
+   原先每张卡都有 1px 描边 + 一层投影 + 圆角，排成一片时网格的「线」比图片还密 ——
+   视觉上先看到的是 60 个方框，然后才是里面的图。
+   现在默认不描边、不投影、底色透明：图与图之间靠 10px 的留白分隔，
+   整片网格看起来就是「一墙图片」，而不是「一堆卡片」。
+   悬停 / 选中时才把描边和投影加回来 —— 那时用户正看着**这一张**，
+   需要明确它比邻居高一层。 */
 .card {
   position: relative;
   border-radius: var(--radius);
   overflow: hidden;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow-xs);
+  background: transparent;
+  border: 1px solid transparent;
   cursor: pointer;
-  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+  transition: transform 0.16s ease, box-shadow 0.16s ease,
+              border-color 0.16s ease, background-color 0.16s ease;
   animation: card-in 0.26s ease both;
 }
 
@@ -1021,9 +985,10 @@ body.ih-selecting * {
 }
 
 .card:hover {
+  background: var(--surface);
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
-  border-color: var(--border-strong);
+  border-color: var(--border);
 }
 
 .card.selected {
@@ -1049,6 +1014,9 @@ body.ih-selecting * {
   50% { opacity: 1; }
 }
 
+/* 图片占位底 —— 图片加载出来之前露出的就是这一块。
+   用 --surface-3（比网格底色略深）而不是 --surface：留白处的 --bg 与它
+   拉开一档，未加载的格子看起来是「一格格待填的位」而不是「一个个白洞」。 */
 .card .thumb {
   position: relative;
   width: 100%;
@@ -1245,14 +1213,17 @@ body.ih-selecting * {
   backdrop-filter: blur(4px);
 }
 
-.badge.restored { background: rgba(79, 110, 247, 0.92); }
+.badge.restored { background: var(--primary-solid); }
 .badge.downloaded { background: rgba(22, 163, 74, 0.92); }
 .badge.big { background: rgba(217, 119, 6, 0.92); }
 /* 合并嗅探时的「来源页」角标。用中性深灰而不是彩色 ——
    它是一类**说明性**信息，不该和「原图 / 已下载 / HD」这些状态角标抢注意力。 */
 .badge.page { background: rgba(60, 64, 78, 0.9); max-width: 92px; overflow: hidden; text-overflow: ellipsis; }
 
-/* 信息条 */
+/* 信息条：分辨率 + 体积。
+   底色往 --bg 靠（而不是纯 --surface 白）—— 卡片默认已经没描边了，
+   信息条再来一条亮白底会在图下方压出一道「白条」，把整片网格的节奏打断。
+   贴着网格底色走，看起来就是图片下面自带的一行小字。 */
 .card .meta {
   display: flex;
   align-items: center;
@@ -1260,10 +1231,13 @@ body.ih-selecting * {
   padding: 6px 8px;
   font-size: 10.5px;
   color: var(--text-2);
-  background: var(--surface);
-  border-top: 1px solid var(--border);
+  background: var(--bg);
   font-variant-numeric: tabular-nums;
+  transition: background-color 0.16s ease;
 }
+
+/* 悬停时卡片整体浮起（.card:hover 的底色是 --surface），信息条跟着升一档 */
+.card:hover .meta { background: var(--surface); }
 
 .card .meta .dim {
   font-weight: 600;
@@ -1385,7 +1359,7 @@ body.ih-selecting * {
   height: 100%;
   width: 0%;
   border-radius: 3px;
-  background: linear-gradient(90deg, var(--primary), #8b5cf6);
+  background: linear-gradient(90deg, var(--primary), var(--primary-dark));
   transition: width 0.25s ease;
 }
 
@@ -1424,19 +1398,27 @@ button.primary {
   padding: 0 15px;
   border: 0;
   border-radius: var(--radius);
-  background: linear-gradient(180deg, #5f7cf8, var(--primary));
+  background: linear-gradient(180deg, var(--primary), var(--primary-dark));
   color: #fff;
   font-size: 12.5px;
   font-weight: 600;
-  box-shadow: 0 2px 10px rgba(79, 110, 247, 0.34);
+  box-shadow: 0 2px 10px var(--primary-shadow-strong);
   transition: all 0.16s ease;
+  /* 「保存选中 N」不许折行。窄栏（面板模式 380px）里左侧那串统计文字
+     「共 N 张 · 符合 N · 已选 N · 合计 X MB」（有时还拖着深度嗅探的
+     「已达滚动上限」长提示）会把它压到 90px，文字折行。
+     这两行让它保住自己的宽度，把压力推回给 `.sum`（那边有 ellipsis）。
+     注入验证：摘掉这两行 + 下面 `.sum{flex:1 1 0}` → 按钮 90px、
+     scrollHeight 49，browser-topbar.js 变红；还原 → 127px、34，全绿。 */
+  white-space: nowrap;
+  flex: 0 0 auto;
 }
 
 button.primary svg { width: 15px; height: 15px; }
 
 button.primary:hover:not(:disabled) {
-  background: linear-gradient(180deg, #6d88fa, var(--primary-dark));
-  box-shadow: 0 4px 16px rgba(79, 110, 247, 0.42);
+  background: linear-gradient(180deg, var(--primary), var(--primary-dark));
+  box-shadow: 0 4px 16px var(--primary-shadow-strong);
   transform: translateY(-1px);
 }
 
@@ -1512,4 +1494,20 @@ body.mode-panel .target-pick { max-width: 150px; }
 body.mode-panel .target-multi .tm-pop { left: auto; right: -6px; width: 244px; }
 body.mode-panel .ftr-main { padding: 10px 11px; gap: 8px; }
 body.mode-panel .ftr-hint { display: none; }
+/* 面板底栏只有 ~340px 宽，塞着「共 N 张 · 符合 N · 已选 N · 合计 X MB」
+   和「保存选中 N」两串文字。不加约束**真的会出问题**（已注入验证）：
+   左边那串把右边按钮压到 90px，「保存选中」折行。
+   症状要看 `#btnSave` 的 `scrollHeight`（49）超过 `clientHeight`（34）——
+   而 `getBoundingClientRect().height` 恒为 34（`.ftr-main` 是 align-items:center
+   的 flex 行，按钮被压扁时行高仍撑在 34），所以量高度看不出坏。
+   分工是：**统计行让位**（`min-width: 0` + ellipsis，本来就有），
+   「保存选中」保住完整宽度（`flex: 0 0 auto` + nowrap）。
+   `.sum` 是 `flex: 1 1 auto` —— 它的 `flex-basis` 是 `auto`，会按**内容宽度**
+   抢地方（深度嗅探还往里面加一句「已达滚动上限」的长提示，那就更凶），
+   所以必须显式给 `flex-basis: 0` 它才肯按比例让出去；
+   否则「保存选中」只能分到几个字的位置。
+   顺带把品牌名也钉住不折行（两行的话顶栏会高出一截）。 */
+body.mode-panel .sum { flex: 1 1 0; }
+body.mode-panel button.primary { padding: 0 12px; gap: 6px; }
+body.mode-panel .brand-name { white-space: nowrap; }
 body.mode-panel .grid-wrap { padding: 10px 11px 14px; }

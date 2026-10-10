@@ -17,6 +17,7 @@
   const Store = IH.Store;
   const MSG = C.MSG;
   const I18n = IH.I18n;
+  const Theme = IH.Theme;
   const t = (k, a) => I18n.t(k, a);
 
   const params = new URLSearchParams(location.search);
@@ -118,6 +119,11 @@
     hideDownloaded: false,
     maxOnly: false
   };
+
+  /* 「上次看着是什么样」的界面状态（与 filters 分开：那些是**约束**，
+     这些纯粹是**布局偏好**，不该混进 activeFilterCount 或落进导出）。
+     目前两项：滑条值、筛选条展开态。见 saveViewState / loadViewState。 */
+  const viewState = { filtersOpen: false };
 
   /* 当前界面的语言。用来发现「设置页把语言改了」——
      图库自己没有语言切换控件，但设置页改完这一屏要立刻跟着变，
@@ -268,6 +274,11 @@
 
     await Store.loadSettings();
     applyTheme();
+    /* 「跟随系统」要在图库页**当场**生效，而不是等用户切一次页。
+       此前这条监听只有设置页有（options.js 那份 applyTheme 里挂的），
+       于是系统在用户盯着图库时切成深色，图库纹丝不动 —— 直到切页才补上。
+       收进 Theme.watch 之后两处都有，且只在 theme === 'auto' 时才重算。 */
+    Theme.watch(document, () => Store.getSettings());
     /* 与设置页同一个顺序：先把 HTML 里的静态文案填一遍，再去拼动态内容。
        反过来的话筛选 chips、卡片角标会先用旧语言拼一遍再被覆盖。 */
     I18n.apply(document);
@@ -326,8 +337,13 @@
     bindSizeSlider();
     bindEvents();
 
-    // 筛选条默认展开（独立页空间大、直接可见最方便）；页内面板太窄，默认收起
-    setPanel(MODE !== 'panel');
+    /* 筛选条**两种宿主都默认收起**。
+       默认展开时它是一整行五个标签云，占掉将近 1/3 的纵向空间 ——
+       而绝大多数打开图库的人只是想看图、勾图、下载。
+       收起后，「有没有在筛」由按钮上的数量徽标（#filterCount）和常亮态表达，
+       信息不会丢；想筛的人点一下就在原位展开，也不比原来多一步。
+       用户在本次会话里手动展开过就记住（见 loadViewState / setPanel 的调用方）。 */
+    setPanel(!!viewState.filtersOpen);
 
     await resolveTab();
     // 先填充标签页下拉（可能顺带修正 tabId），再嗅探
@@ -706,13 +722,14 @@
     }
   }
 
+  /**
+   * 主题。实现在 shared/theme.js —— 原来这里有一份自己的 applyTheme，
+   * 与 options.js 那份逻辑重复；而且两份还漂移了（设置页挂了系统深浅色监听，
+   * 这里没挂，「跟随系统」在图库页只有切页时才对齐一次）。
+   * 现在只有一种算法，那边改这边自动跟随。
+   */
   function applyTheme() {
-    const s = Store.getSettings();
-    let theme = s.theme || 'light';
-    if (theme === 'auto') {
-      theme = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-    }
-    document.documentElement.setAttribute('data-theme', theme);
+    return Theme.apply(document, Store.getSettings());
   }
 
   /**
@@ -935,11 +952,13 @@
     });
   }
 
-  /* 视图状态（目前只有滑条值）落盘。失败不提示 —— 存不下顶多下次回到默认，
-     不该为这种事打断用户。 */
+  /* 视图状态（滑条值 · 筛选条展开态）落盘。失败不提示 ——
+     存不下顶多下次回到默认，不该为这种事打断用户。 */
   function saveViewState() {
     try {
-      const p = chrome.storage.local.set({ [GALLERY_VIEW_KEY]: { sizeMin: filters.sizeMin } });
+      const p = chrome.storage.local.set({
+        [GALLERY_VIEW_KEY]: { sizeMin: filters.sizeMin, filtersOpen: !$('filterPanel').hidden }
+      });
       if (p && p.catch) p.catch(() => {});
     } catch (e) { /* ignore */ }
   }
@@ -951,6 +970,9 @@
       if (v && typeof v.sizeMin === 'number' && v.sizeMin >= 0 && v.sizeMin <= SIZE_MIN_MAX) {
         filters.sizeMin = Math.round(v.sizeMin);
       }
+      /* 只有显式存过 true 才算「展开过」—— 缺字段（老数据）或存了 false
+         一律落到默认收起，不必区分「没存过」和「存了 false」。 */
+      if (v && v.filtersOpen === true) viewState.filtersOpen = true;
     } catch (e) { /* 读不到就用默认值 */ }
   }
 
@@ -958,8 +980,13 @@
   function activeFilterCount() {
     let n = 0;
     /* 尺寸这一格算一项，不重复计数：档位和滑条互斥，
-       同时算两次会让角标出现「明明只动了一处却是 2」的困惑。 */
-    if (filters.sizePreset || filters.sizeMin > 0) n++;
+       同时算两次会让角标出现「明明只动了一处却是 2」的困惑。
+       **滑条停在默认 256 时不算「在筛」** —— 它本来就在那儿，
+       不是用户的动作。原来筛条常驻，角标常显 1 只是噪音；
+       现在筛条默认收起，一个恒亮的「1」会让用户以为自己在筛、
+       又找不到筛的是什么（打开筛条，五个维度看着全是默认）。
+       判据与 resetFilters 一致：只有**离开** SIZE_MIN_DEFAULT 才算数。 */
+    if (filters.sizePreset || filters.sizeMin !== SIZE_MIN_DEFAULT) n++;
     if (filters.aspect !== 'all') n++;
     if (filters.type !== 'all') n++;
     if (filters.source !== 'all') n++;
@@ -1085,6 +1112,8 @@
     $('btnFilters').addEventListener('click', (e) => {
       e.stopPropagation();
       setPanel($('filterPanel').hidden);
+      // 展开 / 收起是布局偏好，记下来（下次打开还是这个样子）
+      saveViewState();
     });
 
     $('btnResetFilters').addEventListener('click', () => {
@@ -1140,14 +1169,17 @@
       }
     });
 
+    // 顶栏三个动作：探测体积 / 导出清单 / 深度嗅探。
+    // 它们都是**偶尔**用一次的动作，但常驻才有「一眼看到、一点就到」，
+    // 收进「更多」菜单反而要多点一下、还看不出谁在忙（探测的转圈图标
+    // 只在常驻时才有意义）。宽度问题由顶栏自己的响应式规则解决。
     $('btnProbe').addEventListener('click', probeSizes);
     $('btnExport').addEventListener('click', exportList);
+    $('btnDeep').addEventListener('click', () => doScan(true, true));
 
     // 重新嗅探一律**绕过缓存** —— 用户点它就是因为觉得结果旧了，
     // 再从缓存里捞一份几分钟前的回来，等于按钮点了没反应。
     $('btnRescan').addEventListener('click', () => doScan(true, false, true));
-
-    $('btnDeep').addEventListener('click', () => doScan(true, true));
 
     // 底栏那个「复用 N 分钟前的嗅探结果」标记，点一下也是重新嗅探
     const cnote = $('cacheNote');
@@ -1214,7 +1246,7 @@
       if (e.key === 'Escape') {
         // 正在框选时，Esc 先用来放弃框选
         if (marquee.dragging) { cancelMarquee(); return; }
-        // 其次用来收起搜索框（搜索框自己处理了 Esc，这里兜底）
+        // 其次收起搜索框（搜索框自己处理了 Esc，这里兜底）
         if (!$('searchPop').hidden) { clearSearch(); return; }
         if (MODE === 'panel') {
           try { window.parent.postMessage({ __ih: true, type: 'close' }, '*'); } catch (err) { /* ignore */ }
@@ -3026,7 +3058,12 @@
 
     const btn = $('btnProbe');
     const baseTitle = t('pop.probeTitle');
-    btn.disabled = true;
+    /* 注意这里是 aria-disabled 而**不是** disabled：
+       用 disabled 会让浏览器把 :hover / 图标旋转一并压掉，那个转圈是
+       「正在忙」的唯一反馈；aria-disabled 只声明不可点，样式照常。
+       真正防重复触发靠的是下面 finally 里恢复 aria-disabled，加上探测
+       本身是对 fixed 的 targets 列表跑的（重入也只是多跑一遍同一批）。 */
+    btn.setAttribute('aria-disabled', 'true');
     btn.classList.add('busy');
     btn.title = t('pop.probing');
     toast(retrying
@@ -3070,7 +3107,7 @@
         }
       }
     } finally {
-      btn.disabled = false;
+      btn.setAttribute('aria-disabled', 'false');
       btn.classList.remove('busy');
       btn.title = baseTitle;
     }
@@ -3265,9 +3302,10 @@
    * 启动
    * ------------------------------------------------------------------ */
 
-  // 导出格式切换：右键「导出清单」切换 JSON / CSV
+  // 导出格式切换：在「导出清单」按钮上右键 → CSV（左键仍是 JSON）
   document.addEventListener('DOMContentLoaded', () => {
     const btn = $('btnExport');
+    if (!btn) return;
     btn.title = t('pop.exportTitle2');
     btn.addEventListener('contextmenu', (e) => {
       e.preventDefault();

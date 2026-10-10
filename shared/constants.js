@@ -82,6 +82,17 @@
   const DEFAULT_SETTINGS = {
     /* 通用 */
     theme: 'light',                    // light | dark | auto
+    /* 主题预设配色：六选一（靛蓝 / 青碧 / 翡翠 / 玫红 / 琥珀 / 石板）。
+       与 theme（亮暗档）是两个正交的维度 —— 换预设不改变亮暗，
+       换亮暗也不改变预设。实际主色由 shared/theme.js 的 PRESETS 决定，
+       这里只存**用户选了哪一套**。
+       必须列在默认设置里：否则导出设置再导入会被白名单滤掉。 */
+    themePreset: 'indigo',
+    /* 自定义主色，格式 '#rrggbb'。**空串 = 跟随上面的预设** ——
+       用空串而不是 null/undefined，是因为它要能被 JSON 往返
+       （导出→导入是 JSON，undefined 会整个键消失）。
+       非空但格式非法时同样退回预设（见 Theme.resolve）。 */
+    themeAccent: '',
     /* 界面语言：'auto' 跟随浏览器，'zh' / 'en' 强制指定。
        为什么不直接用 chrome.i18n：那套只能跟随**浏览器界面语言**，
        用户在扩展里自己选一个语言它做不到 —— 所以界面文案另起一层
