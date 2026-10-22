@@ -21,30 +21,16 @@
      写成函数而不是在顶层取值 —— 那时 Store 还没加载，语言判定不出来。 */
   const t = (k, a) => IH.I18n.t(k, a);
 
-  /* ---------------------------- 图标 ---------------------------- */
-
-  const ICON_DOWNLOAD =
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" ' +
-    'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-    '<path d="M12 3.5v11.5"/><path d="M7 10.5l5 5 5-5"/><path d="M4.5 20h15"/></svg>';
-
-  // 放大镜里带个加号 —— 和顶栏「探测体积」的准星、图库卡片上的放大镜区分开，
-  // 一眼能认出是「放大看原图」
-  const ICON_PREVIEW =
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" ' +
-    'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-    '<circle cx="10.6" cy="10.6" r="6.4"/><path d="M19.5 19.5l-4.4-4.4"/>' +
-    '<path d="M10.6 8.2v4.8"/><path d="M8.2 10.6h4.8"/></svg>';
-
-  const ICON_CHECK =
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" ' +
-    'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-    '<path d="M4.5 12.5l5 5L19.5 6.5"/></svg>';
-
-  const ICON_ERROR =
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" ' +
-    'stroke-linecap="round" aria-hidden="true">' +
-    '<path d="M12 5.5v8.5"/><circle cx="12" cy="18.6" r="1.5" fill="currentColor" stroke="none"/></svg>';
+  /* ---------------------------- 图标 ---------------------------- *
+   * 一律走 IH.Lucide（shared/lucide.js），不再手画 —— 手画的 `stroke-width`
+   * 各家一个值（这里原来是 2.2 / 3 / 2.8），和界面其它图标放一起粗细不齐。
+   * 尺寸不在这里给：overlay.css 的 `.ih-hover-btn svg` 用 --ic-md 档位。 */
+  const ICON_DOWNLOAD = IH.Lucide.svg('download');
+  /* 放大镜里带个加号（Lucide 的 zoom-in）—— 和顶栏「探测体积」的仪表、
+     图库卡片上的放大镜区分开，一眼能认出是「放大看原图」 */
+  const ICON_PREVIEW = IH.Lucide.svg('zoom-in');
+  const ICON_CHECK = IH.Lucide.svg('check');
+  const ICON_ERROR = IH.Lucide.svg('circle-alert');
 
   /* ---------------------------- 状态 ---------------------------- */
 

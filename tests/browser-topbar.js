@@ -259,9 +259,14 @@ function collidingIconPairs(prints) {
       '「导出清单」不再是「保存到本地」的下载箭头',
       'save=' + (savePrint || '').slice(0, 40));
 
-    /* 「深度嗅探」的图标应该带页面轮廓（rect），不是单纯的箭头 */
-    check(icons.prints.btnDeep && /^rect:/.test(icons.prints.btnDeep),
-      '「深度嗅探」是「页面 + 向下箭头」（以 rect 打头），不是裸的下载箭头',
+    /* 「深度嗅探」不许落在**下载箭头家族**里。
+       v1.19.0 换成 Lucide 之后它是 `chevrons-down`（双下箭头 = 滚到页底），
+       不再是「页面轮廓 + 向下箭头」，所以原来那条「指纹以 rect 打头」的判据
+       失效了 —— 但真正要守的东西没变：它不下载任何东西，不能长得像
+       「保存到本地」或「导出清单」。所以改成和这两个**比不同**。 */
+    check(icons.prints.btnDeep && icons.prints.btnDeep !== savePrint
+      && icons.prints.btnDeep !== icons.prints.btnExport,
+      '「深度嗅探」既不是「保存到本地」也不是「导出清单」（不在下载箭头家族里）',
       (icons.prints.btnDeep || '').slice(0, 40));
 
     /* ---------- 3. 三条动作确实接了线（搬 DOM 不搬 handler 会静默失效） ---------- */

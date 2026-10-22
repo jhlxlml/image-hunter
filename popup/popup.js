@@ -2748,8 +2748,10 @@
     return ok;
   }
 
-  const RESTORE_SPINNER = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"'
-    + ' stroke-width="3" stroke-linecap="round"><path d="M12 3a9 9 0 1 0 9 9"/></svg>';
+  /* 图标一律走 IH.Lucide（shared/lucide.js）。原来这三个是手画的，
+     stroke-width 分别写了 3 / 3.4 / 2.4 —— 同一张卡片上的两个角标
+     粗细不一样，放大看就是毛边。尺寸交给 CSS 的 --ic-xs 档位。 */
+  const RESTORE_SPINNER = IH.Lucide.svg('loader-circle');
 
   /** 原地换掉一个卡片元素：不重排、不滚动、不重放入场动画 */
   function replaceCardInPlace(cardEl, c) {
@@ -2900,8 +2902,7 @@
        鼠标用户照常点它（点击处理在 onGridClick 里）。 */
     pick.setAttribute('aria-hidden', 'true');
     pick.tabIndex = -1;
-    pick.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" ' +
-      'stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5l5 5L19.5 6.5"/></svg>';
+    pick.innerHTML = IH.Lucide.svg('check');
     thumb.appendChild(pick);
 
     // 预览
@@ -2914,9 +2915,7 @@
        键盘等价物是卡片上的 P 键（见 onGridKeydown 与 #gridHelp）。 */
     zoom.tabIndex = -1;
     zoom.setAttribute('aria-label', t('pop.zoomAria'));
-    zoom.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" ' +
-      'stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4-4"/>' +
-      '<path d="M11 8.5v5"/><path d="M8.5 11h5"/></svg>';
+    zoom.innerHTML = IH.Lucide.svg('zoom-in');
     thumb.appendChild(zoom);
 
     // 「还原」按钮：只给「有原图候选、但这一轮没还原成功」的图。

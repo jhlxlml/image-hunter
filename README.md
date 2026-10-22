@@ -115,6 +115,7 @@
 | **可自定义主题** | 亮色 / 深色 / 跟随系统三档，六套配色方案（靛蓝 · 青碧 · 翡翠 · 玫红 · 琥珀 · 石板），或用取色器指定任意主色。改一处，图库、页内面板、灯箱强调色**同时**跟着变 |
 | **默认排序可设置** | 设置页「交互」里选默认排序（分辨率 / 文件体积 × 大到小 · 小到大、页面顺序、站点），图库**每次打开**都按它初始化；界面上临时改的排序不落盘，和筛选条件的行为一致 |
 | **界面为图片让路** | 顶栏动作全部常驻、一点就到（搜索也在顶栏），但去掉了拟物渐变；筛选条默认收起；卡片默认无描边 —— 打开图库先看到的是一片图片，而不是一圈工具栏 |
+| **统一的图标体系** | 全部图标取自 [Lucide](https://lucide.dev)，不再各画各的。尺寸按**界面层级**分五档（12 / 14 / 16 / 20 / 32px）：同一层级的图标必须一样大，窄栏再整体降一档。这条规则由测试守着，加图标时想漂也漂不动 |
 
 ---
 
@@ -172,9 +173,10 @@ node tools/package.js --list   # 只列出会打进包的文件
 ```
 image-hunter/
 ├── LICENSE                # AGPL-3.0
+├── THIRD-PARTY-NOTICES.md # 随扩展分发的第三方资源（Lucide 图标，ISC / MIT）
 ├── manifest.json          # MV3 清单
 ├── background.js          # Service Worker：下载队列、消息路由、历史/指纹、体积探测
-├── shared/                # 消息常量、URL 工具、存储封装、界面多语言（i18n）、诊断包（纯函数）
+├── shared/                # 消息常量、URL 工具、存储封装、界面多语言（i18n）、诊断包、Lucide 图标（纯函数）
 ├── content/               # 内容脚本：嗅探引擎、悬停按钮、灯箱、页内面板
 ├── popup/                 # 图库主界面（独立页面 / 页内面板共用同一份代码）
 ├── options/               # 设置页
@@ -194,7 +196,7 @@ image-hunter/
 ```bash
 npm ci                 # 首次：装开发期依赖（jsdom + playwright-core）
 npm test               # Node 套件（17 个）
-npm run test:browser   # 真实浏览器套件（27 个，需要本机 Edge / Chrome）
+npm run test:browser   # 真实浏览器套件（28 个，需要本机 Edge / Chrome）
 npm run test:all       # 两个入口都跑
 npm run package        # 打包
 npm run audit:settings # 巡检设置项：列出每条设置的读取点 / UI 挂点，找死设置
@@ -263,3 +265,6 @@ npm run audit:settings # 巡检设置项：列出每条设置的读取点 / UI �
 
 你可以自由使用、修改、再分发；但 AGPL 比 GPL 多一条**网络服务条款**：
 如果你把修改后的版本部署成对外提供的网络服务，也必须以同样的许可证公开你的改动。
+
+界面图标来自 [Lucide](https://lucide.dev)（ISC 许可，部分源自 Feather / MIT），
+随扩展一起分发，完整版权声明见 [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md)。

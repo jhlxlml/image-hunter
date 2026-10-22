@@ -86,9 +86,11 @@
   transform: scale(0.94);
 }
 
+/* 图标尺寸走 --ic-* 档位（shared/theme.css）。页内 UI 是 shadow root，
+   自定义属性从 :host 继承下来，不需要在这里再声明一份。 */
 .ih-hover-btn svg {
-  width: 17px;
-  height: 17px;
+  width: var(--ic-md);
+  height: var(--ic-md);
   display: block;
   pointer-events: none;
 }
@@ -280,7 +282,7 @@
 
 .ih-lb-btn.ih-lb-icon { padding: 0; width: 32px; }
 
-.ih-lb-btn svg { width: 15px; height: 15px; display: block; }
+.ih-lb-btn svg { width: var(--ic-md); height: var(--ic-md); display: block; }
 
 .ih-lb-btn[disabled] { opacity: 0.35; cursor: default; }
 
@@ -328,7 +330,7 @@
 
 .ih-lb-nav:hover { background: var(--ih-primary-solid); }
 .ih-lb-nav:active { transform: translateY(-50%) scale(0.93); }
-.ih-lb-nav svg { width: 20px; height: 20px; }
+.ih-lb-nav svg { width: var(--ic-lg); height: var(--ic-lg); }
 .ih-lb-prev { left: 14px; }
 .ih-lb-next { right: 14px; }
 

@@ -105,12 +105,20 @@ body.mode-page .ftr-main { padding-left: 24px; padding-right: 24px; }
 
 .target-pick .tp-ico {
   flex: 0 0 auto;
-  width: 14px;
-  height: 14px;
+  width: var(--ic-sm);
+  height: var(--ic-sm);
   color: var(--text-3);
 }
 
-.target-pick .tp-ico svg { width: 14px; height: 14px; display: block; }
+/* 图标尺寸一律走 --ic-* 档位（定义在 shared/theme.css），这里不写像素值。
+   五个档位：xs 12 / sm 14 / md 16 / lg 20 / xl 32，按**层级**取，不按「放在哪」取。
+   validate.js 的「图标」一节会核对每一条 svg 尺寸规则用的是不是档位 ——
+   写死一个 13px 就会被拦下来（那正是 v1.19.0 之前的状态）。 */
+.target-pick .tp-ico svg {
+  width: var(--ic-sm);
+  height: var(--ic-sm);
+  display: block;
+}
 
 .target-pick select {
   flex: 1 1 auto;
@@ -277,7 +285,9 @@ button { cursor: pointer; }
   box-shadow: 0 3px 10px var(--primary-shadow-strong);
 }
 
-.logo svg { width: 17px; height: 17px; }
+/* 品牌标识：唯一不走 --ic-* 的一处 —— 它的尺寸跟 logo 容器（30px 盒子）
+   绑定，不是「界面里某一层级的图标」。设置页那个 logo 更大，所以两边不同值。 */
+.logo svg { width: 18px; height: 18px; }
 
 .brand-txt { min-width: 0; }
 
@@ -329,7 +339,7 @@ button { cursor: pointer; }
   padding: 0;
 }
 
-.icon-btn svg { width: 16px; height: 16px; }
+.icon-btn svg { width: var(--ic-md); height: var(--ic-md); }
 
 .icon-btn:hover {
   background: var(--surface-2);
@@ -375,7 +385,9 @@ body.mode-panel .logo { width: 26px; height: 26px; border-radius: 8px; }
   .hdr { padding: 11px 12px; gap: 10px; }
   .hdr-actions { gap: 1px; }
   .icon-btn { width: 28px; height: 28px; border-radius: 9px; }
-  .icon-btn svg { width: 15px; height: 15px; }
+  /* 窄栏降一档（md → sm）：按钮本身从 32 缩到 28，图标跟着缩一档才不会
+     贴着边框。这是**同一层级在窄栏下的取值**，不是新开一档。 */
+  .icon-btn svg { width: var(--ic-sm); height: var(--ic-sm); }
 
   /* 页面地址那行收起来：窄栏里它只能显示两三个字，信息量为零，
      却会和品牌名抢宽度、把「图片猎人」切成一半。窄栏下真正该看的是
@@ -460,11 +472,11 @@ body.mode-panel .logo { width: 26px; height: 26px; border-radius: 8px; }
   transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
-.pill > svg { width: 14px; height: 14px; flex: 0 0 auto; }
+.pill > svg { width: var(--ic-sm); height: var(--ic-sm); flex: 0 0 auto; }
 
 .pill .chev {
-  width: 12px;
-  height: 12px;
+  width: var(--ic-xs);
+  height: var(--ic-xs);
   opacity: 0.55;
   transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -525,10 +537,11 @@ body.mode-panel .logo { width: 26px; height: 26px; border-radius: 8px; }
   padding: 0 15px 0 0;
   max-width: 128px;
   cursor: pointer;
-  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23949bab' stroke-width='2.6' stroke-linecap='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23949bab' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 1px center;
-  background-size: 12px;
+  /* 下拉箭头也走档位（它是「微图标」这一层） */
+  background-size: var(--ic-xs);
   text-overflow: ellipsis;
 }
 
@@ -596,7 +609,15 @@ body.mode-panel .logo { width: 26px; height: 26px; border-radius: 8px; }
   transition: all 0.16s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.seg-btn > svg { width: 13px; height: 13px; flex: 0 0 auto; opacity: 0.85; }
+/* 原来是 13px —— 和同一行的「筛选」「排序」的 14px 差 1px。
+   差 1px 单看看不出来，排成一行时「全选 / 反选 / 清空」三个按钮的
+   图标明显比左边两个小一号。这一版统一到 sm。 */
+.seg-btn > svg {
+  width: var(--ic-sm);
+  height: var(--ic-sm);
+  flex: 0 0 auto;
+  opacity: 0.85;
+}
 
 .seg-btn em {
   font-style: normal;
@@ -754,8 +775,8 @@ body.mode-panel .logo { width: 26px; height: 26px; border-radius: 8px; }
 .ss-ico {
   flex: 0 0 auto;
   display: inline-flex;
-  width: 14px;
-  height: 14px;
+  width: var(--ic-sm);
+  height: var(--ic-sm);
   color: var(--text-3);
   opacity: 0.85;
   transition: color 0.16s ease, opacity 0.16s ease;
@@ -909,7 +930,12 @@ body.mode-panel .logo { width: 26px; height: 26px; border-radius: 8px; }
   to { opacity: 1; transform: scaleX(1); }
 }
 
-.search-pop > svg { width: 13px; height: 13px; color: var(--primary); flex: 0 0 auto; }
+.search-pop > svg {
+  width: var(--ic-sm);
+  height: var(--ic-sm);
+  color: var(--primary);
+  flex: 0 0 auto;
+}
 
 .search-pop input {
   flex: 1;
@@ -939,7 +965,7 @@ body.mode-panel .logo { width: 26px; height: 26px; border-radius: 8px; }
   transition: all 0.14s ease;
 }
 
-.sp-x svg { width: 12px; height: 12px; }
+.sp-x svg { width: var(--ic-xs); height: var(--ic-xs); }
 .sp-x:hover { background: var(--danger-soft); color: var(--danger); }
 .sp-x:active { transform: scale(0.9); }
 
@@ -1149,7 +1175,7 @@ body.ih-selecting * {
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
 }
 
-.card .pick svg { width: 12px; height: 12px; }
+.card .pick svg { width: var(--ic-xs); height: var(--ic-xs); }
 
 .card:hover .pick { background: rgba(20, 22, 28, 0.5); }
 
@@ -1181,7 +1207,7 @@ body.ih-selecting * {
   transition: all 0.16s ease;
 }
 
-.card .zoom svg { width: 12px; height: 12px; }
+.card .zoom svg { width: var(--ic-xs); height: var(--ic-xs); }
 .card:hover .zoom { opacity: 1; transform: scale(1); }
 .card .zoom:hover { background: var(--primary); border-color: var(--primary); }
 
@@ -1216,7 +1242,9 @@ body.ih-selecting * {
   transition: all 0.16s ease;
 }
 
-.card .restore svg { width: 11px; height: 11px; }
+/* 原来是 11px —— 同一张卡片上「勾选」「放大」都是 12px，
+   只有「还原」小 1px。三个角标排在一起时右下角那个明显偏小。 */
+.card .restore svg { width: var(--ic-xs); height: var(--ic-xs); }
 .card:hover .restore { opacity: 1; transform: scale(1); }
 .card .restore:hover { background: var(--primary); border-color: var(--primary); }
 
@@ -1391,7 +1419,7 @@ body.ih-selecting * {
   margin-bottom: 4px;
 }
 
-.empty-art svg { width: 32px; height: 32px; }
+.empty-art svg { width: var(--ic-xl); height: var(--ic-xl); }
 
 /* 「一张都不剩」时的一键出口。
    刻意做得像一条筛选 chip 而不是主按钮 —— 它不是页面主动作的号召，
@@ -1504,7 +1532,9 @@ button.primary {
   flex: 0 0 auto;
 }
 
-button.primary svg { width: 15px; height: 15px; }
+/* 原来是 15px —— 和顶栏按钮的 16px 差 1px。同一个界面里的按钮层
+   应该一样大，何况这个按钮比顶栏那些还大一圈。 */
+button.primary svg { width: var(--ic-md); height: var(--ic-md); }
 
 button.primary:hover:not(:disabled) {
   background: linear-gradient(180deg, var(--primary), var(--primary-dark));

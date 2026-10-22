@@ -118,7 +118,15 @@ check(files.indexOf('content/overlay.css') >= 0,
   'overlay.css 在包里（它是运行时靠 URL 拉的，最容易漏）');
 check(files.indexOf('_locales/en/messages.json') >= 0, '英文语言包也在（虽然界面是中文）');
 
-const junk = files.filter((f) => /^tests\//.test(f) || /\.md$/i.test(f) || /\.png$/i.test(f) && !/^icons\//.test(f));
+/* 许可与第三方声明是**唯一**允许进包的根级非代码文件 —— 分发物必须自带声明
+   （AGPL 要许可全文，Lucide 的 ISC 要版权声明出现在所有副本里）。
+   除这两份之外，.md / 截图一律不许进包。 */
+const NOTICE_FILES = ['LICENSE', 'THIRD-PARTY-NOTICES.md'];
+check(NOTICE_FILES.every((f) => files.indexOf(f) >= 0),
+  '包里带了 LICENSE 与 THIRD-PARTY-NOTICES.md（许可声明跟着分发物走）');
+
+const junk = files.filter((f) => NOTICE_FILES.indexOf(f) < 0
+  && (/^tests\//.test(f) || /\.md$/i.test(f) || /\.png$/i.test(f) && !/^icons\//.test(f)));
 check(junk.length === 0, '包里没有 tests / markdown / 根目录截图', junk.join(', '));
 check(files.every((f) => !path.isAbsolute(f) && f.indexOf('..') < 0), '所有条目路径都是相对的、不越界');
 

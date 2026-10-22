@@ -31,7 +31,11 @@ const zlib = require('zlib');
 const ROOT = path.resolve(__dirname, '..');
 /** 会进包的所有目录（根目录下的 manifest.json / background.js 单独算） */
 const RUNTIME_DIRS = ['shared', 'content', 'popup', 'options', 'icons', '_locales'];
-const ROOT_FILES = ['manifest.json', 'background.js'];
+/* LICENSE 与第三方声明必须**跟着分发物走**：AGPL 要求随作品提供许可全文，
+   Lucide 的 ISC 要求「上述版权声明与本许可声明出现在所有副本中」。
+   它们不在 manifest 的引用链上，所以只能在这里显式列出来 ——
+   但**不豁免**孤儿检查：仍然只有这份清单说了算。 */
+const ROOT_FILES = ['manifest.json', 'background.js', 'LICENSE', 'THIRD-PARTY-NOTICES.md'];
 /** 固定时间戳，保证可复现。DOS 时间从 1980 年开始算 */
 const FIXED_DATE = new Date(2026, 0, 1, 0, 0, 0);
 

@@ -23,9 +23,13 @@
     <header class="hdr">
       <div class="brand">
         <span class="logo" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
-               stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 3.5v11.5"/><path d="M7 10.5l5 5 5-5"/><path d="M4.5 20h15"/>
+          <svg class="ic" data-lucide="image-down" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+               aria-hidden="true">
+            <path d="M10.3 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10l-3.1-3.1a2 2 0 0 0-2.814.014L6 21"/>
+            <path d="m14 19 3 3v-5.5"/>
+            <path d="m17 22 3-3"/>
+            <circle cx="9" cy="9" r="2"/>
           </svg>
         </span>
         <div class="brand-txt">
@@ -36,9 +40,11 @@
 
       <div class="target-pick page-only">
         <span class="tp-ico" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
-               stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 9.5h18"/>
+          <svg class="ic" data-lucide="panel-top" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+               aria-hidden="true">
+            <rect width="18" height="18" x="3" y="3" rx="2"/>
+            <path d="M3 9h18"/>
           </svg>
         </span>
         <select id="selTargetTab" data-i18n-aria="pop.targetAria"
@@ -56,9 +62,10 @@
                   data-i18n-title="pop.targetMultiAria"
                   title="选择要合并嗅探的标签页">
             <span id="targetsSummary" data-i18n="pop.targetSummary">选择页面…</span>
-            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                 stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M6 9l6 6 6-6"/>
+            <svg class="ic chev" data-lucide="chevron-down" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true">
+              <path d="m6 9 6 6 6-6"/>
             </svg>
           </button>
           <div class="tm-pop" id="targetsPanel" hidden>
@@ -94,18 +101,22 @@
                   data-i18n-title="pop.searchTitle" data-i18n-aria="pop.searchAria"
                   title="搜索文件名 / 图片地址"
                   aria-label="搜索" aria-expanded="false">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
-                 stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/>
+            <svg class="ic" data-lucide="search" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true">
+              <path d="m21 21-4.34-4.34"/>
+              <circle cx="11" cy="11" r="8"/>
             </svg>
           </button>
           <!-- 展开后**向左**打开（right:0）：搜索按钮在动作组最左边，
                向右开会盖住后面 7 个按钮。面板模式下另有一段规则把它变成
                横跨整条顶栏的浮层（见 popup.css）。 -->
           <div class="search-pop" id="searchPop" hidden>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
-                 stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/>
+            <svg class="ic" data-lucide="search" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true">
+              <path d="m21 21-4.34-4.34"/>
+              <circle cx="11" cy="11" r="8"/>
             </svg>
             <input id="search" type="search" data-i18n-ph="pop.searchPh"
                    data-i18n-aria="pop.searchAria"
@@ -114,8 +125,12 @@
             <button class="sp-x" id="btnSearchClear" data-i18n-title="pop.searchClear"
                     data-i18n-aria="pop.searchClearAria"
                     title="清空并收起" aria-label="清空并收起搜索">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
-                   stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>
+              <svg class="ic" data-lucide="x" viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                   aria-hidden="true">
+                <path d="M18 6 6 18"/>
+                <path d="m6 6 12 12"/>
+              </svg>
             </button>
           </div>
         </div>
@@ -124,9 +139,11 @@
         <button id="btnRescan" class="icon-btn"
                 data-i18n-title="pop.rescanTitle" data-i18n-aria="pop.rescanAria"
                 title="重新嗅探本页图片" aria-label="重新嗅探">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
-               stroke-linecap="round" stroke-linejoin="round">
-            <path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 5v6h-6"/>
+          <svg class="ic" data-lucide="rotate-cw" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+               aria-hidden="true">
+            <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/>
+            <path d="M21 3v5h-5"/>
           </svg>
         </button>
 
@@ -136,11 +153,11 @@
                 data-i18n-title="pop.probeTitle" data-i18n-aria="pop.probeAria"
                 title="探测体积：只读响应头拿真实文件大小，不下载图片"
                 aria-label="探测体积">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
-               stroke-linecap="round" stroke-linejoin="round">
-            <path d="M7 4.5h9.5"/><path d="M11.5 4.5v2.8"/>
-            <path d="M5 7.3h14A2 2 0 0 1 21 10l-1.7 9.2A2.2 2.2 0 0 1 17.1 21H6.9A2.2 2.2 0 0 1 4.7 19.2L3 10a2 2 0 0 1 2-2.7z"/>
-            <path d="M15 12.5a3 3 0 0 1-6 0"/>
+          <svg class="ic" data-lucide="gauge" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+               aria-hidden="true">
+            <path d="m12 14 4-4"/>
+            <path d="M3.34 19a10 10 0 1 1 17.32 0"/>
           </svg>
         </button>
 
@@ -149,11 +166,13 @@
         <button id="btnExport" class="icon-btn"
                 data-i18n-title="pop.exportTitle" data-i18n-aria="pop.exportAria"
                 title="导出清单：左键 JSON，右键 CSV" aria-label="导出清单">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
-               stroke-linecap="round" stroke-linejoin="round">
-            <path d="M13.5 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8.5z"/>
-            <path d="M13.5 3v5.5H19"/><path d="M8.5 13h4"/><path d="M8.5 16.5h2.5"/>
-            <path d="M17 17.5v-4"/><path d="M15 15.5l2-2 2 2"/>
+          <svg class="ic" data-lucide="file-down" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+               aria-hidden="true">
+            <path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/>
+            <path d="M14 2v5a1 1 0 0 0 1 1h5"/>
+            <path d="M12 18v-6"/>
+            <path d="m9 15 3 3 3-3"/>
           </svg>
         </button>
 
@@ -163,36 +182,44 @@
                 data-i18n-title="pop.deepTitle" data-i18n-aria="pop.deepAria"
                 title="深度嗅探：自动滚动整页后再嗅探，用于无限滚动 / 越滚越多的站点（会临时滚动你的页面，结束后会滚回原位）"
                 aria-label="深度嗅探">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
-               stroke-linecap="round" stroke-linejoin="round">
-            <rect x="6" y="3" width="12" height="18" rx="2"/>
-            <path d="M12 6.5v7"/><path d="M9.3 11l2.7 2.7 2.7-2.7"/>
+          <svg class="ic" data-lucide="chevrons-down" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+               aria-hidden="true">
+            <path d="m7 6 5 5 5-5"/>
+            <path d="m7 13 5 5 5-5"/>
           </svg>
         </button>
 
         <!-- 在页面中打开图库面板：右侧分栏的窗口 -->
         <button id="btnPanel" class="icon-btn" data-i18n-aria="pop.panelAria"
                 title="在页面中打开图库面板" aria-label="在页面中打开图库面板">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
-               stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M15 4v16"/>
+          <svg class="ic" data-lucide="panel-right" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+               aria-hidden="true">
+            <rect width="18" height="18" x="3" y="3" rx="2"/>
+            <path d="M15 3v18"/>
           </svg>
         </button>
 
         <!-- 设置：齿轮 -->
         <button id="btnOptions" class="icon-btn" data-i18n-aria="pop.optionsAria"
                 title="设置" aria-label="设置">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
-               stroke-linecap="round" stroke-linejoin="round">
+          <svg class="ic" data-lucide="settings" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+               aria-hidden="true">
+            <path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/>
             <circle cx="12" cy="12" r="3"/>
-            <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2 2 2 0 1 1-4 0 1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3 15a2 2 0 1 1 0-4 1.7 1.7 0 0 0 1.5-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 4.6a2 2 0 1 1 4 0 1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1A1.7 1.7 0 0 0 21 11a2 2 0 1 1 0 4z"/>
           </svg>
         </button>
 
         <button id="btnClose" class="icon-btn panel-only" data-i18n-aria="pop.closeAria"
                 title="关闭面板" aria-label="关闭面板">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"
-               stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>
+          <svg class="ic" data-lucide="x" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+               aria-hidden="true">
+            <path d="M18 6 6 18"/>
+            <path d="m6 6 12 12"/>
+          </svg>
         </button>
       </div>
     </header>
@@ -206,14 +233,20 @@
              不会出现「藏起来了就不知道自己在筛」。展开态用户选过就记住。 -->
         <button class="pill" id="btnFilters" data-i18n-title="pop.filtersTitle"
                 title="展开 / 收起筛选条件" aria-expanded="false" aria-controls="filterPanel">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
-               stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3.5 6h17"/><path d="M6.5 12h11"/><path d="M10 18h4"/>
+          <svg class="ic" data-lucide="list-filter" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+               aria-hidden="true">
+            <path d="M2 5h20"/>
+            <path d="M6 12h12"/>
+            <path d="M9 19h6"/>
           </svg>
           <span data-i18n="pop.filter">筛选</span>
           <em class="pill-badge" id="filterCount" hidden>0</em>
-          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
-               stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+          <svg class="ic chev" data-lucide="chevron-down" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+               aria-hidden="true">
+            <path d="m6 9 6 6 6-6"/>
+          </svg>
         </button>
 
         <!-- 排序：一个「维度」下拉 + 一个「升降序」图标按钮。
@@ -225,9 +258,13 @@
                · 以后再想加维度（比如「文件名」）也不会把选项数翻倍。 -->
         <div class="sort-group">
           <label class="pill select-pill" data-i18n-title="pop.sort" title="排序方式">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
-                 stroke-linecap="round" stroke-linejoin="round">
-              <path d="M7 4v16"/><path d="M4 17l3 3 3-3"/><path d="M17 20V4"/><path d="M14 7l3-3 3 3"/>
+            <svg class="ic" data-lucide="arrow-up-down" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true">
+              <path d="m21 16-4 4-4-4"/>
+              <path d="M17 20V4"/>
+              <path d="m3 8 4-4 4 4"/>
+              <path d="M7 4v16"/>
             </svg>
             <select id="selSort" data-i18n-aria="pop.sortAria" aria-label="排序维度">
               <option value="area" data-i18n="pop.sortArea">分辨率</option>
@@ -244,10 +281,14 @@
                data-i18n —— 那会在切语言时被覆盖成一个固定方向的说法；
                改由 updateSortDirUI() 在初始化与切语言时各写一次。 -->
           <button class="icon-btn sort-dir" id="btnSortDir">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
-                 stroke-linecap="round" stroke-linejoin="round">
-              <path d="M6 4.5v15"/><path d="M2.5 16L6 19.5 9.5 16"/>
-              <path d="M13.5 6h8"/><path d="M13.5 12h5.5"/><path d="M13.5 18h3"/>
+            <svg class="ic" data-lucide="arrow-down-wide-narrow" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true">
+              <path d="m3 16 4 4 4-4"/>
+              <path d="M7 20V4"/>
+              <path d="M11 4h10"/>
+              <path d="M11 8h7"/>
+              <path d="M11 12h4"/>
             </svg>
           </button>
         </div>
@@ -260,26 +301,34 @@
         <div class="seg" role="group" data-i18n-aria="pop.selGroup" aria-label="批量选择">
           <button class="seg-btn" id="btnSelectAll" data-i18n-title="pop.selectAllTitle"
                   title="勾上当前筛选出的全部图片（Ctrl + A）">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
-                 stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="M8 12.2l2.8 2.8L16 9.5"/>
+            <svg class="ic" data-lucide="square-check" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true">
+              <rect width="18" height="18" x="3" y="3" rx="2"/>
+              <path d="m16 9-5.5 5.5L8 12"/>
             </svg>
             <span data-i18n="pop.selectAll">全选</span>
             <em id="selAllCount">0</em>
           </button>
           <button class="seg-btn" id="btnInvert" data-i18n-title="pop.invertTitle"
                   title="在筛选结果内，把选中与未选中互换">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
-                 stroke-linecap="round" stroke-linejoin="round">
-              <path d="M4 8h13"/><path d="M14 5l3 3-3 3"/><path d="M20 16H7"/><path d="M10 13l-3 3 3 3"/>
+            <svg class="ic" data-lucide="arrow-left-right" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true">
+              <path d="M8 3 4 7l4 4"/>
+              <path d="M4 7h16"/>
+              <path d="m16 21 4-4-4-4"/>
+              <path d="M20 17H4"/>
             </svg>
             <span data-i18n="pop.invert">反选</span>
           </button>
           <button class="seg-btn danger" id="btnClear" data-i18n-title="pop.clearTitle"
                   title="取消全部勾选">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
-                 stroke-linecap="round" stroke-linejoin="round">
-              <path d="M6 6l12 12"/><path d="M18 6L6 18"/>
+            <svg class="ic" data-lucide="x" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true">
+              <path d="M18 6 6 18"/>
+              <path d="m6 6 12 12"/>
             </svg>
             <span data-i18n="cmn.clear">清空</span>
           </button>
@@ -293,10 +342,14 @@
         <div class="size-slider" id="sizeSliderRow" data-i18n-title="pop.sizeSliderTitle"
              title="最小图片尺寸（按短边过滤）">
           <span class="ss-ico" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"
-                 stroke-linecap="round" stroke-linejoin="round">
-              <rect x="4" y="4" width="16" height="16" rx="2.5"/>
-              <path d="M8 16V9.5h6.5"/><path d="M8 9.5l7 7"/>
+            <svg class="ic" data-lucide="ruler" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true">
+              <path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z"/>
+              <path d="m14.5 12.5 2-2"/>
+              <path d="m11.5 9.5 2-2"/>
+              <path d="m8.5 6.5 2-2"/>
+              <path d="m17.5 15.5 2-2"/>
             </svg>
           </span>
           <input type="range" id="sizeMin" min="0" max="4096" step="16"
@@ -362,10 +415,15 @@
 
       <div id="empty" class="state" hidden role="status">
         <div class="empty-art">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
-               stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="4" width="18" height="16" rx="2.5"/>
-            <circle cx="8.5" cy="9.5" r="1.6"/><path d="M21 16l-5-5-6 6-3-3-4 4"/>
+          <svg class="ic" data-lucide="image-off" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+               aria-hidden="true">
+            <line x1="2" x2="22" y1="2" y2="22"/>
+            <path d="M10.41 10.41a2 2 0 1 1-2.83-2.83"/>
+            <line x1="13.5" x2="6" y1="13.5" y2="21"/>
+            <line x1="18" x2="21" y1="12" y2="15"/>
+            <path d="M3.59 3.59A1.99 1.99 0 0 0 3 5v14a2 2 0 0 0 2 2h14c.55 0 1.052-.22 1.41-.59"/>
+            <path d="M21 15V5a2 2 0 0 0-2-2H9"/>
           </svg>
         </div>
         <p id="emptyText" data-i18n="pop.empty">本页没有发现图片</p>
@@ -402,9 +460,12 @@
         </span>
         <span class="ftr-hint" id="ftrHint" data-i18n="pop.ftrHint">网格中拖拽框选 · 框到已勾选的会取消</span>
         <button class="primary" id="btnSave" disabled>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
-               stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 3.5v11.5"/><path d="M7 10.5l5 5 5-5"/><path d="M4.5 20h15"/>
+          <svg class="ic" data-lucide="download" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+               aria-hidden="true">
+            <path d="M12 15V3"/>
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <path d="m7 10 5 5 5-5"/>
           </svg>
           <span data-i18n="pop.saveSelected">保存选中</span>
           <em id="saveCount">0</em>
@@ -422,6 +483,9 @@
 
   <script src="../shared/constants.js"></script>
   <script src="../shared/utils.js"></script>
+  <!-- 图标来源。必须在 lightbox.js / popup.js 之前 —— 它们靠 IH.Lucide.svg()
+       生成卡片角标与灯箱按钮（HTML 里那些是静态副本，见 shared/lucide.js 头注释） -->
+  <script src="../shared/lucide.js"></script>
   <script src="../shared/store.js"></script>
   <!-- i18n 必须在 store.js 之后：它要读 settings.uiLang 决定用哪种语言 -->
   <script src="../shared/i18n.js"></script>

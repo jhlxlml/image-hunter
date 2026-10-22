@@ -61,6 +61,7 @@ ctx.chrome = {
 
 vm.runInContext(fs.readFileSync(path.join(BASE, 'shared/constants.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(BASE, 'shared/utils.js'), 'utf8'), ctx);
+vm.runInContext(fs.readFileSync(path.join(BASE, 'shared/lucide.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(BASE, 'shared/store.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(BASE, 'shared/i18n.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(BASE, 'content/lightbox.js'), 'utf8'), ctx);

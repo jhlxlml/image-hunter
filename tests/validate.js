@@ -2082,6 +2082,252 @@ console.log('\n=== 20. 顶栏收敛与筛选条默认态 ===');
   }
 }
 
+/* ======================================================================
+ * 21. 图标：单一来源（Lucide）+ 同层级同一档尺寸（v1.19.0）
+ *
+ * 这一版之前，39 个图标是手画的：`viewBox` 都是 24，但 `stroke-width`
+ * 从 1.6 到 3.4 什么值都有，尺寸散成 11 / 12 / 13 / 14 / 15 / 16 / 17 / 20 / 32。
+ * 单看每一个都「还行」，排成一行就是毛边 —— 而这类毛边**不报错**，
+ * 没人会专门去修，只会一直烂在那儿。
+ *
+ * 所以这一节守两件事：
+ *   ① 图标只能来自 shared/lucide.js 那一份数据（HTML 里的内联副本必须
+ *      与它逐形状相等；JS 里不许再出现手写的 `<svg`）；
+ *   ② 组件样式表里的图标尺寸只能用 `--ic-*` 档位，且**同一层级必须同一档**。
+ *
+ * 为什么 HTML 要保留内联副本：图库是首屏，图标靠 JS 生成会先闪一下空按钮。
+ * 两处都写 + 测试钉住相等 —— 和 theme.css 的兜底值 / theme.js 的推导值
+ * 是同一套做法（见第 19 节）。
+ * ====================================================================== */
+console.log('\n=== 21. 图标：单一来源（Lucide）+ 同层级同一档 ===');
+{
+  const { JSDOM } = require('jsdom');
+  require(path.join(ROOT, 'shared/lucide.js'));
+  const LUCIDE = globalThis.IH && globalThis.IH.Lucide;
+
+  /* ---- (a) 单一来源本身可用 ---- */
+  if (LUCIDE && Array.isArray(LUCIDE.names) && LUCIDE.names.length >= 20
+      && typeof LUCIDE.svg === 'function') {
+    ok('shared/lucide.js 可加载，登记了 ' + LUCIDE.names.length + ' 个图标');
+  } else {
+    bad('shared/lucide.js 没有导出预期的 { PATHS, svg, names }');
+  }
+  const PATHS = (LUCIDE && LUCIDE.PATHS) || {};
+
+  /* 形状指纹：与 browser-topbar.js 同一套规范化（数字尾随 0 抹掉、空白压平）。
+     两边用同一套算法，是为了「同一个图标抄两遍、只是格式不同」也能认出来。 */
+  const shapePrint = (el) => {
+    const attrs = ['d', 'x', 'y', 'width', 'height', 'rx', 'ry', 'cx', 'cy', 'r',
+      'x1', 'y1', 'x2', 'y2', 'points']
+      .map((a) => el.getAttribute(a))
+      .filter((v) => v != null)
+      .map((v) => v.replace(/\s+/g, ' ').trim()
+        .replace(/(\d)\.0+(?=\D|$)/g, '$1')
+        .replace(/(\.\d*?)0+(?=\D|$)/g, '$1')
+        .replace(/(\d)\.(?=\D|$)/g, '$1'))
+      .join(',');
+    return el.tagName.toLowerCase() + ':' + attrs;
+  };
+  const SHAPES = 'path, rect, circle, line, polyline, polygon, ellipse';
+  const printsOf = (svgEl) => Array.from(svgEl.querySelectorAll(SHAPES)).map(shapePrint).join('|');
+
+  /* ---- (b)(c)(d) 两个 HTML 里的内联图标 ---- */
+  const htmlFiles = ['popup/popup.html', 'options/options.html'];
+  htmlFiles.forEach((rel) => {
+    const dom = new JSDOM(fs.readFileSync(path.join(ROOT, rel), 'utf8'));
+    const doc = dom.window.document;
+    const svgs = Array.from(doc.querySelectorAll('svg'));
+    const noName = [];
+    const unknown = [];
+    const drifted = [];
+    const badAttr = [];
+    const badShape = [];
+
+    svgs.forEach((el) => {
+      const name = el.getAttribute('data-lucide');
+      if (!name) {
+        /* 没有 data-lucide = 有人又手画了一个图标。这是这一节最想拦的。 */
+        noName.push((el.outerHTML || '').replace(/\s+/g, ' ').slice(0, 48));
+        return;
+      }
+      if (!PATHS[name]) { unknown.push(name); return; }
+      const want = { viewBox: '0 0 24 24', fill: 'none', 'stroke-width': '2',
+        'stroke-linecap': 'round', 'stroke-linejoin': 'round' };
+      const off = Object.keys(want).filter((k) => el.getAttribute(k) !== want[k]);
+      if (off.length) badAttr.push(name + '（' + off.join('/') + '）');
+      const filled = Array.from(el.querySelectorAll(SHAPES))
+        .filter((s) => s.getAttribute('fill') && s.getAttribute('fill') !== 'none');
+      if (filled.length) badShape.push(name + '（形状上写了 fill）');
+      /* 逐形状对拍：形状串直接从 PATHS 解析出来比，不比对源码文本 ——
+         属性顺序不同但形状相同应该算通过，数字写 4.340 与 4.34 也算通过。 */
+      const ref = new JSDOM('<svg>' + PATHS[name] + '</svg>').window.document.querySelector('svg');
+      if (printsOf(el) !== printsOf(ref)) drifted.push(name);
+    });
+
+    if (!noName.length) {
+      ok(rel + ' 的 ' + svgs.length + ' 个图标都登记了 data-lucide（没有漏网的手写图标）');
+    } else {
+      bad(rel + ' 里有图标没写 data-lucide —— 它们不是来自 Lucide 的', noName.join(' / '));
+    }
+    if (!unknown.length) ok(rel + ' 的 data-lucide 名字都在 shared/lucide.js 里');
+    else bad(rel + ' 引用了 shared/lucide.js 里没有的图标名', unknown.join('、'));
+
+    if (!drifted.length) {
+      ok(rel + ' 的内联图标与 shared/lucide.js 逐形状一致（静态副本没有漂）');
+    } else {
+      bad(rel + ' 的内联图标和 shared/lucide.js 对不上了 —— 改了一边没改另一边',
+        drifted.join('、'));
+    }
+    if (!badAttr.length) {
+      ok(rel + ' 的图标属性全部是 Lucide 规范（24 视框 / stroke-width 2 / 圆头圆角 / 不填充）');
+    } else {
+      bad(rel + ' 的图标属性不合 Lucide 规范', badAttr.join('、'));
+    }
+    if (badShape.length) bad(rel + ' 有形状自带 fill（会破坏描边风格）', badShape.join('、'));
+  });
+
+  /* ---- (e) JS 里不许再手写 <svg> ---- */
+  {
+    const offenders = [];
+    const walk = (dir) => {
+      fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true }).forEach((d) => {
+        const rel = dir + '/' + d.name;
+        if (d.isDirectory()) { if (d.name !== 'node_modules' && d.name !== 'dist') walk(rel); return; }
+        if (!/\.js$/.test(d.name)) return;
+        /* shared/lucide.js 是唯一允许出现 <svg> 的产品文件 —— 它就是那份数据 */
+        if (rel === 'shared/lucide.js') return;
+        const src = fs.readFileSync(path.join(ROOT, rel), 'utf8');
+        if (/<svg\b/.test(src)) offenders.push(rel);
+      });
+    };
+    ['shared', 'content', 'popup', 'options'].forEach(walk);
+    if (fs.existsSync(path.join(ROOT, 'background.js'))
+        && /<svg\b/.test(fs.readFileSync(path.join(ROOT, 'background.js'), 'utf8'))) {
+      offenders.push('background.js');
+    }
+    if (!offenders.length) {
+      ok('产品 JS 里没有手写的 <svg>（图标一律走 IH.Lucide.svg()）');
+    } else {
+      bad('这些产品 JS 还在手写图标 —— 会绕过 Lucide 与尺寸档位', offenders.join('、'));
+    }
+  }
+
+  /* ---- (f)(g) 尺寸只能用档位，且同层级同一档 ---- */
+  const cssOf = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
+
+  /* 把所有「选择器 → 声明块」摊平。CSS 里没有嵌套，正则够用；
+     多选择器（逗号）拆开逐个登记，一个选择器可能有多条规则（基础 + 媒体查询）。
+     **先剥注释** —— 否则选择器会连着前面那段说明文字一起被抓走，
+     `.logo svg` 就匹配不上了（第 16 个坑的同一个病，这里又栽了一次）。 */
+  const rulesOf = (src) => {
+    const clean = src.replace(/\/\*[\s\S]*?\*\//g, '');
+    const out = [];
+    const re = /([^{}]+)\{([^{}]*)\}/g;
+    let m;
+    while ((m = re.exec(clean))) {
+      const body = m[2];
+      m[1].split(',').forEach((sel) => {
+        const s = sel.replace(/\s+/g, ' ').trim();
+        if (s) out.push({ sel: s, body });
+      });
+    }
+    return out;
+  };
+
+  /* 档位值必须与 theme.css 里的一致 —— 这里的数字是「规格」，不是抄的 */
+  {
+    const themeCss = cssOf('shared/theme.css');
+    const rootStart = themeCss.indexOf('\n:root {');
+    const rootBody = themeCss.slice(rootStart, themeCss.indexOf('\n}', rootStart));
+    const want = { '--ic-xs': '12px', '--ic-sm': '14px', '--ic-md': '16px',
+      '--ic-lg': '20px', '--ic-xl': '32px' };
+    const missing = Object.keys(want).filter((k) => {
+      const mm = new RegExp('\\' + k + '\\s*:\\s*([^;]+);').exec(rootBody);
+      return !mm || mm[1].trim() !== want[k];
+    });
+    if (!missing.length) {
+      ok('shared/theme.css 定义了 5 档图标尺寸（xs 12 / sm 14 / md 16 / lg 20 / xl 32）');
+    } else {
+      bad('shared/theme.css 的图标档位缺失或值不对', missing.join('、'));
+    }
+  }
+
+  /* 白名单：`.logo svg` 是品牌标识，尺寸跟 logo 容器走，不属于图标层级 */
+  const SIZE_EXEMPT = ['.logo svg'];
+  [['popup/popup.css'], ['options/options.css'], ['content/overlay.css']].forEach(([rel]) => {
+    const rules = rulesOf(cssOf(rel));
+    const raw = [];
+    rules.forEach((r) => {
+      /* 两类要分开看，因为「这条规则里的 px 是不是图标尺寸」判据不同：
+         · 图标自己的规则（`… svg` / `.ss-ico` / `.tp-ico`）—— width / height 都得是档位；
+         · `background-image` 塞 data-URI 图标的下拉箭头 —— 只看 background-size，
+           那种规则里还有控件自己的 height（34px 那种），不能一起拦。 */
+      const isSvgRule = /\bsvg\b/.test(r.sel) || /^\.(ss-ico|tp-ico)$/.test(r.sel);
+      const isUriRule = /data:image\/svg\+xml/.test(r.body);
+      if (!isSvgRule && !isUriRule) return;
+      if (SIZE_EXEMPT.indexOf(r.sel) >= 0) return;
+      const pat = isSvgRule
+        ? /(?<![\w-])(?:width|height|background-size)\s*:\s*(\d+(?:\.\d+)?)px/g
+        : /(?<![\w-])background-size\s*:\s*(\d+(?:\.\d+)?)px/g;
+      const px = r.body.match(pat);
+      if (px) raw.push(r.sel + ' → ' + px.join(' '));
+    });
+    if (!raw.length) {
+      ok(rel + ' 的图标尺寸全部走 --ic-* 档位（没有写死的像素值）');
+    } else {
+      bad(rel + ' 里有图标尺寸写死了像素值 —— 同层级会慢慢漂开', raw.join('；'));
+    }
+  });
+
+  /* 层级表：同一个层级必须同一档。这张表就是「同层级大小统一」的定义。 */
+  {
+    const LEVELS = [
+      ['popup/popup.css', '.icon-btn svg', '--ic-md', '顶栏动作'],
+      ['popup/popup.css', '.pill > svg', '--ic-sm', '工具行胶囊'],
+      ['popup/popup.css', '.seg-btn > svg', '--ic-sm', '工具行选择组'],
+      ['popup/popup.css', '.ss-ico', '--ic-sm', '工具行尺寸滑条'],
+      ['popup/popup.css', '.search-pop > svg', '--ic-sm', '搜索浮层'],
+      ['popup/popup.css', '.card .pick svg', '--ic-xs', '卡片角标'],
+      ['popup/popup.css', '.card .zoom svg', '--ic-xs', '卡片角标'],
+      ['popup/popup.css', '.card .restore svg', '--ic-xs', '卡片角标'],
+      ['popup/popup.css', 'button.primary svg', '--ic-md', '底栏主按钮'],
+      ['popup/popup.css', '.empty-art svg', '--ic-xl', '空态插画'],
+      ['content/overlay.css', '.ih-hover-btn svg', '--ic-md', '网页悬停按钮'],
+      ['content/overlay.css', '.ih-lb-btn svg', '--ic-md', '灯箱按钮'],
+      ['content/overlay.css', '.ih-lb-nav svg', '--ic-lg', '灯箱翻页']
+    ];
+    const wrong = [];
+    const cache = {};
+    LEVELS.forEach(([rel, sel, token, label]) => {
+      cache[rel] = cache[rel] || rulesOf(cssOf(rel));
+      const hits = cache[rel].filter((r) => r.sel === sel);
+      if (!hits.length) { wrong.push(sel + '（规则不存在）'); return; }
+      /* 每一条（含媒体查询里的覆盖）都得是档位；第一条必须是指定的那一档 */
+      const notToken = hits.filter((r) => !/var\(--ic-/.test(r.body));
+      if (notToken.length) { wrong.push(sel + '（有分支没走档位）'); return; }
+      if (!new RegExp('var\\(' + token + '\\)').test(hits[0].body)) {
+        wrong.push(sel + '（' + label + '应为 ' + token + '）');
+      }
+    });
+    if (!wrong.length) {
+      ok('同层级的图标尺寸一致（' + LEVELS.length + ' 条层级 → 档位映射全部对上）');
+    } else {
+      bad('层级 → 档位映射不对，同层级会出现大小不一', wrong.join('、'));
+    }
+  }
+
+  /* 窄栏降档是「同一层级的响应式取值」，不是新开一档 —— 单独钉住它 */
+  {
+    const rules = rulesOf(cssOf('popup/popup.css')).filter((r) => r.sel === '.icon-btn svg');
+    const hasSm = rules.some((r) => /var\(--ic-sm\)/.test(r.body));
+    if (rules.length >= 2 && hasSm) {
+      ok('窄栏把顶栏图标降一档到 --ic-sm（md → sm，不是新开一个数字）');
+    } else {
+      bad('窄栏没有把顶栏图标降档（按钮缩到 28px 后图标会贴边）', '规则数=' + rules.length);
+    }
+  }
+}
+
 console.log('\n-----------------------------');
 console.log('通过 ' + pass + ' 项，失败 ' + fail + ' 项');
 process.exit(fail ? 1 : 0);

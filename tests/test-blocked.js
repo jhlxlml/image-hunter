@@ -102,6 +102,7 @@ function makeEnv(opts) {
   const load = (rel) => vm.runInContext(fs.readFileSync(path.join(BASE, rel), 'utf8'), ctx);
   load('shared/constants.js');
   load('shared/utils.js');
+  load('shared/lucide.js');     // 与 manifest 的清单同序（hover/lightbox 要用）
   load('shared/store.js');
   load('shared/i18n.js');       // 与 manifest 的清单同序
   load('content/scanner.js');

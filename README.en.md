@@ -121,6 +121,7 @@ hover buttons must be visible on focus (fixes WCAG 2.4.7), and state changes are
 | **Configurable default sort** | Pick the default sort in the options page ("Interaction"): resolution / file size × large→small · small→large, page order, or site. The gallery initialises to it **every time it opens**; a sort you change on the fly is not persisted, matching how filters behave |
 | **Customisable theme** | Light / dark / follow-system, six colour schemes (Indigo · Teal · Emerald · Rose · Amber · Slate), or pick any accent colour with the colour picker. Change it once and the gallery, the in-page panel and the lightbox accent colour **all** follow |
 | **UI gets out of the way** | Every top-bar action stays visible and one click away (search included), but the faux-3D gradients are gone; the filter bar is collapsed by default and cards have no border unless hovered — so you see a wall of images first, not a ring of toolbars |
+| **One consistent icon set** | Every icon comes from [Lucide](https://lucide.dev) instead of being hand-drawn. Sizes are tiered by **UI level** into five steps (12 / 14 / 16 / 20 / 32px): icons on the same level must match, and the narrow layout drops one step as a whole. The rule is enforced by the test suite, so new icons can't quietly drift |
 
 ---
 
@@ -178,9 +179,10 @@ The extension **collects and uploads no data**; all settings / history / fingerp
 ```
 image-hunter/
 ├── LICENSE                # AGPL-3.0
+├── THIRD-PARTY-NOTICES.md # Third-party resources shipped with the extension (Lucide icons, ISC / MIT)
 ├── manifest.json          # MV3 manifest
 ├── background.js          # Service Worker: download queue, message routing, history/fingerprints, size probing
-├── shared/                # Message constants, URL utils, storage wrapper, i18n, diagnostics (pure functions)
+├── shared/                # Message constants, URL utils, storage wrapper, i18n, diagnostics, Lucide icons (pure functions)
 ├── content/               # Content scripts: scan engine, hover buttons, lightbox, in-page panel
 ├── popup/                 # Gallery UI (a standalone page; the in-page panel shares the same code)
 ├── options/               # Options page
@@ -272,3 +274,6 @@ More (24 in total) in [HANDBOOK.md's "FAQ" (中文)](HANDBOOK.md#常见问题).
 
 You are free to use, modify and redistribute it; but AGPL adds one clause on top of GPL, a **network service clause**:
 if you deploy a modified version as a network service offered to others, you must also publish your changes under the same license.
+
+The UI icons come from [Lucide](https://lucide.dev) (ISC licence; some are derived from Feather / MIT) and ship with the extension.
+See [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md) for the full copyright notices.

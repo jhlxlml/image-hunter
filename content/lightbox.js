@@ -30,37 +30,19 @@
      不转义在 HTML 属性里会当场截断。 */
   const esc = (s) => U.escapeHtml(s);
 
-  const ICON_PREV =
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" ' +
-    'stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>';
-  const ICON_NEXT =
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" ' +
-    'stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>';
-  const ICON_DOWNLOAD =
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" ' +
-    'stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5v11.5"/>' +
-    '<path d="M7 10.5l5 5 5-5"/><path d="M4.5 20h15"/></svg>';
-  const ICON_LINK =
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" ' +
-    'stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1 1"/>' +
-    '<path d="M14 11a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1-1"/></svg>';
-  const ICON_OPEN =
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" ' +
-    'stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-8 8"/>' +
-    '<path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>';
-  const ICON_COPY_IMG =
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" ' +
-    'stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/>' +
-    '<path d="M5 15V5a2 2 0 0 1 2-2h8"/></svg>';
-  const ICON_GALLERY =
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" ' +
-    'stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7.5" height="7.5" rx="1.6"/>' +
-    '<rect x="13.5" y="3" width="7.5" height="7.5" rx="1.6"/>' +
-    '<rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6"/>' +
-    '<rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.6"/></svg>';
-  const ICON_CLOSE =
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" ' +
-    'stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>';
+  /* 图标一律走 IH.Lucide（shared/lucide.js）。原来这 8 个是手画的，
+     stroke-width 统一写了 2.2，但形状重心各不相同（上一张/下一张的
+     箭头长度差 1px，复制图片和「在图库中打开」的圆角也不一致）。
+     尺寸不在这里给：overlay.css 的 `.ih-lb-btn svg` / `.ih-lb-nav svg`
+     分别用 --ic-md / --ic-lg 两档。 */
+  const ICON_PREV = IH.Lucide.svg('chevron-left');
+  const ICON_NEXT = IH.Lucide.svg('chevron-right');
+  const ICON_DOWNLOAD = IH.Lucide.svg('download');
+  const ICON_LINK = IH.Lucide.svg('link');
+  const ICON_OPEN = IH.Lucide.svg('external-link');
+  const ICON_COPY_IMG = IH.Lucide.svg('copy');
+  const ICON_GALLERY = IH.Lucide.svg('layout-grid');
+  const ICON_CLOSE = IH.Lucide.svg('x');
 
   let ui = null;
   let list = [];

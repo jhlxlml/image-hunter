@@ -164,6 +164,9 @@ ctx.chrome = {
 
 vm.runInContext(fs.readFileSync(path.join(BASE, 'shared/constants.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(BASE, 'shared/utils.js'), 'utf8'), ctx);
+/* 图标来源。hover.js 用 IH.Lucide.svg() 拼按钮里的图标，
+   不加载它 hover.js 会在顶层就抛（与 manifest 的清单同序）。 */
+vm.runInContext(fs.readFileSync(path.join(BASE, 'shared/lucide.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(BASE, 'shared/store.js'), 'utf8'), ctx);
 // 与 manifest 的内容脚本清单保持同序：i18n 在 store 之后、内容脚本之前
 vm.runInContext(fs.readFileSync(path.join(BASE, 'shared/i18n.js'), 'utf8'), ctx);

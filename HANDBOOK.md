@@ -550,6 +550,7 @@ image-hunter/
 ├── README.en.md                # 面向 GitHub 的简明首页（英文）
 ├── HANDBOOK.md                 # 本文件：完整手册（功能详解 / 使用说明 / FAQ / 全部版本历史）
 ├── LICENSE                     # AGPL-3.0
+├── THIRD-PARTY-NOTICES.md      # 随扩展分发的第三方资源（Lucide 图标，ISC / Feather MIT）
 ├── manifest.json               # MV3 清单
 ├── background.js               # Service Worker：下载队列、消息路由、历史/指纹、体积探测、扫描摘要
 ├── package.json                # 只声明开发期依赖（jsdom / playwright-core）与测试脚本，扩展运行**不用**它
@@ -559,6 +560,7 @@ image-hunter/
 ├── shared/
 │   ├── constants.js            # 消息类型、默认配置、原图还原规则表
 │   ├── utils.js                # URL 规范化、srcset 解析、文件名生成、并发控制
+│   ├── lucide.js               # 【唯一图标来源】29 个 Lucide 图标的路径数据 + IH.Lucide.svg()
 │   ├── store.js                # chrome.storage 封装
 │   ├── i18n.js                 # 界面多语言：427 条键 × 中/英，运行时切换 + 降级链
 │   └── diagnostics.js          # 诊断包：字段白名单 + 地址脱敏 + 落盘前自查（纯函数）
@@ -572,7 +574,7 @@ image-hunter/
 ├── popup/                      # 图库主界面（独立页面 / 页内面板共用同一份代码）
 ├── options/                    # 设置页
 ├── tools/
-│   ├── package.js              # 打包成 zip（零依赖，白名单从 manifest 算出来）
+│   ├── package.js              # 打包成 zip（零依赖，白名单从 manifest 算出来；LICENSE 与第三方声明显式进包）
 │   └── audit-settings.js       # 设置项巡检：列出每条设置的读取点 / UI 挂点，找死设置
 ├── tests/                      # 开发期测试（不影响扩展运行）
 │   └── lib/
@@ -661,6 +663,9 @@ IH_AUDIT_VERBOSE=1 node tools/audit-settings.js   # 连每个命中位置的行�
 - **多 iframe 汇总**：内容脚本注入到所有 frame，各 frame 独立扫描后回传结果由后台合并去重
 - **MV3 休眠应对**：下载任务托管给浏览器 `downloads` API；队列持久化到 `storage.session`，Service Worker 被回收后可自动恢复未完成的下载
 - **并发限流**：尺寸探测与下载都有并发控制，图片再多也不会拖垮页面
+- **单一来源的视觉层**：颜色 / 圆角 / 字体 / 图标尺寸全在 `shared/theme.css`，图标形状全在 `shared/lucide.js`。
+  组件样式表里不写具体数值，只引用 token —— 所以「同一层级的图标一样大」是**可检查的规则**，
+  而不是每个调用点各写一个数字（`validate.js` 第 21 节守着它）
 
 ---
 
@@ -803,6 +808,115 @@ A：先确认鼠标确实停在图片上（要等悬停按钮浮现出来）。�
 ---
 
 ## 版本
+
+v1.19.0 —— **图标统一到 Lucide + 尺寸档位化（同层级同一档）**。承 v1.18.0。
+
+          这一版没加功能，只收拾图标。起因是「单看每一个都还行，排成一行就是毛边」：
+          39 个图标全是手画的，`viewBox` 都是 24 但 `stroke-width` 从 **1.6 到 3.4**
+          什么值都有，尺寸散成 **11 / 12 / 13 / 14 / 15 / 16 / 17 / 20 / 32** 九种。
+          这类毛边**不报错**，没人会专门去修，只会一直烂在那儿 —— 所以顺手把
+          「同层级必须同一档」写成了测试（见下）。
+
+          | 改动 | 做法 | 为什么 |
+          |---|---|---|
+          | 图标来源 | 新增 `shared/lucide.js`，29 个图标（去重后），路径数据取自 `lucide-static@1.61.0` | Lucide 是 24 视框 / 2px 描边 / 圆头圆角**统一的**一套；许可 ISC，与 AGPL-3.0 兼容 |
+          | 尺寸 | `shared/theme.css` 定义 5 档 `--ic-*`，三张组件样式表 20 条图标规则全部换成档位 | 档位按**层级**取，不按「这个图标恰好放在哪儿」取。改层级就换档，不新开数字 |
+          | 页面内联图标 | 两个 HTML 的 24 个图标换成 Lucide 形状，带 `data-lucide="名字"` | 图库是首屏，JS 生成图标会先闪一下空按钮 |
+          | JS 构建的图标 | `hover.js`(4) / `lightbox.js`(8) / `popup.js`(3) 改走 `IH.Lucide.svg()` | 手画的 `stroke-width` 各家一个值（3 / 3.4 / 2.4），同一张卡片上的两个角标粗细都不一样 |
+          | 下拉箭头 | 两个 `<select>` 的 `background-image` data-URI 也换成 Lucide 的 `chevron-down` 形状 | 那是**唯一一处**不经过 `<svg>` 的图标，不改就还留着一根毛边 |
+
+          **五档尺寸**（定义在 `shared/theme.css` 的 `:root`，shadow root 从 `:host` 继承）：
+
+          | 档位 | 值 | 用在哪 |
+          |---|---|---|
+          | `--ic-xs` | 12px | 卡片角标（勾选 / 放大 / 还原）、搜索浮层里的清空 |
+          | `--ic-sm` | 14px | 工具行控件：筛选 / 排序 / 升降序 / 选择组 / 尺寸滑条 |
+          | `--ic-md` | 16px | 按钮层：顶栏动作 / 主按钮 / 灯箱按钮 / 网页悬停按钮 |
+          | `--ic-lg` | 20px | 灯箱左右翻页 |
+          | `--ic-xl` | 32px | 空态插画 |
+
+          只有 5 档是有意的：**档位一多就等于没有档位**。原来那 9 种尺寸里，
+          13 与 14 的差别肉眼根本分不出，但维护时每次都要重新判断一次「这里该用哪个」，
+          于是越加越多。窄栏把顶栏图标从 `md` 降到 `sm` 是**响应式取值**，不是新开一档 ——
+          按钮缩到 28px 后 16px 的图标会贴边，这一条单独钉住。
+
+          **图标规范写死在 helper 里，不接受调用点覆盖**：`IH.Lucide.svg()` 固定
+          `viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round"`。允许覆盖就等于允许漂移 ——
+          这一版要修的正是漂移。找不到名字**不抛异常**，返回空 svg + `console.warn`
+          （与 i18n「最外环返回 key」同一思路：界面上出现一个空位，比整页崩掉好查）。
+          尺寸也不在 helper 里给，交给 CSS 档位 —— 同一个图标在卡片角标和灯箱里
+          本来就该是两种大小。
+
+          **路径键名 = lucide.dev 上的图标名**（`image-down` / `chevrons-down` /
+          `panel-right`）。想换图标直接去站上搜同名，不用在这一版里猜。
+
+          **为什么 HTML 里还留一份静态副本（不是冗余）**：图库是首屏，
+          如果图标全靠 JS 在 `DOMContentLoaded` 之后填，打开时会先看到一排**空按钮**
+          再「长出」图标 —— 扩展的弹出页每次都是冷启动，这一下很明显。
+          所以 HTML 里保留内联 `<svg>` 并写 `data-lucide="名字"`，`validate.js`
+          逐形状对拍两份是否一致（与 `theme.css` 兜底值 / `theme.js` 推导值同一套做法）。
+          对拍用的是**形状指纹**而不是源码文本：数字尾随 0 抹掉、空白压平，
+          所以「同一图标抄两遍、只是格式不同」也算一致。
+
+          **图标对照**（改图标时按这张表找位置）：
+
+          | 位置 | Lucide 名 | 位置 | Lucide 名 |
+          |---|---|---|---|
+          | 品牌 logo（图库 + 设置） | `image-down` | 筛选 | `list-filter` |
+          | 扫描目标选择器 | `panel-top` | 排序维度 | `arrow-up-down` |
+          | 搜索 / 浮层放大镜 | `search` | 升降序 | `arrow-down-wide-narrow` |
+          | 重新嗅探 | `rotate-cw` | 全选 | `square-check` |
+          | 探测体积 | `gauge` | 反选 | `arrow-left-right` |
+          | 导出清单 | `file-down` | 尺寸滑条 | `ruler` |
+          | 深度嗅探 | `chevrons-down` | 空态 | `image-off` |
+          | 页内面板 | `panel-right` | 保存 / 悬停下载 / 灯箱下载 | `download` |
+          | 设置 | `settings` | 卡片勾选 / 悬停完成 | `check` |
+          | 关闭 / 清空 / 搜索清空 | `x` | 卡片放大 / 悬停预览 | `zoom-in` |
+          | 卡片还原转圈 | `loader-circle` | 悬停错误态 | `circle-alert` |
+          | 灯箱上 / 下一张 | `chevron-left` / `chevron-right` | 灯箱复制链接 | `link` |
+          | 灯箱新标签打开 | `external-link` | 灯箱复制图片 | `copy` |
+          | 灯箱「在图库中打开」 | `layout-grid` | 多选面板下拉箭头 | `chevron-down` |
+
+          **顺带改写了一条旧断言**：`browser-topbar.js` 原来钉的是「`#btnDeep` 的指纹
+          以 `rect:` 打头」（= 页面轮廓 + 向下箭头）。换成 `chevrons-down` 之后
+          它没有 `rect`，那条判据失效了。但**真正要守的东西没变**：深度嗅探不下载
+          任何东西，不能长得像「保存到本地」或「导出清单」。所以改成和这两个**比不同**，
+          守的是意图而不是形状。
+
+          **注入验证做了 9 项**（`tests/_inj-icons.py`，Python 驱动，跑完即删）。
+          这一节之所以必须验证，是因为它守的正是本版的需求本身 ——
+          「图标统一」「同层级大小统一」全靠它，它不红就等于没做：
+          ① 删一个 `data-lucide` → 红（报「没写 data-lucide」）；
+          ② 放大镜 `r="8"` 改 `7` → 红（静态副本与库漂了）；
+          ③ 引用不存在的名字 `hamburger` → 红；
+          ④ `stroke-width` 改 `2.1` → 红；
+          ⑤ 在 `popup.js` 塞一个手写 `<svg>` → 红；
+          ⑥ 卡片角标改回 `11px` → 红 2 项（写死像素 + 层级映射）；
+          ⑦ 选择组图标降到 `--ic-xs` → 红（同层级出现两种大小）；
+          ⑧ 窄栏不再降档 → 红；
+          ⑨ `--ic-md` 改 `15px` → 红（新开一个数字）。
+          9/9 如实变红，还原后 293 项全绿。
+
+          **测试自己的坑（第五个）—— 又忘了先剥注释**：`validate.js` 里摊平 CSS 规则
+          的正则第一版直接跑在原文上，`/* … */` 与选择器之间的换行让**整段注释文字**
+          被当成选择器抓走，`.seg-btn > svg` / `.ss-ico` / `.card .restore svg` /
+          `button.primary svg` / `.ih-hover-btn svg` 五条全部报「规则不存在」。
+          这正是 `tests/README.md` 第十六个坑的同一个病 —— **同一个坑栽第二次**。
+          现在的写法是先 `src.replace(/\/\*[\s\S]*?\*\//g, '')` 再扫。
+          另外两个正则细节：`background-image` 塞 data-URI 的规则里还有控件自己的
+          `height: 34px`（不是图标尺寸），只能拦 `background-size`；
+          尺寸检测要加负向后行断言 `(?<![\w-])`，否则 `max-width: 128px` 会被误判。
+
+          **jsdom 套件的加载清单要跟着 manifest 走**：新增 `shared/lucide.js` 后，
+          `test-hover.js` / `test-blocked.js` / `test-lightbox-gallery.js` /
+          `test-lightbox-filter.js` 四个套件必须在 `utils.js` 之后、`store.js` 之前
+          补加载它 —— 那两份产品代码在**顶层**就调 `IH.Lucide.svg()`，
+          少加载一个文件就是整块抛异常。这四行是手写清单，不是自动扫描的
+          （`tests/README.md` 里「加载顺序」那条坑的来源）。
+
+          **许可**：Lucide 是 **ISC**。与 AGPL-3.0 兼容，但需要保留版权声明 ——
+          见 `THIRD-PARTY-NOTICES.md`，`shared/lucide.js` 的文件头也写了一份。
 
 v1.18.0 —— **搜索搬进顶栏 + 排序拆成「维度 × 升降序」+ 默认排序可设置**。承 v1.17.0。
 五条改动里，前三条是「把工具行腾出来」，后两条是「把腾出来的空间用掉」。
