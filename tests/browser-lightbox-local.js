@@ -21,6 +21,9 @@
  *   6. 图片在子 iframe 里时，预览交回顶层 frame 开
  *   7. 灯箱是页内模态：真页面上滚轮 / 空格 / ↑↓ 都不该把背景滚走，
  *      真滚动条宽度要补偿，关掉之后滚动位置还在原处
+ *   8. 顶栏图标在 Shadow DOM 里也拿得到尺寸档位（按钮 32×32、图标 16×16、
+ *      缩放步进 14×14，保存按钮只有图标没有文字）—— 这一节守的是
+ *      「只在网页里出现」的那类缺陷，图库页永远看不出来
  */
 'use strict';
 
@@ -479,6 +482,87 @@ const clickLightbox = (target, act) => target.evaluate((a) => {
     await tp.close();
     tall.close();
     tall = null;
+
+    /* --------------------------------------------------------------- *
+     * 8. 顶栏图标在 Shadow DOM 里也拿得到尺寸档位
+     *
+     * 守的是一个**只在网页里出现**的缺陷（v1.19.1 修）：
+     * `--ic-*` 原来只定义在 theme.css 的 `:root` 上，而 `:root` 匹配的是
+     * **文档根元素** —— shadow 树里不存在这个元素，于是 overlay.css 里的
+     * `var(--ic-md)` 静默失效，声明退化成 auto，图标被撑满 32px 的按钮
+     * （实测 30×30，几乎顶满，一排看过去又大又粗）。
+     *
+     * 图库页看不出这个问题：popup.html 自己 `<link>` 了 theme.css，`:root` 生效、
+     * 变量能继承进 shadow 树。所以只盯图库页的截图与断言全绿，用户一点网页里的
+     * 大图预览就露馅 —— 这正是用户报上来的现象。
+     *
+     * 判据落在**算出来的像素**上：按钮 32×32、图标 16×16、缩放步进 14×14。
+     * 只断言「按钮里有 svg」是不够的 —— 出问题的形态恰恰是「有 svg、尺寸错」。
+     * --------------------------------------------------------------- */
+    console.log('\n=== 8. 顶栏图标在 Shadow DOM 里也拿得到档位 ===');
+    {
+      const lp = await ctx.newPage();
+      await lp.goto(site.url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      await lp.bringToFront();
+      await sleep(2500);
+
+      await lp.evaluate(() => {
+        const im = Array.from(document.images)
+          .find((x) => x.getBoundingClientRect().width > 120) || document.images[0];
+        im.setAttribute('data-ih-shot', '1');
+      });
+      await lp.hover('[data-ih-shot="1"]');
+      await sleep(500);
+      await lp.locator('[data-ih-host] .ih-hover-preview').first().click({ force: true });
+      await sleep(1600);
+
+      const m = await lp.evaluate(() => {
+        const h = Array.from(document.querySelectorAll('[data-ih-host]'))
+          .find((x) => x.shadowRoot && x.shadowRoot.querySelector('.ih-lb'));
+        if (!h) return null;
+        const sr = h.shadowRoot;
+        const px = (el) => {
+          if (!el) return '(缺)';
+          const r = el.getBoundingClientRect();
+          return Math.round(r.width) + 'x' + Math.round(r.height);
+        };
+        const bar = sr.querySelector('.ih-lb-bar');
+        const save = sr.querySelector('[data-act="save"]');
+        return {
+          btns: Array.from(sr.querySelectorAll('.ih-lb-bar .ih-lb-btn'))
+            .map((b) => ({ act: b.dataset.act, box: px(b), icon: px(b.querySelector('svg')) })),
+          zoom: Array.from(sr.querySelectorAll('.ih-lb-zoom button'))
+            .map((b) => px(b.querySelector('svg'))),
+          barH: Math.round(bar.getBoundingClientRect().height),
+          overflow: bar.scrollWidth > bar.clientWidth + 1,
+          saveText: (save.textContent || '').trim(),
+          saveLabel: save.getAttribute('aria-label') || ''
+        };
+      });
+      console.log('顶栏 =', JSON.stringify(m));
+
+      check(!!m, '网页里能打开灯箱（否则下面的尺寸断言无从谈起）');
+      if (m) {
+        const boxes = m.btns.map((b) => b.box);
+        check(boxes.length === 6 && boxes.every((s) => s === '32x32'),
+          '顶栏 6 个按钮全是 32×32（不是被 padding 撑成 40×32）', boxes.join(' '));
+
+        const icons = m.btns.map((b) => b.icon);
+        check(icons.length > 0 && icons.every((s) => s === '16x16'),
+          '每个按钮里的图标都是 16×16（--ic-md 在 Shadow DOM 里生效了）', icons.join(' '));
+
+        check(m.zoom.length === 2 && m.zoom.every((s) => s === '14x14'),
+          '缩放步进图标是 14×14（--ic-sm）', m.zoom.join(' '));
+
+        check(m.saveText === '' && m.saveLabel.length > 0,
+          '保存按钮只有图标、没有文字，但 aria-label 在（读屏器仍知道它是什么）',
+          '文字=' + JSON.stringify(m.saveText) + ' / aria-label=' + m.saveLabel);
+
+        check(!m.overflow && m.barH < 80,
+          '顶栏没有横向溢出、也没有折成两行', '高 ' + m.barH + '，溢出 ' + m.overflow);
+      }
+      await lp.close();
+    }
 
     console.log('\n通过 ' + pass + ' 项，失败 ' + fail + ' 项');
   } finally {

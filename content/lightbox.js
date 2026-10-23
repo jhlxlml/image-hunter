@@ -43,6 +43,14 @@
   const ICON_COPY_IMG = IH.Lucide.svg('copy');
   const ICON_GALLERY = IH.Lucide.svg('layout-grid');
   const ICON_CLOSE = IH.Lucide.svg('x');
+  const ICON_MINUS = IH.Lucide.svg('minus');
+  const ICON_PLUS = IH.Lucide.svg('plus');
+  /* 保存按钮的三种反馈态。原来这三个状态是把按钮里的文字改成
+     「保存中… / 已保存 / 保存失败」—— 一旦去掉文字，反馈就得换到图标上：
+     转圈 = 正在保存，勾 = 存好了，感叹号 = 失败。 */
+  const ICON_BUSY = IH.Lucide.svg('loader-circle');
+  const ICON_DONE = IH.Lucide.svg('check');
+  const ICON_FAIL = IH.Lucide.svg('circle-alert');
 
   let ui = null;
   let list = [];
@@ -143,16 +151,21 @@
       '  <span class="ih-lb-zoom">',
       /* 图标按钮没有可见文字，title 与 aria-label 都要给 —— 只给 title 的话
          读屏器念的是「按钮」，键盘/读屏用户根本不知道这一排是干什么的。 */
-      '    <button data-act="zoom-out" title="' + esc(t('pg.lbZoomOut')) + '" aria-label="' + esc(t('pg.lbZoomOut')) + '">−</button>',
+      '    <button data-act="zoom-out" title="' + esc(t('pg.lbZoomOut')) + '" aria-label="' + esc(t('pg.lbZoomOut')) + '">' + ICON_MINUS + '</button>',
       '    <span class="ih-lb-zoom-val">100%</span>',
-      '    <button data-act="zoom-in" title="' + esc(t('pg.lbZoomIn')) + '" aria-label="' + esc(t('pg.lbZoomIn')) + '">+</button>',
+      '    <button data-act="zoom-in" title="' + esc(t('pg.lbZoomIn')) + '" aria-label="' + esc(t('pg.lbZoomIn')) + '">' + ICON_PLUS + '</button>',
       '  </span>',
       '  <button class="ih-lb-btn" data-act="link" title="' + esc(t('pg.lbCopyLink')) + '" aria-label="' + esc(t('pg.lbCopyLink')) + '">' + ICON_LINK + '</button>',
       '  <button class="ih-lb-btn" data-act="copyimg" title="' + esc(t('pg.lbCopyImage')) + '" aria-label="' + esc(t('pg.lbCopyImage')) + '">' + ICON_COPY_IMG + '</button>',
       '  <button class="ih-lb-btn" data-act="open" title="' + esc(t('pg.lbOpenTab')) + '" aria-label="' + esc(t('pg.lbOpenTab')) + '">' + ICON_OPEN + '</button>',
       '  <button class="ih-lb-btn ih-lb-gallery" data-act="gallery" title="' + esc(t('pg.lbOpenGallery')) + '" aria-label="' + esc(t('pg.lbOpenGallery')) + '">' + ICON_GALLERY + '</button>',
-      '  <button class="ih-lb-btn ih-lb-primary" data-act="save">' + ICON_DOWNLOAD + '<span>' + esc(t('pg.saveOriginal')) + '</span></button>',
-      '  <button class="ih-lb-btn ih-lb-icon" data-act="close" title="' + esc(t('pg.lbClose')) + '" aria-label="' + esc(t('pg.lbClose')) + '">' + ICON_CLOSE + '</button>',
+      /* 保存只显示图标、不带文字。原来带「保存原图」四个字，顶栏一挤
+         文字就折成竖排、从 32px 高的按钮里溢出去（截图上像坏了）。
+         去掉文字后它是标准 32×32 图标按钮，和左边那四个一样大；
+         代价是丢了「这是保存」的文字提示 —— 用 title / aria-label 补，
+         保存过程中的反馈改由图标本身表达（见 saveCurrent）。 */
+      '  <button class="ih-lb-btn ih-lb-primary" data-act="save" title="' + esc(t('pg.saveOriginalTitle')) + '" aria-label="' + esc(t('pg.saveOriginal')) + '">' + ICON_DOWNLOAD + '</button>',
+      '  <button class="ih-lb-btn" data-act="close" title="' + esc(t('pg.lbClose')) + '" aria-label="' + esc(t('pg.lbClose')) + '">' + ICON_CLOSE + '</button>',
       '</div>',
       '<div class="ih-lb-stage">',
       '  <button class="ih-lb-nav ih-lb-prev" data-act="prev" title="' + esc(t('pg.lbPrev')) + '" aria-label="' + esc(t('pg.lbPrev')) + '">' + ICON_PREV + '</button>',
@@ -448,15 +461,31 @@
 
   /* ---------------------------- 操作 ---------------------------- */
 
+  /* 保存按钮的反馈。它现在只有图标，没有可见文字，所以状态全落在图标上：
+   *   busy → 缺口圆环（.ih-busy 让它转起来）
+   *   done → 勾（「已存在」也是勾，区别写在 title / aria-label 里）
+   *   fail → 圆圈感叹号
+   * 1.8 秒后回到下载箭头。title 与 aria-label 同步换 ——
+   * 视觉上只有一个图标，读屏器至少要知道「现在存好了还是失败了」。 */
+  function setSaveState(state, text) {
+    const btn = ui && ui.lb.querySelector('[data-act="save"]');
+    if (!btn) return;
+    const ICONS = { busy: ICON_BUSY, done: ICON_DONE, fail: ICON_FAIL, idle: ICON_DOWNLOAD };
+    btn.innerHTML = ICONS[state] || ICON_DOWNLOAD;
+    btn.classList.toggle('ih-busy', state === 'busy');
+    const label = text || (state === 'idle' ? t('pg.saveOriginalTitle') : t('pg.saveOriginal'));
+    btn.title = label;
+    btn.setAttribute('aria-label', label);
+  }
+
   async function saveCurrent() {
     const c = current();
     if (!c) return;
     const btn = ui.lb.querySelector('[data-act="save"]');
-    const label = btn.querySelector('span');
 
     clearTimeout(saveTimer);
     btn.disabled = true;
-    if (label) label.textContent = t('pg.savingShort');
+    setSaveState('busy', t('pg.savingShort'));
 
     const s = IH.Store.getSettings();
     const res = await U.sendToBg({
@@ -473,12 +502,12 @@
 
     btn.disabled = false;
     if (res && res.ok) {
-      if (label) label.textContent = res.skipped ? t('pg.skippedExists') : t('pg.savedCheck');
+      setSaveState('done', res.skipped ? t('pg.skippedExists') : t('pg.savedCheck'));
     } else {
-      if (label) label.textContent = t('pg.saveFailed');
+      setSaveState('fail', t('pg.saveFailed'));
       console.warn('[ImageHunter] 保存失败', res && res.error);
     }
-    saveTimer = setTimeout(() => { if (label) label.textContent = t('pg.saveOriginal'); }, 1800);
+    saveTimer = setTimeout(() => setSaveState('idle'), 1800);
   }
 
   function flashButton(act, ok) {

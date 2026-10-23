@@ -250,10 +250,18 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  height: 32px;
+  /* 顶栏这一排**全是纯图标按钮**，所以统一 32×32。
+     原来是 `padding: 0 12px` + `min-width: 32px`：图标按钮被撑成 40×32
+     （宽高不等，一排看过去像被拉长），带文字的「保存原图」又会因为
+     flex 默认允许收缩而被挤窄 —— 文字折成竖排、从 32px 高的按钮里溢出去。
+     现在：正方形 + `flex: 0 0 auto`（空间不够时宁可让标题省略，也不压按钮）。
+     这一条和顶栏「品牌名可以省、按钮不能被压变形」是同一个取舍。 */
+  flex: 0 0 auto;
+  width: 32px;
   min-width: 32px;
-  padding: 0 12px;
+  height: 32px;
+  padding: 0;
+  white-space: nowrap;
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 9px;
   background: rgba(255, 255, 255, 0.09);
@@ -280,9 +288,11 @@
 
 .ih-lb-btn.ih-lb-primary:hover { background: var(--ih-primary-dark); }
 
-.ih-lb-btn.ih-lb-icon { padding: 0; width: 32px; }
-
 .ih-lb-btn svg { width: var(--ic-md); height: var(--ic-md); display: block; }
+
+/* 保存进行中：图标换成缺口圆环并转起来。按钮此时是 disabled（挡住重复点击），
+   opacity 会被压到 0.35 —— 转圈比一个变淡的静态图标更像「在忙」。 */
+.ih-lb-btn.ih-busy svg { animation: ih-spin 0.9s linear infinite; }
 
 .ih-lb-btn[disabled] { opacity: 0.35; cursor: default; }
 
@@ -405,6 +415,9 @@
 }
 
 .ih-lb-zoom button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 26px;
   height: 24px;
   border: 0;
@@ -418,6 +431,11 @@
 }
 
 .ih-lb-zoom button:hover { background: rgba(255, 255, 255, 0.16); }
+
+/* 缩放步进也是图标（Lucide minus / plus），不是文字字形 ——
+   字形和描边图标摆在一排，横画细竖画粗，对不上。
+   尺寸取 --ic-sm：它嵌在 26×24 的命中区里，用 md（16）会顶到边框。 */
+.ih-lb-zoom button svg { width: var(--ic-sm); height: var(--ic-sm); display: block; }
 
 .ih-lb-zoom .ih-lb-zoom-val {
   min-width: 44px;

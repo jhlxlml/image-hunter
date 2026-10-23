@@ -2237,18 +2237,35 @@ console.log('\n=== 21. 图标：单一来源（Lucide）+ 同层级同一档 ===
   /* 档位值必须与 theme.css 里的一致 —— 这里的数字是「规格」，不是抄的 */
   {
     const themeCss = cssOf('shared/theme.css');
-    const rootStart = themeCss.indexOf('\n:root {');
-    const rootBody = themeCss.slice(rootStart, themeCss.indexOf('\n}', rootStart));
+    const bare = themeCss.replace(/\/\*[\s\S]*?\*\//g, '');
+    /* 这五个值只能有**一份**声明，且那条规则的选择器必须同时含 `:root` 与 `:host`：
+       `:root` 服务文档（图库页 / 设置页），`:host` 服务 Shadow DOM（网页里的
+       悬停按钮与灯箱）。只写 `:root` 的话，页内 UI 里的 `var(--ic-*)` 会**静默失效**，
+       声明退化成 auto，图标撑满按钮 —— 而图库页看不出来（`:root` 生效、能继承
+       进 shadow 树），只有「网页里点开大图预览」才现形。v1.19.0 就是这样漏掉的。 */
+    const rule = /([^{}]*)\{([^{}]*--ic-md[^{}]*)\}/.exec(bare);
+    const sel = rule ? rule[1].replace(/\s+/g, ' ').trim() : '';
+    const body = rule ? rule[2] : '';
     const want = { '--ic-xs': '12px', '--ic-sm': '14px', '--ic-md': '16px',
       '--ic-lg': '20px', '--ic-xl': '32px' };
     const missing = Object.keys(want).filter((k) => {
-      const mm = new RegExp('\\' + k + '\\s*:\\s*([^;]+);').exec(rootBody);
+      const mm = new RegExp('\\' + k + '\\s*:\\s*([^;]+);').exec(body);
       return !mm || mm[1].trim() !== want[k];
     });
-    if (!missing.length) {
-      ok('shared/theme.css 定义了 5 档图标尺寸（xs 12 / sm 14 / md 16 / lg 20 / xl 32）');
-    } else {
+    const inBoth = /:root/.test(sel) && /:host/.test(sel);
+    const dupes = Object.keys(want).filter(
+      (k) => (bare.match(new RegExp('\\' + k + '\\s*:', 'g')) || []).length > 1);
+
+    if (missing.length) {
       bad('shared/theme.css 的图标档位缺失或值不对', missing.join('、'));
+    } else if (!inBoth) {
+      bad('图标档位只挂在 :root 上 —— Shadow DOM 里拿不到，页内 UI 的图标会撑满按钮',
+        '选择器：' + sel);
+    } else if (dupes.length) {
+      bad('图标档位被声明了不止一次（写两遍一定会漂）', dupes.join('、'));
+    } else {
+      ok('shared/theme.css 定义了 5 档图标尺寸（xs 12 / sm 14 / md 16 / lg 20 / xl 32），'
+        + '且 :root 与 :host 都覆盖');
     }
   }
 
@@ -2294,6 +2311,7 @@ console.log('\n=== 21. 图标：单一来源（Lucide）+ 同层级同一档 ===
       ['popup/popup.css', '.empty-art svg', '--ic-xl', '空态插画'],
       ['content/overlay.css', '.ih-hover-btn svg', '--ic-md', '网页悬停按钮'],
       ['content/overlay.css', '.ih-lb-btn svg', '--ic-md', '灯箱按钮'],
+      ['content/overlay.css', '.ih-lb-zoom button svg', '--ic-sm', '灯箱缩放步进'],
       ['content/overlay.css', '.ih-lb-nav svg', '--ic-lg', '灯箱翻页']
     ];
     const wrong = [];
