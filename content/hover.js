@@ -25,12 +25,12 @@
    * 一律走 IH.Lucide（shared/lucide.js），不再手画 —— 手画的 `stroke-width`
    * 各家一个值（这里原来是 2.2 / 3 / 2.8），和界面其它图标放一起粗细不齐。
    * 尺寸不在这里给：overlay.css 的 `.ih-hover-btn svg` 用 --ic-md 档位。 */
-  const ICON_DOWNLOAD = IH.Lucide.svg('download');
+  const ICON_DOWNLOAD = U.icon('download');
   /* 放大镜里带个加号（Lucide 的 zoom-in）—— 和顶栏「探测体积」的仪表、
      图库卡片上的放大镜区分开，一眼能认出是「放大看原图」 */
-  const ICON_PREVIEW = IH.Lucide.svg('zoom-in');
-  const ICON_CHECK = IH.Lucide.svg('check');
-  const ICON_ERROR = IH.Lucide.svg('circle-alert');
+  const ICON_PREVIEW = U.icon('zoom-in');
+  const ICON_CHECK = U.icon('check');
+  const ICON_ERROR = U.icon('circle-alert');
 
   /* ---------------------------- 状态 ---------------------------- */
 

@@ -191,6 +191,29 @@ rules.forEach(([a, b, label]) => {
   else bad(label, a + '=' + idx(a) + ' ' + b + '=' + idx(b));
 });
 
+/* 依赖图**自动推导**：谁在顶层取图标（`U.icon(...)`），就必须排在
+   shared/lucide.js 之后。手写清单会漏 —— 新增一个模块时没人记得来加一行，
+   而漏掉的后果是「图标全空、按钮还在」，静默且难查。
+   真实事故：内容脚本组合错位时 `IH.Lucide` 是 undefined，
+   hover.js 在顶层就抛，整个悬停功能消失（用户只看到「扩展坏了」）。 */
+{
+  const lucideAt = order.indexOf('shared/lucide.js');
+  const users = order.filter((f) => {
+    if (f === 'shared/lucide.js') return false;
+    const src = stripComments(fs.readFileSync(path.join(ROOT, f), 'utf8'));
+    return /U\.icon\(/.test(src);
+  });
+  const early = users.filter((f) => order.indexOf(f) < lucideAt);
+  if (lucideAt < 0) {
+    bad('shared/lucide.js 不在内容脚本清单里 —— 图标全部缺失');
+  } else if (!early.length) {
+    ok('取图标的 ' + users.length + ' 个内容脚本都排在 shared/lucide.js 之后（'
+      + users.map((f) => f.split('/').pop()).join(' / ') + '）');
+  } else {
+    bad('这些脚本在 shared/lucide.js 之前就取图标了（顶层取值，会整块抛）', early.join('、'));
+  }
+}
+
 console.log('\n=== 7. 背景脚本 importScripts ===');
 const bg = fs.readFileSync(path.join(ROOT, 'background.js'), 'utf8');
 const imp = Array.from(bg.matchAll(/importScripts\(([^)]+)\)/g))[0];

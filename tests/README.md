@@ -35,7 +35,7 @@ CI 在 `.github/workflows/ci.yml`：`push` / `pull_request` 都跑这两个入�
 
 | 文件 | 覆盖内容 |
 |---|---|
-| `test-shared.js` | 纯函数：srcset 解析、URL 规范化、文件名生成、原图还原规则表；并守住「**还原候选只有一份实现**」——`buildRestoreCandidates` 必须住在 shared 里（图库要靠它判断是否显示「还原」按钮，内容脚本要靠它真的生成候选），data:/blob:/无参数地址必须生成不出候选、自定义规则要算进来、非法正则不能把函数炸掉 |
+| `test-shared.js` | 纯函数：srcset 解析、URL 规范化、文件名生成、原图还原规则表；**v1.19.2 追加 `U.icon()` 的降级测试（6 项）**：在**没有** `shared/lucide.js` 的独立 vm 上下文里，`U.icon()` 必须不抛、返回空串、往 console 留一条点名 `shared/lucide.js` 的警告；再加载 lucide.js 后必须返回真的 svg（证明测的是「降级」而不是「永远返回空」）。注入「去掉降级、退回直接调用」→ 红 4 项；并守住「**还原候选只有一份实现**」——`buildRestoreCandidates` 必须住在 shared 里（图库要靠它判断是否显示「还原」按钮，内容脚本要靠它真的生成候选），data:/blob:/无参数地址必须生成不出候选、自定义规则要算进来、非法正则不能把函数炸掉 |
 | `test-store-concurrency.js` | **核心**。存储读-改-写竞态：多个并发写入不互相覆盖、不丢数据；第 9 节专测「**读期间的写入不被迟到的读盖掉**」—— SW 冷启动时 `loadSettings()` 的异步 `get` 还在飞，`onChanged` 已把新值写进缓存，迟到的读若照单全收就会把新值盖回旧的（写入代数 `writeGen` 就是为这条加的） |
 | `test-blocked.js` | 站点排除列表（jsdom）：一条记录匹配「域名本身 + 所有子域名」而**不**匹配后缀伪装（`example.com.evil.com`）；`main.js` 启动时确实不挂悬停；悬停显示路径也各自拦住；对照组（不在名单里的站点行为不变）。探针在加载 `main.js` **之前**装好，才能观察到「有没有调用 startHover」 |
 | `test-scanner.js` | **核心**。jsdom 真实 DOM 环境下的嗅探引擎：9 类来源采集、原图还原择优、去重、单元素解析；第 19 节钉住**分阶段回报的顺序**（中间结果必须早于联网加工 —— 补尺寸 / 还原都还没跑，所以这一版里尺寸可能还是 0），第 20 节是深度嗅探的无限滚动仿真 |
@@ -55,7 +55,7 @@ CI 在 `.github/workflows/ci.yml`：`push` / `pull_request` 都跑这两个入�
 ① **`theme.css` 的兜底值 === `derive()` 的推导值**（14 条断言，逐字符相等）。这是本套件最值钱的一条：没有 JS 时（设置页被禁用脚本打开、或脚本报错）界面用的是 `theme.css` 里手写的那套值，有 JS 时用的是算出来的。两者只要差一个字符，就是「同一个默认主题、两种颜色」—— 而差得越小越难发现。② 亮暗档判定（`light` / `dark` / `auto` + `rawMode` 保留用户原值）。③ `apply()` 真的把 `data-theme` 与 8 个 token 写到了 `<html>` 上。④ **自定义主色只改主色、不改派生值** —— 散落的 `rgba(79,110,247,…)` 有 9 处是主色投影，用户换成橙色之后它们若还留在蓝色上，就是「一圈蓝光围着橙色按钮」，而单看按钮是**对的**。所以断言派生值确实跟着主色变了（含 `--primary-solid`，那是角标底色，面积小最容易漏）。⑤ **「跟随预设」切得回去** —— `themeAccent` 从 `#ff0000` 变回 `''` 时，内联 `--primary` 若没被换掉，红色会一直赖着（界面看着正常，用户的操作为什么都没生效无迹可循）；`clearAccent` 单独测一遍「八个变量全清掉」。⑥ 非法 `themeAccent` 的 7 种输入（明显非法 / 空串 / 颜色名 / 位数不对 / 八位 hex / 恶意串 / 带尾空格的合法值）全部退回预设而不是原样透传。⑦ 预设表完整性（至少 4 套、默认值在表里、深浅两档不同且都是合法 hex）。⑧ **「切回跟随预设 + 系统跟色」的退化情形** —— 打桩时要注意桩的闭包必须读到那个旋钮（见第二十五个坑）。
 
 **注意**：jsdom 的 vm context 上 `navigator` / `window` / `matchMedia` 都只有 getter，直接赋值会抛 `Cannot set property X ... which has only a getter`；要注入就用 `Object.defineProperty`。**注入验证做了 10 项**：`theme.css` 深色主色漂 1 位、`derive` 的饱和度系数不再压档、`apply` 不写派生值、非法 accent 原样透传、`watch` 去掉 `auto` 守卫、`watch` 单例守卫去掉、`applyToHost` 污染宿主 `<html>`、`clearHost` 不清、`DEFAULT_SETTINGS` 缺 `themePreset`、`themeAccent` 默认改成 `undefined` —— 每项都如实变红。 |
-| `validate.js` | 交付完整性：manifest 引用、HTML 资源、元素 id、`getURL` 路径、PNG 尺寸、内容脚本加载顺序、i18n 键、`MSG.*` 常量正反向校验、图库宿主模式（无弹窗残留 + 首帧布局）、还原候选实现唯一性；第 12 节静态钉住「在图库中打开 / 扫描缓存 / 快捷键」的接线（命令声明、后台分支、`SAVE_HOVERED` 必须广播给所有 frame、内容脚本接线、灯箱导出 `save`）；第 13 节静态钉住**「没有死设置」**——遍历 `DEFAULT_SETTINGS` 的每个键，在产品代码里找读取点，一个都没有才算死；并给三条**非 `data-key` 形态**的界面入口（分段按钮 `theme`、富文本控件 `blockedHosts` / `customRules`）加反向守卫。注入一条零读取的 `__deadProbe` 后第 13 节如实变红。**v1.11.0 又追加两组守卫**：① 图库尺寸滑条的契约（HTML 的 `min/max/step/value` 必须与 `popup.js` 的 `SIZE_MIN_*` 常量逐一对上，`min=0`/`max=4096`/`value=256` 三个需求硬指标单独钉，视图状态键 `ih_gallery_view` 不得混进 `DEFAULT_SETTINGS`）；② **跨套件夹具守卫** —— 静态扫描所有浏览器用例的 `startServer({...imgW,imgH...})` 字面量，带 `thumbPath: true` 的按短边减半算，短边必须严格大于滑条默认阈值，否则报红并指明文件与尺寸。真正的例外走文件级白名单或行内 `// fixture-ok: <理由>` 标记，理由必须写出来，且白名单引用了不存在的文件也会报红（防腐烂）。注入一个 200×150 的夹具后如实变红。**v1.12.0 再追加第 14 节**：静态钉住「多标签页合并嗅探」的 11 条接线 —— `mergeTabs` 默认值必须是 `false`（需求就是「提供开关」，默认必须是关的）、设置页必须有 `data-key="mergeTabs"`、单选 `#selTargetTab` 与多选 `#targetMulti` / `#targetsList` 三个节点都在、两者按设置互斥显示、`popup.js` 里真的读了这个设置、只在 `MODE === 'page'` 时启用、合并路径每页都传 `finalOnly: true`（否则多页并发时「先出图后升级」的广播会互相盖掉）、单页路径未被改动、去重确实按 `U.normalizeUrl(img.url)`、空态文案含「还没有勾选要嗅探的页面」。注入「默认值改成 true」与「去掉合并路径的 finalOnly」各红 1 项。**v1.13.0 再追加第 15 节（键盘与读屏器接线，19 条）**：断言一律打在**去注释后的源码**上（整块 `/* */` 与整行 `//` 先抹掉）—— 否则一句「这里本来该写 `onGridKeydown`」的注释就能把守卫骗过去；内容覆盖 listbox 语义、`#gridHelp` 是 `sr-only` 且按键说明写全、`#srStatus` 的三件套、`progress[role=progressbar]` + `aria-valuenow`、`.card:focus` 必须让 `.zoom` / `.restore` 显形、`.card:focus-visible` 必须有 `outline`、**`.sr-only` 不得用 `display:none` / `visibility:hidden`**、roving tabindex 的三元表达式、移动键与动作键接全、`keydown` 真的绑在 `#grid` 上、`announce()` 有防抖、勾选同步到 `aria-selected`、`.pick` 对读屏器隐藏、`.zoom` / `.restore` 不占 Tab 顺序。**第 16 节（诊断包接线，19 条）**：`MSG.GET_DIAGNOSTICS` 定义唯一、后台真的处理它、真扫描与缓存命中**两条路**都记摘要、扫描摘要里**没有** `pageUrl` / `title`（只留 `pageHost`）、`probeStats` 只累计计数、设置页有按钮且脚本加载顺序在 `options.js` 之前、`build` + `audit` 都在、**`audit` 挡在落盘前面**、`sanitizeDownload` 走 `pick(白名单)` 而**不是** `Object.assign` 整体透传、`DOWNLOAD_FIELDS` 里没有 `url`、`SETTINGS_OMIT` 排除了 `blockedHosts`、`URL_RE` **不带 `g` 标志**、`IH.Diag` 导出齐全、新套件已登记进 `run-all.js`。注入 7 项：删焦点显现规则 / 删四个方向键分支 / 所有卡片 `tabIndex=0` / 白名单退化成整体透传 / 摘要塞回 `pageUrl` / `URL_RE` 加 `g`，各红 1 项**v1.13.1 再追加第 17 节（扫描结论的三态，13 条）**：钉的是**接线**而不是行为 —— `finalizeScan` 的 `ok` 不能退回裸的 `!session.blocked`（那样「没扫成」又会冒充「没有图」）、`noReply` 判据必须在、`SCAN_NO_REPLY` 的文案里**不许出现**「没有发现图片」这种会被读成「这页没图」的说法、图库的「嗅探失败」分支必须排在「本页没有发现图片」**之前**、内容脚本里不再有 `error: 'busy'` 这条路径、中间结果的回报必须排在补尺寸**之前**；另外两条是「测试资产自身的完整性」：后台 vm 桩只能有一份（`tests/lib/bgstub.js`，缓存套件不许自己再养一份），以及浏览器回归套件必须以 `browser-` 开头（总入口靠这个前缀自动发现，名字起错了不会报错，它只是永远不被跑）。**v1.14.0 再追加第 18 节（界面语言，含 6 组守卫）**：① 中英两份文案表**齐平**且没有空串（空串比缺键更隐蔽 —— `t()` 静默返回空串，界面上就是一小片空白）；② 产品代码里引用的每个键都真的存在（**断言打在「键」上，不是「中文句子」上** —— 文案搬进 i18n 后，`/图库里没有这张图/.test(src)` 这类写法全部失效；同时先剥注释、正则用 `(?<![\w$.])t\(`，否则 `createElement('div')`、`params.get('mode')`、`'opt.' + k` 都会误报）；③ `uiLang` 必须在 `DEFAULT_SETTINGS` 里（否则导出→导入会把它静默过滤掉，用户切了英文、导入一次备份就回到中文）；④ 设置页有 `#segLang` 三档；⑤ `i18n.js` 的加载顺序必须排在 `store.js` **之后**（它要读 `settings.uiLang`）；⑥ **所有浏览器套件都固定了 `locale: 'zh-CN'`**、加载内容脚本的 jsdom 套件都加载了 `i18n.js` 且把 `uiLang` 钉成中文。第 ⑥ 组的存在理由是「本地全绿、CI 全红」：界面默认跟随浏览器，开发机是 `zh-CN`、CI runner 是 `en-US`、jsdom 的 `navigator.language` 恒为 `en-US` —— 不钉死，断言里的中文会整体翻掉。**(f) 另有一条 HTML 结构守卫**：用 jsdom 解析两个页面，断言每个 `[data-i18n]` 元素的 `children.length === 0` —— `data-i18n` 是整段 `textContent` 覆写，兜底文案里写没转义的标签会被连子树一起删掉，写 `<a>` 更会把**后面整篇文档**吞成它的子节点（见第二十三个坑）。**注入验证**：把 `&lt;a href&gt;` 改回裸 `<a href>` → 报 `opt.scanLinksHint → <a>`，1 项变红。**v1.16.0 再追加第 20 节（顶栏结构 + 筛选条默认态，9 条）**：(a) `.topbar` / `.icon-btn` / `.pill` / `.size-slider` 的规则块里不许再出现 `linear-gradient(180deg, …)` 拟物底（**扫大括号块、不按行扫**，并额外扫深色档的 `[data-theme="dark"] …` 覆盖块）；(b) 顶栏七个按钮的 id 都在 HTML 里，且**溢出菜单的残留物一件都不许有** —— `#moreMenu` / `#btnMoreMenu` / `.menu-item` 在 HTML 里、`.menu*` 规则块在 `popup.css` 里（绝对定位的残留元素会把整个顶栏的层叠顺序搅乱）；(c) 探测 / 导出 / 深度嗅探必须是 `.hdr-actions` 里 `class="icon-btn"` 的 `<button>`（**解析开标签确认标签名与 class**，不是「文件里出现过这个 id 就算过」），且顶栏里不许有 `role="menu"` 容器；(d) **筛选条首帧就是收起的** —— `#btnFilters` 上是 `aria-expanded="false"` 且 `#filterPanel` 带 `hidden`，**两处必须同时是收起态**（这条是唯一守得住首帧的，见第二十七个坑）；(e) 三个动作都直接绑了 `addEventListener('click')`（不走菜单转发），且 `setMenu` / `closeMenu` / `bindMenuItem` / `menuItems` **这些菜单控制器必须已删除**（留着就是死代码，还会被下一次改动当成线索）；(f) 滑条停在 `SIZE_MIN_DEFAULT` 时不计入「生效条件」。**注入验证做了 6 项**：图标按钮用回拟物渐变、溢出菜单容器塞回 HTML（连带 CSS 的 `.menu*` 规则块，红 3 项）、只翻按钮属性不翻面板、三个动作的 `addEventListener` 换回 `bindMenuItem`、把 `closeMenu` / `bindMenuItem` 塞回 `popup.js` 当死代码 —— 各红 1 项。**v1.18.0 再追加第 20 节的 (g)(h)(i) 三组**：(g) **搜索必须搬进顶栏动作组**，且**不再出现在工具行里** —— 两条同时断言，只做一半（加了新的没删旧的）会红；(h) **排序必须是「一个维度下拉 + 一个升降序按钮」两个控件** —— 下拉里只许有 4 个**维度**值，方向键名（`area-asc` 之类）一件都不许留，且按钮真的绑了 `click`；(i) **「默认排序」三处齐备**（`DEFAULT_SETTINGS` 的默认值 / 设置页 `data-key="defaultSort"` / `popup.js` 里 `Store.getSettings().defaultSort` 的读取点），外加**设置页那 6 个组合的维度部分必须与 `SORT_DIMS` 同源**（防「设置页写了 `resolution`、库里只认 `area`」这种两边各写一份表的漂移）。**注入验证 6 项**（全部打给 `validate.js`，由 Python 脚本驱动 —— 见第三十个坑）：搜索挪回工具行（+2）、排序下拉塞回成对方向值 `area-asc`（+1）、升降序按钮不接 handler（+1）、删掉 `DEFAULT_SETTINGS.defaultSort`（+1）、设置页排序值改成 `resolution`（+1，报「非法项：resolution」）、工具行里删掉升降序按钮（+3）。**v1.19.0 再追加第 21 节（图标单一来源 + 同层级同一档，从 275 项涨到 293 项）**，十组守卫：(a) `shared/lucide.js` 可加载且登记了 ≥20 个图标；(b) 两个 HTML 的**每个** `<svg>` 都必须有 `data-lucide` —— 漏写就等于又手画了一个；(c) 名字都得在 `PATHS` 里；(d) **逐形状对拍**静态副本与库（指纹规范化：数字尾随 0 抹掉、空白压平，所以「属性顺序不同」「`4.340` 写成 `4.34`」都算通过，只有形状真的变了才红）；(e) 图标属性必须全是 Lucide 规范（24 视框 / `stroke-width 2` / 圆头圆角 / 形状上不带 `fill`）；(f) **产品 JS 里不许出现 `<svg`**（扫 `shared/` `content/` `popup/` `options/` + `background.js`，`shared/lucide.js` 是唯一豁免 —— 它就是那份数据）；(g) `theme.css` 的五个档位值必须精确等于 12/14/16/20/32；(h) 三张组件样式表里，图标规则与 data-URI 图标规则**不许出现写死的像素值**；(i) **层级 → 档位表**（13 条：顶栏动作 md / 工具行胶囊·选择组·滑条·搜索浮层 sm / 卡片角标 xs / 底栏主按钮 md / 空态 xl / 悬停按钮·灯箱按钮 md / 灯箱翻页 lg）—— 这张表就是「同层级大小统一」的定义；(j) 窄栏那条 `.icon-btn svg` 必须存在且是 `--ic-sm`（md → sm 是响应式取值，不是新开一档）。**注入验证 9 项**（`tests/_inj-icons.py`，Python 驱动 —— 见第六个坑，跑完即删）：删 `data-lucide`（+1）、放大镜 `r="8"`→`7`（+1）、引用 `hamburger`（+1）、`stroke-width` 改 `2.1`（+1）、`popup.js` 塞手写 `<svg>`（+1）、角标改回 `11px`（+2）、选择组降到 `--ic-xs`（+1）、窄栏不降档（+1）、`--ic-md` 改 `15px`（+1）。**守卫自己踩的坑见第三十一个坑**（误报 5 项 + 又忘了剥注释） |
+| `validate.js` | 交付完整性：manifest 引用、HTML 资源、元素 id、`getURL` 路径、PNG 尺寸、内容脚本加载顺序（**v1.19.2 起其中一条是自动推导的**：扫描每个内容脚本里是否出现 `U.icon(`，断言它在 manifest 里排在 `shared/lucide.js` 之后 —— 手写清单会漏，而漏掉的后果是「图标全空、按钮还在」，静默且难查）、i18n 键、`MSG.*` 常量正反向校验、图库宿主模式（无弹窗残留 + 首帧布局）、还原候选实现唯一性；第 12 节静态钉住「在图库中打开 / 扫描缓存 / 快捷键」的接线（命令声明、后台分支、`SAVE_HOVERED` 必须广播给所有 frame、内容脚本接线、灯箱导出 `save`）；第 13 节静态钉住**「没有死设置」**——遍历 `DEFAULT_SETTINGS` 的每个键，在产品代码里找读取点，一个都没有才算死；并给三条**非 `data-key` 形态**的界面入口（分段按钮 `theme`、富文本控件 `blockedHosts` / `customRules`）加反向守卫。注入一条零读取的 `__deadProbe` 后第 13 节如实变红。**v1.11.0 又追加两组守卫**：① 图库尺寸滑条的契约（HTML 的 `min/max/step/value` 必须与 `popup.js` 的 `SIZE_MIN_*` 常量逐一对上，`min=0`/`max=4096`/`value=256` 三个需求硬指标单独钉，视图状态键 `ih_gallery_view` 不得混进 `DEFAULT_SETTINGS`）；② **跨套件夹具守卫** —— 静态扫描所有浏览器用例的 `startServer({...imgW,imgH...})` 字面量，带 `thumbPath: true` 的按短边减半算，短边必须严格大于滑条默认阈值，否则报红并指明文件与尺寸。真正的例外走文件级白名单或行内 `// fixture-ok: <理由>` 标记，理由必须写出来，且白名单引用了不存在的文件也会报红（防腐烂）。注入一个 200×150 的夹具后如实变红。**v1.12.0 再追加第 14 节**：静态钉住「多标签页合并嗅探」的 11 条接线 —— `mergeTabs` 默认值必须是 `false`（需求就是「提供开关」，默认必须是关的）、设置页必须有 `data-key="mergeTabs"`、单选 `#selTargetTab` 与多选 `#targetMulti` / `#targetsList` 三个节点都在、两者按设置互斥显示、`popup.js` 里真的读了这个设置、只在 `MODE === 'page'` 时启用、合并路径每页都传 `finalOnly: true`（否则多页并发时「先出图后升级」的广播会互相盖掉）、单页路径未被改动、去重确实按 `U.normalizeUrl(img.url)`、空态文案含「还没有勾选要嗅探的页面」。注入「默认值改成 true」与「去掉合并路径的 finalOnly」各红 1 项。**v1.13.0 再追加第 15 节（键盘与读屏器接线，19 条）**：断言一律打在**去注释后的源码**上（整块 `/* */` 与整行 `//` 先抹掉）—— 否则一句「这里本来该写 `onGridKeydown`」的注释就能把守卫骗过去；内容覆盖 listbox 语义、`#gridHelp` 是 `sr-only` 且按键说明写全、`#srStatus` 的三件套、`progress[role=progressbar]` + `aria-valuenow`、`.card:focus` 必须让 `.zoom` / `.restore` 显形、`.card:focus-visible` 必须有 `outline`、**`.sr-only` 不得用 `display:none` / `visibility:hidden`**、roving tabindex 的三元表达式、移动键与动作键接全、`keydown` 真的绑在 `#grid` 上、`announce()` 有防抖、勾选同步到 `aria-selected`、`.pick` 对读屏器隐藏、`.zoom` / `.restore` 不占 Tab 顺序。**第 16 节（诊断包接线，19 条）**：`MSG.GET_DIAGNOSTICS` 定义唯一、后台真的处理它、真扫描与缓存命中**两条路**都记摘要、扫描摘要里**没有** `pageUrl` / `title`（只留 `pageHost`）、`probeStats` 只累计计数、设置页有按钮且脚本加载顺序在 `options.js` 之前、`build` + `audit` 都在、**`audit` 挡在落盘前面**、`sanitizeDownload` 走 `pick(白名单)` 而**不是** `Object.assign` 整体透传、`DOWNLOAD_FIELDS` 里没有 `url`、`SETTINGS_OMIT` 排除了 `blockedHosts`、`URL_RE` **不带 `g` 标志**、`IH.Diag` 导出齐全、新套件已登记进 `run-all.js`。注入 7 项：删焦点显现规则 / 删四个方向键分支 / 所有卡片 `tabIndex=0` / 白名单退化成整体透传 / 摘要塞回 `pageUrl` / `URL_RE` 加 `g`，各红 1 项**v1.13.1 再追加第 17 节（扫描结论的三态，13 条）**：钉的是**接线**而不是行为 —— `finalizeScan` 的 `ok` 不能退回裸的 `!session.blocked`（那样「没扫成」又会冒充「没有图」）、`noReply` 判据必须在、`SCAN_NO_REPLY` 的文案里**不许出现**「没有发现图片」这种会被读成「这页没图」的说法、图库的「嗅探失败」分支必须排在「本页没有发现图片」**之前**、内容脚本里不再有 `error: 'busy'` 这条路径、中间结果的回报必须排在补尺寸**之前**；另外两条是「测试资产自身的完整性」：后台 vm 桩只能有一份（`tests/lib/bgstub.js`，缓存套件不许自己再养一份），以及浏览器回归套件必须以 `browser-` 开头（总入口靠这个前缀自动发现，名字起错了不会报错，它只是永远不被跑）。**v1.14.0 再追加第 18 节（界面语言，含 6 组守卫）**：① 中英两份文案表**齐平**且没有空串（空串比缺键更隐蔽 —— `t()` 静默返回空串，界面上就是一小片空白）；② 产品代码里引用的每个键都真的存在（**断言打在「键」上，不是「中文句子」上** —— 文案搬进 i18n 后，`/图库里没有这张图/.test(src)` 这类写法全部失效；同时先剥注释、正则用 `(?<![\w$.])t\(`，否则 `createElement('div')`、`params.get('mode')`、`'opt.' + k` 都会误报）；③ `uiLang` 必须在 `DEFAULT_SETTINGS` 里（否则导出→导入会把它静默过滤掉，用户切了英文、导入一次备份就回到中文）；④ 设置页有 `#segLang` 三档；⑤ `i18n.js` 的加载顺序必须排在 `store.js` **之后**（它要读 `settings.uiLang`）；⑥ **所有浏览器套件都固定了 `locale: 'zh-CN'`**、加载内容脚本的 jsdom 套件都加载了 `i18n.js` 且把 `uiLang` 钉成中文。第 ⑥ 组的存在理由是「本地全绿、CI 全红」：界面默认跟随浏览器，开发机是 `zh-CN`、CI runner 是 `en-US`、jsdom 的 `navigator.language` 恒为 `en-US` —— 不钉死，断言里的中文会整体翻掉。**(f) 另有一条 HTML 结构守卫**：用 jsdom 解析两个页面，断言每个 `[data-i18n]` 元素的 `children.length === 0` —— `data-i18n` 是整段 `textContent` 覆写，兜底文案里写没转义的标签会被连子树一起删掉，写 `<a>` 更会把**后面整篇文档**吞成它的子节点（见第二十三个坑）。**注入验证**：把 `&lt;a href&gt;` 改回裸 `<a href>` → 报 `opt.scanLinksHint → <a>`，1 项变红。**v1.16.0 再追加第 20 节（顶栏结构 + 筛选条默认态，9 条）**：(a) `.topbar` / `.icon-btn` / `.pill` / `.size-slider` 的规则块里不许再出现 `linear-gradient(180deg, …)` 拟物底（**扫大括号块、不按行扫**，并额外扫深色档的 `[data-theme="dark"] …` 覆盖块）；(b) 顶栏七个按钮的 id 都在 HTML 里，且**溢出菜单的残留物一件都不许有** —— `#moreMenu` / `#btnMoreMenu` / `.menu-item` 在 HTML 里、`.menu*` 规则块在 `popup.css` 里（绝对定位的残留元素会把整个顶栏的层叠顺序搅乱）；(c) 探测 / 导出 / 深度嗅探必须是 `.hdr-actions` 里 `class="icon-btn"` 的 `<button>`（**解析开标签确认标签名与 class**，不是「文件里出现过这个 id 就算过」），且顶栏里不许有 `role="menu"` 容器；(d) **筛选条首帧就是收起的** —— `#btnFilters` 上是 `aria-expanded="false"` 且 `#filterPanel` 带 `hidden`，**两处必须同时是收起态**（这条是唯一守得住首帧的，见第二十七个坑）；(e) 三个动作都直接绑了 `addEventListener('click')`（不走菜单转发），且 `setMenu` / `closeMenu` / `bindMenuItem` / `menuItems` **这些菜单控制器必须已删除**（留着就是死代码，还会被下一次改动当成线索）；(f) 滑条停在 `SIZE_MIN_DEFAULT` 时不计入「生效条件」。**注入验证做了 6 项**：图标按钮用回拟物渐变、溢出菜单容器塞回 HTML（连带 CSS 的 `.menu*` 规则块，红 3 项）、只翻按钮属性不翻面板、三个动作的 `addEventListener` 换回 `bindMenuItem`、把 `closeMenu` / `bindMenuItem` 塞回 `popup.js` 当死代码 —— 各红 1 项。**v1.18.0 再追加第 20 节的 (g)(h)(i) 三组**：(g) **搜索必须搬进顶栏动作组**，且**不再出现在工具行里** —— 两条同时断言，只做一半（加了新的没删旧的）会红；(h) **排序必须是「一个维度下拉 + 一个升降序按钮」两个控件** —— 下拉里只许有 4 个**维度**值，方向键名（`area-asc` 之类）一件都不许留，且按钮真的绑了 `click`；(i) **「默认排序」三处齐备**（`DEFAULT_SETTINGS` 的默认值 / 设置页 `data-key="defaultSort"` / `popup.js` 里 `Store.getSettings().defaultSort` 的读取点），外加**设置页那 6 个组合的维度部分必须与 `SORT_DIMS` 同源**（防「设置页写了 `resolution`、库里只认 `area`」这种两边各写一份表的漂移）。**注入验证 6 项**（全部打给 `validate.js`，由 Python 脚本驱动 —— 见第三十个坑）：搜索挪回工具行（+2）、排序下拉塞回成对方向值 `area-asc`（+1）、升降序按钮不接 handler（+1）、删掉 `DEFAULT_SETTINGS.defaultSort`（+1）、设置页排序值改成 `resolution`（+1，报「非法项：resolution」）、工具行里删掉升降序按钮（+3）。**v1.19.0 再追加第 21 节（图标单一来源 + 同层级同一档，从 275 项涨到 293 项）**，十组守卫：(a) `shared/lucide.js` 可加载且登记了 ≥20 个图标；(b) 两个 HTML 的**每个** `<svg>` 都必须有 `data-lucide` —— 漏写就等于又手画了一个；(c) 名字都得在 `PATHS` 里；(d) **逐形状对拍**静态副本与库（指纹规范化：数字尾随 0 抹掉、空白压平，所以「属性顺序不同」「`4.340` 写成 `4.34`」都算通过，只有形状真的变了才红）；(e) 图标属性必须全是 Lucide 规范（24 视框 / `stroke-width 2` / 圆头圆角 / 形状上不带 `fill`）；(f) **产品 JS 里不许出现 `<svg`**（扫 `shared/` `content/` `popup/` `options/` + `background.js`，`shared/lucide.js` 是唯一豁免 —— 它就是那份数据）；(g) `theme.css` 的五个档位值必须精确等于 12/14/16/20/32；(h) 三张组件样式表里，图标规则与 data-URI 图标规则**不许出现写死的像素值**；(i) **层级 → 档位表**（13 条：顶栏动作 md / 工具行胶囊·选择组·滑条·搜索浮层 sm / 卡片角标 xs / 底栏主按钮 md / 空态 xl / 悬停按钮·灯箱按钮 md / 灯箱翻页 lg）—— 这张表就是「同层级大小统一」的定义；(j) 窄栏那条 `.icon-btn svg` 必须存在且是 `--ic-sm`（md → sm 是响应式取值，不是新开一档）。**注入验证 9 项**（`tests/_inj-icons.py`，Python 驱动 —— 见第六个坑，跑完即删）：删 `data-lucide`（+1）、放大镜 `r="8"`→`7`（+1）、引用 `hamburger`（+1）、`stroke-width` 改 `2.1`（+1）、`popup.js` 塞手写 `<svg>`（+1）、角标改回 `11px`（+2）、选择组降到 `--ic-xs`（+1）、窄栏不降档（+1）、`--ic-md` 改 `15px`（+1）。**守卫自己踩的坑见第三十一个坑**（误报 5 项 + 又忘了剥注释） |
 | `tools/audit-settings.js` | **设置项巡检（辅助脚本，不在 `run-all.js` 里）**：把每条设置的「定义点 / 读取点 / UI 挂点 / 写入点」连**行号**列出来，把候选缩到一小撮。加 `IH_AUDIT_VERBOSE=1` 打印每条的全部命中位置。**它不做判断** —— 判定仍要人打开文件看原代码，因为反向读取（`!== false`）、属性链（`settings.batchPrefix`）、整体透传（`scanTab(tabId, opts)`）都不是简单字符串匹配能覆盖的。写它时三次把 `theme` / `blockedHosts` / `customRules` 误报成「没有界面入口」—— 分别是分段按钮组、按 id 挂的 textarea、动态列表根节点，每次都是识别方式漏了一类形态 |
 
 ### 可选：真实浏览器测试
@@ -225,7 +225,7 @@ constants.js → utils.js → lucide.js → store.js → i18n.js → theme.js �
 函数），越靠前越安全。**这些「之前 / 之后」都不是随意的**，改动时先看
 `manifest.json` 的 `content_scripts[].js` 数组，那里才是权威顺序。
 
-## 测试自己会骗人：三十二个坑
+## 测试自己会骗人：三十三个坑
 
 前两个是「报绿但没测」，第三、五个是「断言恒真」，第六个是「注入验证根本没跑」，
 第七个是「超时被吞掉，把真 bug 伪装成正常」，第八个是「断言的前提被后来的修复推翻，
@@ -242,7 +242,8 @@ constants.js → utils.js → lucide.js → store.js → i18n.js → theme.js �
 第二十九个是「**量错了尺寸：flex 行把高度钉死，要量 `scrollHeight` 才看得见折行**」，
 第三十个是「**只在手边那一档窗口尺寸下看过就下结论 —— 响应式断点其实是猜的**」，
 第三十一个是「**尺寸守卫扫到的那条规则里，那个 px 根本不是图标尺寸**」，
-第三十二个是「**同一份组件在两套变量上下文里跑，只测了一边**」。
+第三十二个是「**同一份组件在两套变量上下文里跑，只测了一边**」，
+第三十三个是「**测试环境里依赖永远齐全，所以「依赖缺失」这条路从没被测过**」。
 共同点是**失败时不出声** —— 而一个不出声的测试比没有测试更危险；
 第二十四到二十六还多一层：**红的是守卫自己，报错却指向没问题的东西**。
 
@@ -1562,7 +1563,72 @@ Shadow DOM 里 —— shadow 树中不存在「文档根元素」，所以 `:roo
 
 ---
 
-**这九条的共同点**（第二十四到三十二）：它们全都是**测试或守卫自己写错了**，
+### 第三十三个坑：**测试环境里依赖永远齐全，所以「依赖缺失」这条路从没被测过**
+
+v1.19.2 的起因是一句用户报错：
+
+```
+Uncaught TypeError: Cannot read properties of undefined (reading 'svg')
+  at content/hover.js:28
+```
+
+第 28 行是 `const ICON_DOWNLOAD = IH.Lucide.svg('download');` —— 也就是说
+`IH.Lucide` 是 undefined。而 `validate.js` 294 项、浏览器 28 套件 774 项全绿，
+`shared/lucide.js` 明明在 manifest 的 `content_scripts` 里，顺序也对。
+
+**先做的不是改代码，是复现**：用 CDP 连上真实浏览器，在内容脚本那个
+**isolated world** 里求值 ——
+
+```
+[5] {"IH":"object","Lucide":"object","n":31,"win":"object","gt":"object"}
+```
+
+一切正常、零异常。所以代码没错，是**运行时组合错位**：内容脚本只在
+**页面加载时**注入一次，扩展重新加载后，已经打开的标签页里跑的还是旧组合
+（新 `hover.js` + 没执行的 `lucide.js`）。用户刷新一下页面就好。
+
+**但结论是「用户刷新一下就好」，不代表这段代码没问题。** 真正的缺陷是**失败方式**：
+
+```js
+// content/hover.js 顶层
+const ICON_DOWNLOAD = IH.Lucide.svg('download');   // ← 依赖缺失 = 整个模块炸
+```
+
+`hover.js` / `lightbox.js` 都在**模块顶层**取图标（每帧重绘不用重拼字符串，
+这个取舍是对的）。代价是：**只要一个文件没执行，整个功能消失**。
+用户看到的现象是「悬停按钮和灯箱全都没了」，控制台里那句
+`Cannot read properties of undefined` 他根本不会去看 —— 他只会说「扩展坏了」。
+
+**为什么测试一个都没红**：所有套件都在**依赖齐全**的环境里跑
+（`vm.runInContext` 里按顺序喂文件、浏览器里按 manifest 注入）。
+「少喂一个文件」这条路，**从来没有一条断言走过**。
+这不是「断言写错了」，是**断言的坐标系里根本没有这个维度**。
+
+| 做法 | 效果 |
+|---|---|
+| `U.icon(name)` 收口（`IH.Lucide` 不在时返回空串 + 警告） | 最坏退化成「按钮还在、没图标」，功能可用 |
+| 独立的 vm 上下文**不加载** lucide.js，断言不抛 / 空串 / 有警告 | 把「依赖缺失」变成被测过的一条路 |
+| `validate.js` 自动推导顺序（谁用 `U.icon(`，必须在 lucide.js 之后） | 手写清单会漏，推导不会 |
+
+**判据与做法**：
+
+1. **「测试全绿」只覆盖了「依赖齐全」这一个坐标系。** 一个模块依赖另一个模块时，
+   除了「都在」之外至少还有两条路：「缺了」「顺序错了」。后者能靠静态推导守，
+   前者只能靠**故意不加载**来测。
+2. **可选依赖缺失时，第一反应应该是「降级」而不是「抛」。** 图标缺了不影响下载、
+   不影响扫描；让整个模块炸掉，等于把一个「不精致」的问题升级成「不可用」。
+   但**降级必须留痕**：`console.warn` 里点名缺哪个文件，否则下次连查都不知道查什么。
+3. **降级本身要有测试，否则等于没有降级。** 这次是在**另一个 vm 上下文**里
+   `不加载` lucide.js 来测的 —— 同一个上下文里 `delete IH.Lucide` 也行，
+   但独立上下文更接近真实（新页面、新注入）。
+4. **区分「用户环境问题」和「设计问题」。** 这次两者都有：错位是环境问题（刷新即可），
+   一缺就全炸是设计问题（要改）。**只回答前者等于把设计问题推给用户去记。**
+5. **报错行号是最快的线索。** `hover.js:28` 直接指向了「顶层取值」这个模式 ——
+   如果当时只看「代码在干净环境里跑得通」就收工，这个脆弱点会一直留着。
+
+---
+
+**这十条的共同点**（第二十四到三十三）：它们全都是**测试或守卫自己写错了**，
 而不是产品坏了。而且四条的表现都是「红色的报错指向一个没问题的东西」，
 第二十八条更隐蔽 —— 它连红都不红。
 

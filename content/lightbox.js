@@ -35,22 +35,22 @@
      箭头长度差 1px，复制图片和「在图库中打开」的圆角也不一致）。
      尺寸不在这里给：overlay.css 的 `.ih-lb-btn svg` / `.ih-lb-nav svg`
      分别用 --ic-md / --ic-lg 两档。 */
-  const ICON_PREV = IH.Lucide.svg('chevron-left');
-  const ICON_NEXT = IH.Lucide.svg('chevron-right');
-  const ICON_DOWNLOAD = IH.Lucide.svg('download');
-  const ICON_LINK = IH.Lucide.svg('link');
-  const ICON_OPEN = IH.Lucide.svg('external-link');
-  const ICON_COPY_IMG = IH.Lucide.svg('copy');
-  const ICON_GALLERY = IH.Lucide.svg('layout-grid');
-  const ICON_CLOSE = IH.Lucide.svg('x');
-  const ICON_MINUS = IH.Lucide.svg('minus');
-  const ICON_PLUS = IH.Lucide.svg('plus');
+  const ICON_PREV = U.icon('chevron-left');
+  const ICON_NEXT = U.icon('chevron-right');
+  const ICON_DOWNLOAD = U.icon('download');
+  const ICON_LINK = U.icon('link');
+  const ICON_OPEN = U.icon('external-link');
+  const ICON_COPY_IMG = U.icon('copy');
+  const ICON_GALLERY = U.icon('layout-grid');
+  const ICON_CLOSE = U.icon('x');
+  const ICON_MINUS = U.icon('minus');
+  const ICON_PLUS = U.icon('plus');
   /* 保存按钮的三种反馈态。原来这三个状态是把按钮里的文字改成
      「保存中… / 已保存 / 保存失败」—— 一旦去掉文字，反馈就得换到图标上：
      转圈 = 正在保存，勾 = 存好了，感叹号 = 失败。 */
-  const ICON_BUSY = IH.Lucide.svg('loader-circle');
-  const ICON_DONE = IH.Lucide.svg('check');
-  const ICON_FAIL = IH.Lucide.svg('circle-alert');
+  const ICON_BUSY = U.icon('loader-circle');
+  const ICON_DONE = U.icon('check');
+  const ICON_FAIL = U.icon('circle-alert');
 
   let ui = null;
   let list = [];

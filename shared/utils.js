@@ -656,6 +656,31 @@
     return { host, root };
   }
 
+  /** 取一个图标（Lucide）。
+   *
+   * 为什么要包一层，而不是让调用点直接 `IH.Lucide.svg(name)`：
+   *   `content/hover.js` 与 `content/lightbox.js` 是在**模块顶层**取图标的
+   *   （`const ICON_X = ...` 写在 IIFE 顶部），这样每帧重绘时不用重新拼字符串。
+   *   代价是「只要 `shared/lucide.js` 没执行，整个模块在顶层就抛」——
+   *   而它在页面上的表现是**悬停按钮、灯箱全都消失**，用户只会觉得「扩展坏了」，
+   *   根本看不出是缺了一个文件。真实发生过：扩展重新加载后，已经打开的页面里
+   *   跑的还是旧的内容脚本组合，于是 `IH.Lucide` 是 undefined，
+   *   报错 `Cannot read properties of undefined (reading 'svg')`。
+   *
+   *   包一层之后，最坏情况退化成「按钮还在、只是没有图标」，
+   *   功能仍然可用，console 里留一条能看懂的警告。**降级不等于掩盖**：
+   *   警告写清了缺的是哪个文件，开发期一眼能查到。
+   *
+   * 注意这里**不缓存**结果：`IH.Lucide` 是延迟绑定的（本文件比 lucide.js 先加载），
+   * 缓存会让「先调用、后加载」的场景永久拿到空串。 */
+  function icon(name) {
+    if (IH.Lucide && typeof IH.Lucide.svg === 'function') return IH.Lucide.svg(name);
+    if (typeof console !== 'undefined') {
+      console.warn('[ImageHunter] shared/lucide.js 没有加载，图标缺失：' + name);
+    }
+    return '';
+  }
+
   /** 复制文本到剪贴板（带 execCommand 回退） */
   async function copyText(text) {
     try {
@@ -746,6 +771,7 @@
     sendToBg,
     extUrl,
     createShadowHost,
+    icon,
     copyText,
     toPngBlob
   };

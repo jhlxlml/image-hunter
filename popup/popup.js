@@ -2751,7 +2751,7 @@
   /* 图标一律走 IH.Lucide（shared/lucide.js）。原来这三个是手画的，
      stroke-width 分别写了 3 / 3.4 / 2.4 —— 同一张卡片上的两个角标
      粗细不一样，放大看就是毛边。尺寸交给 CSS 的 --ic-xs 档位。 */
-  const RESTORE_SPINNER = IH.Lucide.svg('loader-circle');
+  const RESTORE_SPINNER = U.icon('loader-circle');
 
   /** 原地换掉一个卡片元素：不重排、不滚动、不重放入场动画 */
   function replaceCardInPlace(cardEl, c) {
@@ -2902,7 +2902,7 @@
        鼠标用户照常点它（点击处理在 onGridClick 里）。 */
     pick.setAttribute('aria-hidden', 'true');
     pick.tabIndex = -1;
-    pick.innerHTML = IH.Lucide.svg('check');
+    pick.innerHTML = U.icon('check');
     thumb.appendChild(pick);
 
     // 预览
@@ -2915,7 +2915,7 @@
        键盘等价物是卡片上的 P 键（见 onGridKeydown 与 #gridHelp）。 */
     zoom.tabIndex = -1;
     zoom.setAttribute('aria-label', t('pop.zoomAria'));
-    zoom.innerHTML = IH.Lucide.svg('zoom-in');
+    zoom.innerHTML = U.icon('zoom-in');
     thumb.appendChild(zoom);
 
     // 「还原」按钮：只给「有原图候选、但这一轮没还原成功」的图。

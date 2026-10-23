@@ -290,5 +290,38 @@ eq(U.buildFilename({ url: 'https://x.com/a/photo.jpg' },
   { filenameTemplate: '{host}/{name}.{ext}' }, 0),
   'x.com/photo.jpg', '文件名模板里写 / 也当子目录');
 
+/* --- U.icon：shared/lucide.js 缺席时必须降级，不能抛 -------------------------
+ * 背景：hover.js / lightbox.js 在**模块顶层**取图标（每帧重绘不用重拼字符串），
+ * 于是「lucide.js 没执行」会让整个模块在顶层就抛 —— 页面上表现为
+ * 悬停按钮和灯箱全部消失，用户只看到「扩展坏了」。
+ * 真实事故：扩展重新加载后，已打开的页面里跑的还是旧的内容脚本组合，
+ * `IH.Lucide` 是 undefined，报 Cannot read properties of undefined (reading 'svg')。
+ *
+ * 这一节模拟「没有 lucide.js」的上下文：U.icon 必须返回空串、不抛，
+ * 并且往 console 留一条能查到缺哪个文件的警告。 */
+{
+  const warns = [];
+  const warnCtx = { console: { warn: (m) => warns.push(m), log: console.log, error: console.error },
+    URL, URLSearchParams, TextEncoder, setTimeout, clearTimeout, Math, Date, JSON };
+  warnCtx.globalThis = warnCtx;
+  vm.createContext(warnCtx);
+  vm.runInContext(fs.readFileSync(path.join(base, 'shared/constants.js'), 'utf8'), warnCtx);
+  vm.runInContext(fs.readFileSync(path.join(base, 'shared/utils.js'), 'utf8'), warnCtx);
+
+  let threw = false;
+  let got = null;
+  try { got = warnCtx.IH.U.icon('download'); } catch (e) { threw = true; }
+  eq(threw, false, 'U.icon：没有 lucide.js 时不抛异常');
+  eq(got, '', 'U.icon：没有 lucide.js 时返回空串（按钮还在，只是没图标）');
+  eq(warns.length, 1, 'U.icon：缺 lucide.js 时留一条警告');
+  eq(/shared\/lucide\.js/.test(warns[0] || ''), true, 'U.icon：警告里点名了缺哪个文件');
+
+  /* 有 lucide.js 时正常出图标 —— 证明上面测的是「降级」，不是「永远返回空」 */
+  vm.runInContext(fs.readFileSync(path.join(base, 'shared/lucide.js'), 'utf8'), warnCtx);
+  const svg = warnCtx.IH.U.icon('download');
+  eq(/^<svg class="ic"/.test(svg), true, 'U.icon：加载 lucide.js 后返回真的 svg');
+  eq(svg.indexOf('m7 10 5 5 5-5') >= 0, true, 'U.icon：返回的是 download 那个形状');
+}
+
 console.log('\n通过 ' + pass + ' 项，失败 ' + fail + ' 项');
 process.exit(fail ? 1 : 0);
