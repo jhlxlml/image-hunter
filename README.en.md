@@ -187,7 +187,7 @@ image-hunter/
 ├── popup/                 # Gallery UI (a standalone page; the in-page panel shares the same code)
 ├── options/               # Options page
 ├── tools/                 # Packaging, settings audit
-├── tests/                 # 20 Node suites + 28 real-browser suites
+├── tests/                 # 21 Node suites + 28 real-browser suites
 ├── docs/screenshots/      # UI screenshots
 ├── _locales/              # Only extension name/description/command titles/context-menu strings (serves the manifest); the UI itself is handled by shared/i18n.js
 └── icons/
@@ -201,7 +201,7 @@ For the full directory tree (with each file's responsibility) see [HANDBOOK.md](
 
 ```bash
 npm ci                 # first time: install dev dependencies (jsdom + playwright-core)
-npm test               # Node suites (20)
+npm test               # Node suites (21)
 npm run test:browser   # real-browser suites (28, needs a local Edge / Chrome)
 npm run test:all       # run both entry points
 npm run package        # build the zip
@@ -211,7 +211,7 @@ npm run audit:settings # audit settings: list every setting's read site / UI hoo
 - **The extension itself is zero-dependency and zero-build.** Everything declared in `package.json` is a **dev-time** dependency and is not packed into the extension
 - The browser suites need a **full** Chromium installed the first time (the headless shell doesn't support `--load-extension`):
   `npx playwright-core install --with-deps --no-shell chromium`
-- Currently measured: Node **20 suites / 1,142 assertions**, real browser **28 suites / 782 assertions** — **1,924** in total, all green
+- Currently measured: Node **21 suites / 1,164 assertions**, real browser **28 suites / 782 assertions** — **1,946** in total, all green
 - CI lives in [`.github/workflows/ci.yml`](.github/workflows/ci.yml): both entry points run on `push` / `pull_request`,
   and neither job allows `continue-on-error` — a check that fails but is ignored is worse than no check at all
 

@@ -50,6 +50,7 @@ const SUITES = [
   ['浏览器挑选逻辑（CI 必须用 Playwright 的 Chromium）', 'test-browser-resolve.js'],
   ['响应体读取上限测试（大小 / MIME / 超时 / 取消）', 'test-fetch-limits.js'],
   ['下载任务持久化 / 重启对账测试（MV3 SW 回收）', 'test-job-restore.js'],
+  ['后台授权判定测试（合成 sender / frameId 兜底）', 'test-panel-auth.js'],
   ['交付完整性校验（manifest / 资源 / 图标）', 'validate.js']
 ];
 

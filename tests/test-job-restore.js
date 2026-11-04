@@ -324,6 +324,52 @@ const URLS = [
     '查不到记录的下载被重新排队并执行（而不是当成已完成悄悄吞掉）',
     JSON.stringify(envC.log.downloads.map((d) => d.filename)));
 
+  /* ---------------------------------------------------------------- *
+   * 5. 查不到记录，但**指纹表里有这张图** → 结账，不重下
+   *
+   * 为什么这条要和上一条分开：`chrome.downloads.search` 查不到有两种成因 ——
+   *   · 用户清空了下载记录（文件其实在）→ 重下会多一个重名文件
+   *   · 下载压根没建起来（文件不存在）→ 重下正是我们想要的
+   * downloads API 分不开这两者，指纹表能。旧实现一律重排队，
+   * 于是「清过下载记录的用户」会拿到一堆重名文件。
+   * ---------------------------------------------------------------- */
+  console.log('\n=== 5. 查不到记录但指纹在 → 结账，不重下 ===');
+  const orphanUrl = 'https://img.example.com/known.jpg';
+  /* 指纹的算法必须与 runTask 一致：url|WxH。这里借环境 C 的 IH.U 算一份，
+     算错了这条测试会红 —— 那正是我们要的（算法一旦分叉就该被发现）。 */
+  const fp = await vm.runInContext(
+    'IH.U.sha256hex(' + JSON.stringify(orphanUrl + '|10x10') + ')', envC.ctx);
+  storeData.ih_fingerprints = Object.assign({}, storeData.ih_fingerprints, { [fp]: Date.now() });
+
+  sessionStore.ih_job = {
+    batchId: 'b-known',
+    total: 1,
+    done: 0,
+    failed: 0,
+    skipped: 0,
+    status: 'running',
+    restores: 0,
+    pending: [],
+    active: [{
+      url: orphanUrl,
+      pageUrl: '',
+      filename: 'known.jpg',
+      width: 10,
+      height: 10,
+      index: 1,
+      downloadId: 88888      // 登记表里同样没有这个 id
+    }],
+    settled: []
+  };
+  const envD = makeEnv('D', { completeAfter: 40 });
+  await sleep(400);
+  const downloadsD = envD.log.downloads.map((d) => d.filename);
+  console.log('环境 D 发起的下载 =', JSON.stringify(downloadsD));
+  check(!downloadsD.some((f) => f === 'known.jpg'),
+    '指纹已在 → 不重新下载（用户不会拿到重名文件）', JSON.stringify(downloadsD));
+  eq(vm.runInContext('job.skipped', envD.ctx), 1, '记一次 skipped，而不是 done 或 failed');
+  eq(vm.runInContext('job.done', envD.ctx), 0, 'done 没有被凭空加一');
+
   console.log('\n通过 ' + pass + ' 项，失败 ' + fail + ' 项');
   process.exit(fail ? 1 : 0);
 })().catch((e) => { console.error('测试异常', e); process.exit(1); });

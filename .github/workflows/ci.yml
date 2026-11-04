@@ -30,10 +30,10 @@ concurrency:
 
 jobs:
   # ------------------------------------------------------------------ #
-  # Node 套件（20 个）：纯 jsdom / vm，秒级到十几秒，是这个项目的主力防线
+  # Node 套件（21 个）：纯 jsdom / vm，秒级到十几秒，是这个项目的主力防线
   # ------------------------------------------------------------------ #
   node-suites:
-    name: Node 套件（20 个）
+    name: Node 套件（21 个）
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -60,8 +60,26 @@ jobs:
       #
       # 只在 high / critical 上失败：moderate 常常「没有可用修复」，
       # 让它阻断 CI 只会训练大家学会忽略这条检查。
+      #
+      # 为什么要重试：这一步要访问 registry，而**网络抖动和「真有漏洞」
+      # 的退出码完全一样**（都是 1）。不重试的话，一次 502 就会把这条闸门
+      # 变成「偶尔红一下、重跑就好」，大家很快就学会无视它。
+      # 重试**不放宽闸门** —— 漏洞不会因为重试而消失，只有网络问题会。
+      # 所以：输出里出现 "vulnerabilit" 就立刻失败、不重试。
       - name: 依赖审计
-        run: npm audit --audit-level=high
+        run: |
+          for i in 1 2 3; do
+            out=$(npm audit --audit-level=high 2>&1) && { echo "$out"; exit 0; }
+            echo "$out"
+            if echo "$out" | grep -qi 'vulnerabilit'; then
+              echo "::error title=依赖审计::发现 high/critical 级漏洞（不是网络问题，不重试）"
+              exit 1
+            fi
+            echo "第 $i 次审计失败（看起来是网络问题），5 秒后重试…"
+            sleep 5
+          done
+          echo "::error title=依赖审计::连续 3 次失败（registry 不可达）"
+          exit 1
 
       # run-all.js 会校验每个套件都打印了完成标记
       # （Node 在「事件循环空了但还有 await 挂着」时会静默以退出码 0 结束，

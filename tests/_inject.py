@@ -110,6 +110,24 @@ BG_DISCARD = """async function discardBody(res) {
   try { await res.body.cancel(); } catch (e) { /* 已经读完 / 已关闭，忽略 */ }
 }"""
 
+BG_DISCARD_FB = """async function discardBody(res) {
+  if (!res || !res.body) return;
+  try {
+    if (typeof res.body.cancel === 'function') { await res.body.cancel(); return; }
+    /* 兜底：个别实现（老版本 / 测试桩）的 ReadableStream 上没有 cancel。
+       锁一个 reader 再取消，效果一样 —— 关键是让浏览器停止继续收这个响应体。 */
+    if (typeof res.body.getReader === 'function') {
+      const reader = res.body.getReader();
+      await reader.cancel();
+    }
+  } catch (e) { /* 已经读完 / 已关闭，忽略 */ }
+}"""
+
+BG_DISCARD_FB_OFF = """async function discardBody(res) {
+  if (!res || !res.body || typeof res.body.cancel !== 'function') return;   // 注入：没有兜底
+  try { await res.body.cancel(); } catch (e) { /* 已经读完 / 已关闭，忽略 */ }
+}"""
+
 BG_DISCARD_OFF = """async function discardBody(res) {
   return;   // 注入：不取消响应体（旧行为）
 }"""
@@ -119,6 +137,27 @@ BG_PERSIST = """        active: activeTasks.map((t) => Object.assign(slimTask(t)
         })),"""
 
 BG_PERSIST_OFF = """        active: [],   // 注入：只存 pending（旧行为）"""
+
+# 注入：frameId 缺失时不做 tab.url 兜底（v1.20.0 之前的写法）
+BG_FRAME = """function isTopLevelSender(sender) {
+  const fid = senderFrameId(sender);
+  if (fid != null) return fid === 0;
+  const tabUrl = senderTabUrl(sender);
+  const base = extBase();
+  if (!tabUrl || !base) return null;
+  return tabUrl.indexOf(base) === 0;
+}"""
+
+BG_FRAME_OFF = """function isTopLevelSender(sender) {
+  const fid = senderFrameId(sender);
+  return fid == null ? null : fid === 0;   // 注入：没有兜底
+}"""
+
+# 注入：对账时「查不到下载记录」一律重排队（不看指纹表）—— v1.20.0 之前的写法
+BG_FP = """        if (already) await settleRestoredAlreadyThere(task);
+        else requeue.push(task);      // 真没下过 → 当作没开始过，重新排队"""
+
+BG_FP_OFF = """        requeue.push(task);   // 注入：一律重排队（旧行为）"""
 
 STORE = 'shared/store.js'
 
@@ -177,6 +216,18 @@ def main():
         apply(BG, BG_PERSIST, BG_PERSIST_OFF)
     elif mode == 'persist-on':
         apply(BG, BG_PERSIST_OFF, BG_PERSIST)
+    elif mode == 'discard-fb-off':
+        apply(BG, BG_DISCARD_FB, BG_DISCARD_FB_OFF)
+    elif mode == 'discard-fb-on':
+        apply(BG, BG_DISCARD_FB_OFF, BG_DISCARD_FB)
+    elif mode == 'frame-fallback-off':
+        apply(BG, BG_FRAME, BG_FRAME_OFF)
+    elif mode == 'frame-fallback-on':
+        apply(BG, BG_FRAME_OFF, BG_FRAME)
+    elif mode == 'restore-fp-off':
+        apply(BG, BG_FP, BG_FP_OFF)
+    elif mode == 'restore-fp-on':
+        apply(BG, BG_FP_OFF, BG_FP)
     elif mode == 'rawset-swallow':
         apply(STORE, STORE_STRICT, STORE_SWALLOW)
     elif mode == 'rawset-strict':

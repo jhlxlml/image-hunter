@@ -1129,8 +1129,16 @@ function onScanResult(msg, sender) {
  * 于是一次「探测体积」就把整张原图下载了一遍。
  */
 async function discardBody(res) {
-  if (!res || !res.body || typeof res.body.cancel !== 'function') return;
-  try { await res.body.cancel(); } catch (e) { /* 已经读完 / 已关闭，忽略 */ }
+  if (!res || !res.body) return;
+  try {
+    if (typeof res.body.cancel === 'function') { await res.body.cancel(); return; }
+    /* 兜底：个别实现（老版本 / 测试桩）的 ReadableStream 上没有 cancel。
+       锁一个 reader 再取消，效果一样 —— 关键是让浏览器停止继续收这个响应体。 */
+    if (typeof res.body.getReader === 'function') {
+      const reader = res.body.getReader();
+      await reader.cancel();
+    }
+  } catch (e) { /* 已经读完 / 已关闭，忽略 */ }
 }
 
 async function probeRemoteSize(url) {
@@ -1275,6 +1283,42 @@ function senderTabId(sender) {
 /** 是不是顶层 frame（扩展自己开的标签页）。拿不到 frameId 时返回 null（未知）。 */
 function senderFrameId(sender) {
   return sender && typeof sender.frameId === 'number' ? sender.frameId : null;
+}
+
+/** 消息来源标签页的**主框架**地址（不是发消息那一帧的地址）。
+ *
+ * 这是 `frameId` 拿不到时的兜底判据。区别很关键：
+ *   · 扩展自己开的标签页（顶层）→ tab.url 是 chrome-extension://<id>/popup/popup.html
+ *   · 被网页 iframe 进去的扩展页 → tab.url 是**那个网页**的地址
+ * 所以「tab.url 是不是扩展地址」等价于「这一帧是不是这个标签页的顶层」。
+ * 这个值同样由浏览器填，网页改不了。 */
+function senderTabUrl(sender) {
+  return sender && sender.tab && typeof sender.tab.url === 'string' ? sender.tab.url : '';
+}
+
+/**
+ * 这条消息是不是**顶层 frame**。
+ * @returns {boolean|null} null = 两种判据都拿不到（调用方按「不可信」处理）
+ */
+function isTopLevelSender(sender) {
+  const fid = senderFrameId(sender);
+  if (fid != null) return fid === 0;
+  const tabUrl = senderTabUrl(sender);
+  const base = extBase();
+  if (!tabUrl || !base) return null;
+  return tabUrl.indexOf(base) === 0;
+}
+
+/**
+ * 这条消息是不是**嵌在别人页面里**的 frame。
+ * 面板一定是嵌进去的，所以它是 PANEL_VERIFY 的必要条件之一。
+ * @returns {boolean|null} null = 判不出来
+ */
+function isEmbeddedSender(sender) {
+  const fid = senderFrameId(sender);
+  if (fid != null) return fid > 0;
+  const top = isTopLevelSender(sender);
+  return top == null ? null : !top;
 }
 
 /* ====================================================================== *
@@ -1632,9 +1676,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       const frameId = senderFrameId(sender);
       const ok = !!tabId && isExtensionPageSender(sender);
       if (!ok) { sendResponse({ ok: true, valid: false, reason: 'not-extension-page' }); return true; }
-      if (frameId === 0) {
+      /* 「嵌在网页里」是必要条件。frameId 拿不到时用 tab.url 兜底
+         （见 isEmbeddedSender）—— 有些浏览器版本对扩展页不给 frameId，
+         以前这里会一律判 false，把正常的面板也挡在门外。 */
+      const embedded = isEmbeddedSender(sender);
+      if (embedded !== true) {
         // 顶层扩展页不是面板 —— 面板一定是被内容脚本嵌进网页的
-        sendResponse({ ok: true, valid: false, reason: 'not-embedded' });
+        sendResponse({
+          ok: true, valid: false,
+          reason: embedded === null ? 'frame-unknown' : 'not-embedded'
+        });
         return true;
       }
       if (p.tabId != null && Number(p.tabId) !== tabId) {
@@ -1657,13 +1708,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       const tabId = senderTabId(sender);
       const frameId = senderFrameId(sender);
       const isPage = isExtensionPageSender(sender);
-      const topLevel = frameId === 0;
+      const top = isTopLevelSender(sender);
       sendResponse({
         ok: true,
-        valid: !!tabId && isPage && topLevel,
+        valid: !!tabId && isPage && top === true,
         tabId,
         frameId,
-        reason: !isPage ? 'not-extension-page' : (!topLevel ? 'not-top-level' : 'ok')
+        reason: !isPage ? 'not-extension-page'
+          : (top === null ? 'frame-unknown' : (top ? 'ok' : 'not-top-level'))
       });
       return true;
     }
@@ -2043,7 +2095,18 @@ async function restoreJob() {
       if (item && item.state === 'complete') await settleRestoredDone(task, item);
       else if (item && item.state === 'interrupted') await settleRestoredFailed(task, item);
       else if (item && item.state === 'in_progress') watchRestored(task);
-      else requeue.push(task);      // 连记录都没有了 → 当作没开始过
+      else {
+        /* 记录查不到了。先看指纹 —— 「下完了但记录被清空」和「根本没下过」
+           在 downloads API 眼里长得一模一样，重试的代价却完全不同
+           （前者多一个重名文件，后者什么都不会损失）。 */
+        let already = false;
+        try {
+          const fp = await U.sha256hex(task.url + '|' + (task.width || 0) + 'x' + (task.height || 0));
+          already = await Store.hasFingerprint(fp);
+        } catch (e) { already = false; }
+        if (already) await settleRestoredAlreadyThere(task);
+        else requeue.push(task);      // 真没下过 → 当作没开始过，重新排队
+      }
     }
     queue = queue.concat(requeue);
 
@@ -2122,6 +2185,26 @@ async function settleRestoredFailed(task, item) {
 }
 
 /** 重启时那张还在下：接上 onChanged 等它落盘，**而不是重新下一遍** */
+/**
+ * 对账分支：下载记录查不到了，但**指纹表里有这张图** → 当作「已下过」结账。
+ *
+ * 这个分支的存在理由：`chrome.downloads.search({id})` 查不到有两种完全不同的成因 ——
+ *   · 用户清空了下载记录（文件其实在）→ 重下会多一个重名文件
+ *   · 下载压根没建起来（文件不存在）→ 重下正是我们想要的
+ * 光看 downloads API 分不开这两者。指纹表能：这张图下完过就一定有指纹
+ * （见 runTask 的成功分支），没有指纹才是真没下过。
+ *
+ * 语义与 runTask 的「跳过已下载」一致：只加 skipped 计数、不写历史。
+ */
+async function settleRestoredAlreadyThere(task) {
+  if (task.downloadId != null) {
+    if (settledIds.has(task.downloadId)) return;
+    settledIds.add(task.downloadId);
+  }
+  job.skipped++;
+  pushRecent({ index: task.index, url: task.url, status: 'skipped' });
+}
+
 function watchRestored(task) {
   activeTasks.push(task);
   activeCount++;

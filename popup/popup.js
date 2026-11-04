@@ -304,26 +304,41 @@
   async function verifyPanelOrigin() {
     if (MODE === 'panel') {
       /* 等「第一个能通过后台校验的 token」。网页脚本抢先塞进来的假 token
-         会在这里被逐个试掉（后台不认识它），随后真正的那个再通过。 */
-      const deadline = Date.now() + 8000;
-      while (Date.now() < deadline) {
-        if (!pendingTokens.length) {
-          await waitPanelToken(Math.max(50, deadline - Date.now()));
+         会在这里被逐个试掉（后台不认识它），随后真正的那个再通过。
+
+         为什么是**分段重试**而不是「一次等够久」：
+         内容脚本要先把 token 拿到手（它得先问一次后台），面板这边只是等。
+         单次超时只能靠「猜一个够长的数」——猜短了在慢机器上误杀，
+         猜长了在正常机器上白白卡住。分段重试把「等多久」换成「试几次」：
+         每轮等 3 秒，等不到就再喊一次 ready 让内容脚本重新交接，最多 3 轮。
+         正常路径第一轮就过（实测 <50ms），慢机器上也有第二次、第三次机会。 */
+      const ROUNDS = 3;
+      const ROUND_MS = 3000;
+      for (let round = 0; round < ROUNDS; round++) {
+        if (round > 0) {
+          // 重新喊一次 ready：内容脚本收到就再交接一遍 token
+          try { window.parent.postMessage({ __ih: true, type: 'ready' }, '*'); } catch (e) { /* ignore */ }
         }
-        while (pendingTokens.length) {
-          const tok = pendingTokens.shift();
-          let ok = false;
-          try {
-            const res = await U.sendToBg({
-              type: MSG.PANEL_VERIFY,
-              payload: { token: tok }
-            });
-            ok = !!(res && res.ok && res.valid);
-          } catch (e) { ok = false; }
-          if (ok) {
-            panelToken = tok;
-            panelTokenLocked = true;
-            return true;
+        const deadline = Date.now() + ROUND_MS;
+        while (Date.now() < deadline) {
+          if (!pendingTokens.length) {
+            await waitPanelToken(Math.max(50, deadline - Date.now()));
+          }
+          while (pendingTokens.length) {
+            const tok = pendingTokens.shift();
+            let ok = false;
+            try {
+              const res = await U.sendToBg({
+                type: MSG.PANEL_VERIFY,
+                payload: { token: tok }
+              });
+              ok = !!(res && res.ok && res.valid);
+            } catch (e) { ok = false; }
+            if (ok) {
+              panelToken = tok;
+              panelTokenLocked = true;
+              return true;
+            }
           }
         }
       }

@@ -605,7 +605,7 @@ image-hunter/
 
 ```bash
 npm ci                # 首次：装开发期依赖（jsdom + playwright-core）
-npm test              # Node 套件（20 个）
+npm test              # Node 套件（21 个）
 npm run test:browser  # 真实浏览器套件（28 个，需要本机 Edge / Chrome）
 npm run test:all      # 两个入口都跑
 ```
@@ -879,6 +879,27 @@ v1.20.0 —— **授权、资源、状态三条边界收口**。审计修复版�
           依赖面：扩展本体仍然**零运行时依赖**。CI 加了 `npm audit --audit-level=high`，
           顺带把锁文件里 `jsdom → undici` 的 8.11.2 升到 8.12.3（8.0.0–8.12.1 有 8 条
           high 级公告，全是 dev 链路，但仍然过不了闸门）。
+
+          **同一版的第二轮：把上面留下的残留风险逐条收口。**
+
+          | 残留 | 为什么会误伤 | 修法 |
+          |---|---|---|
+          | `sender.frameId` 拿不到 | 有些浏览器版本对扩展页不给 `frameId`，旧判定 `frameId === 0` 一律判 false，把**正常的面板和图库**也挡在门外 | 兜底判据：`sender.tab.url` 是**主框架**地址 —— 扩展自己开的标签页是 `chrome-extension://…`，被 iframe 进去的则是**那个网页**的地址。两种判据都拿不到时返回 `frame-unknown` 并**拒绝**（fail-closed，但不再静默） |
+          | 面板等 token 只等一次 | 单次超时只能靠「猜一个够长的数」：猜短了慢机器误杀，猜长了正常机器白卡 | 分段重试：每轮 3 秒、最多 3 轮，等不到就再喊一次 `ready` 让内容脚本重新交接。正常路径第一轮就过 |
+          | 对账「查不到下载记录」一律重排队 | `chrome.downloads.search` 查不到有两种成因 —— 用户**清空了下载记录**（文件其实在）和**压根没建起来**。前者重下会在下载目录里多一个重名文件 | 先查**指纹表**：这张图下完过就一定有指纹。有指纹 → 记一次 `skipped` 结账；没有 → 才重新排队 |
+          | `discardBody` 依赖 `res.body.cancel` | 个别实现的 ReadableStream 上没有 `cancel`，于是整个丢弃动作被静默跳过 | 兜底锁一个 reader 再 `cancel()` |
+          | `npm audit` 把网络抖动当成有漏洞 | 两者的退出码都是 1，一次 502 就会让人学会「重跑就好」 | 重试 3 次，但**输出里出现 `vulnerabilit` 就立刻失败、不重试** —— 漏洞不会因为重试而消失，网络问题才会 |
+
+          顺带补了 `tests/test-panel-auth.js`（21 个 Node 套件里的第 21 个，17 项）：
+          真实浏览器里**造不出**「`frameId` 缺失」这种情形，所以这一套直接给后台喂
+          **手工构造的 sender**，把「谁能通过、为什么不能」逐条钉住 ——
+          包括最关键的那条：**网页拿着真 token 来验也必须拒绝**（授权绑的是 `sender`，
+          不是 token 本身）。
+
+          注入验证三组，各自精确变红：`frameId` 兜底去掉 → `test-panel-auth.js` 3 条；
+          指纹对账去掉 → `test-job-restore.js` 3 条（实测真的会去下那个重名文件）；
+          `discardBody` 的 `reader.cancel()` 兜底去掉 → `test-download.js` 1 条
+          （调用次数实测为 0）。
 
 v1.19.2 —— **图标依赖改为可降级 + 加载顺序自动守卫**。承 v1.19.1。
 

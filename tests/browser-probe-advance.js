@@ -165,10 +165,26 @@ async function targetTab(sw, port) {
     const missing = [];
     for (let k = 0; k < TOTAL; k++) if (hit.indexOf(k) < 0) missing.push(k);
 
+    /* 第二个观测点：后台自己数了多少次探测（`probeStats`）。
+       服务器日志只记「收到了什么」，扩展自己记「发了什么」——
+       两边不一致就说明请求死在传输层，而不是扩展漏了某张图。
+       这个套件曾在批量跑时偶发红过一次，当时没有这行，只能靠猜。 */
+    let attempted = null;
+    try {
+      attempted = await sw.evaluate(() => {
+        try { return { ok: probeStats.ok, failed: probeStats.failed }; } catch (e) { return null; }
+      });
+    } catch (e) { attempted = null; }
+    const attemptedTotal = attempted ? attempted.ok + attempted.failed : null;
+    const detail = '命中 ' + hit.length + ' 张'
+      + (missing.length ? '，缺 ' + missing.join(',') : '')
+      + (attemptedTotal == null ? ''
+        : '；后台计数 ok=' + attempted.ok + ' failed=' + attempted.failed
+          + (attemptedTotal === hit.length ? '（与服务器一致）' : '（比服务器多 ' + (attemptedTotal - hit.length) + ' → 请求死在传输层）'));
+
     // 核心断言：旧代码这里恒为 120，第 121 张之后永远探不到
     check(hit.length === TOTAL,
-      '一次点击覆盖全部 ' + TOTAL + ' 张（不再被 120 卡死）',
-      '命中 ' + hit.length + ' 张' + (missing.length ? '，缺 ' + missing.join(',') : ''));
+      '一次点击覆盖全部 ' + TOTAL + ' 张（不再被 120 卡死）', detail);
     check(hit.length > 0 && hit[hit.length - 1] === TOTAL - 1,
       '第 ' + TOTAL + ' 张（上限之外的尾巴）确实被探到了', hit[hit.length - 1]);
 

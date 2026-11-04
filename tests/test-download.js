@@ -465,6 +465,46 @@ const URL_A = 'https://img.ithome.com/newsuploadfiles/2026/9/f667889f-687e-4167-
       'Range 回 200 时 body 被 cancel 了（不会白下载一整个文件）', String(rangeCancelled));
   }
 
+  /* ------------------------------------------------------------------ *
+   * 10. 响应体没有 cancel 时的兜底
+   *
+   * 少数实现（老版本浏览器 / 某些测试桩）的 ReadableStream 上**没有** cancel。
+   * 旧写法是 `typeof res.body.cancel !== 'function'` 就 return ——
+   * 于是「丢弃响应体」这个动作被静默跳过，Range 探测照样会把整个文件收完。
+   * 现在退一步锁一个 reader 再 cancel。
+   * ------------------------------------------------------------------ */
+  console.log('\n=== 10. 响应体没有 cancel 时的兜底 ===');
+  {
+    let fallbackCancelled = 0;
+    fetchImpl = (url, opts) => {
+      if (opts && opts.method === 'HEAD') {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          headers: {
+            get: (n) => (n === 'content-length' ? '4096' : (n === 'content-type' ? 'image/jpeg' : ''))
+          },
+          body: {
+            // 故意不给 cancel —— 正是要测的那条路
+            getReader() {
+              return { cancel() { fallbackCancelled++; return Promise.resolve(); } };
+            }
+          }
+        });
+      }
+      return Promise.reject(new Error('这个用例不该走到 Range 路径'));
+    };
+
+    const r10 = await sendMessage({
+      type: 'IH_PROBE_SIZE',
+      payload: { urls: ['https://img.example.com/fallback.jpg'] }
+    }, 8000);
+    const got10 = (r10 && r10.sizes && r10.sizes['https://img.example.com/fallback.jpg']) || null;
+    check(!!got10 && got10.bytes === 4096, '体积照样从 content-length 拿到', JSON.stringify(got10));
+    check(fallbackCancelled === 1,
+      '没有 cancel 时退到 reader.cancel()，响应体照样被丢弃', String(fallbackCancelled));
+  }
+
   fetchImpl = () => Promise.reject(new Error('offline'));
 
   console.log('\n通过 ' + pass + ' 项，失败 ' + fail + ' 项');
