@@ -227,6 +227,47 @@ function reset() { storeData = {}; getCalls = 0; setCalls = 0; failNextSet = fal
   const normal = await S.loadSettings(true);
   check(normal.theme === 'auto', '没有并发写入时，强制重读照常生效', String(normal.theme));
 
+  /* --------------------------------------------------------------- *
+   * 10. 写失败必须**抛给调用方**，不许假装成功
+   *
+   * 旧实现 rawSet 里 try/catch + console.warn，于是：
+   *   await Store.updateSettings({...})  ← 正常 resolve
+   *   → 设置页 flashSaved() 闪「已保存」
+   *   → 用户下次打开发现设置回退了
+   * 这条断言就是钉死「resolve 就代表真的写进去了」。
+   * --------------------------------------------------------------- */
+  console.log('\n=== 10. storage 写失败必须抛给调用方 ===');
+  reset();
+  failNextSet = true;
+  let settingsThrew = false;
+  let settingsMsg = '';
+  try {
+    await S.updateSettings({ theme: 'dark' });
+  } catch (e) {
+    settingsThrew = true;
+    settingsMsg = String((e && e.message) || e);
+  }
+  check(settingsThrew, 'updateSettings 在 storage.set 失败时 reject（旧实现会 resolve）');
+  check(/QUOTA_BYTES/.test(settingsMsg), '异常里带着底层原因', settingsMsg);
+
+  const we = S.writeError && S.writeError();
+  check(!!we, 'Store.writeError() 记录了这次失败');
+  check(we && we.key === K.SETTINGS, '记录里点名是哪个键写失败了', we && we.key);
+  check(we && /QUOTA_BYTES/.test(we.message || ''), '记录里带着原因', we && we.message);
+
+  failNextSet = true;
+  let historyThrew = false;
+  try {
+    await S.addHistory({ filename: 'quota' });
+  } catch (e) {
+    historyThrew = true;
+  }
+  check(historyThrew, 'addHistory 同样把失败抛出来（不再静默吞掉）');
+
+  // 写成功之后，失败记录要被清掉 —— 否则诊断包里会一直挂着一个过期的错误
+  await S.addHistory({ filename: 'ok' });
+  check(S.writeError() === null, '写成功之后 writeError() 归零', JSON.stringify(S.writeError()));
+
   console.log('\n通过 ' + pass + ' 项，失败 ' + fail + ' 项');
   process.exit(fail ? 1 : 0);
 })().catch((e) => {

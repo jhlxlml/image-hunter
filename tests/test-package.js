@@ -197,5 +197,51 @@ check(crc32(Buffer.from('The quick brown fox jumps over the lazy dog')) === 0x41
   'CRC32(quick brown fox) = 0x414FA339',
   '0x' + crc32(Buffer.from('The quick brown fox jumps over the lazy dog')).toString(16));
 
+/* ================================================================== *
+ * 6. 版本元数据一致性
+ *
+ * package.json 的 version 从 1.13.1 一路涨到 1.19.2，而 package-lock.json
+ * 里那两处 `"version"` 一直没跟着改 —— 谁都没发现，因为没有任何东西会因此报错。
+ * 但它是「这个包到底是什么版本」的第二份声明：发行、SBOM、依赖审计报告
+ * 都会读它，读到 1.13.1 就等于在记录里写了一行假话。
+ * ================================================================== */
+console.log('\n=== 6. 版本元数据 ===');
+{
+  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+  const lock = JSON.parse(fs.readFileSync(path.join(ROOT, 'package-lock.json'), 'utf8'));
+  check(!!pkg.version, 'package.json 有 version', pkg.version);
+  check(lock.version === pkg.version,
+    'package-lock.json 顶层 version 与 package.json 一致',
+    'lock=' + lock.version + ' / pkg=' + pkg.version);
+  const root = (lock.packages && lock.packages['']) || {};
+  check(root.version === pkg.version,
+    'package-lock.json 的 packages[""].version 也一致',
+    'lock=' + root.version + ' / pkg=' + pkg.version);
+  check(lock.lockfileVersion >= 2,
+    'lockfileVersion ≥ 2（npm 7+ 格式，npm ci 才认）', String(lock.lockfileVersion));
+}
+
+/* ================================================================== *
+ * 7. 依赖审计的落点
+ *
+ * 这个项目只有开发期依赖，但它们仍然会进 CI、进开发者机器。
+ * 审计本身交给 `npm audit`（CI 里有一步），这里只钉两件事：
+ *   ① 依赖清单里不许出现运行时依赖（扩展本体必须零依赖零构建）
+ *   ② 有 lockfile 且版本被钉住，审计结果才可复现
+ * ================================================================== */
+console.log('\n=== 7. 依赖面 ===');
+{
+  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+  const deps = Object.keys(pkg.dependencies || {});
+  check(deps.length === 0,
+    '没有任何运行时依赖（扩展本体零依赖，审计面只限开发期）', deps.join(', '));
+  const dev = Object.keys(pkg.devDependencies || {});
+  check(dev.length > 0, '开发期依赖非空', dev.join(', '));
+  check(fs.existsSync(path.join(ROOT, 'package-lock.json')),
+    '有 package-lock.json（审计结果才可复现）');
+  check(/^AGPL-3\.0-only$/.test(pkg.license || ''),
+    'license 用 SPDX 标识（AGPL-3.0-only）', pkg.license);
+}
+
 console.log('\n通过 ' + pass + ' 项，失败 ' + fail + ' 项');
 process.exit(fail ? 1 : 0);

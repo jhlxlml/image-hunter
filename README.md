@@ -181,7 +181,7 @@ image-hunter/
 ├── popup/                 # 图库主界面（独立页面 / 页内面板共用同一份代码）
 ├── options/               # 设置页
 ├── tools/                 # 打包、设置项巡检
-├── tests/                 # 17 个 Node 套件 + 28 个真实浏览器套件
+├── tests/                 # 20 个 Node 套件 + 28 个真实浏览器套件
 ├── docs/screenshots/      # 界面截图
 ├── _locales/              # 仅扩展名称/描述/命令标题/右键菜单文案（服务 manifest）；界面文案由 shared/i18n.js 负责
 └── icons/
@@ -195,7 +195,7 @@ image-hunter/
 
 ```bash
 npm ci                 # 首次：装开发期依赖（jsdom + playwright-core）
-npm test               # Node 套件（17 个）
+npm test               # Node 套件（20 个）
 npm run test:browser   # 真实浏览器套件（28 个，需要本机 Edge / Chrome）
 npm run test:all       # 两个入口都跑
 npm run package        # 打包
@@ -205,7 +205,7 @@ npm run audit:settings # 巡检设置项：列出每条设置的读取点 / UI �
 - **扩展本体零依赖零构建。** `package.json` 里声明的全是**开发期**依赖，不进扩展包
 - 浏览器套件第一次跑要先装一份**完整** Chromium（headless shell 不支持 `--load-extension`）：
   `npx playwright-core install --with-deps --no-shell chromium`
-- 当前实测：Node **16 套件 / 834 项**、真浏览器 **26 套件 / 677 项**，合计 **1,511 项**，全绿
+- 当前实测：Node **20 套件 / 1,142 项**、真浏览器 **28 套件 / 782 项**，合计 **1,924 项**，全绿
 - CI 在 [`.github/workflows/ci.yml`](.github/workflows/ci.yml)：`push` / `pull_request` 都跑两个入口，
   两个 job 都**不允许 `continue-on-error`** —— 一个会失败但被忽略的检查，比没有检查更糟
 

@@ -513,6 +513,9 @@ select.sel:focus { border-color: var(--primary); background-color: var(--surface
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
+/* 危险正则（会把页面卡死的那种）用警示色 —— 这条提示不能是灰的 */
+.rule .hint-row.bad { color: var(--danger); }
+
 .rules-actions { margin-top: 11px; }
 
 .tester { display: flex; gap: 8px; }

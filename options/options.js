@@ -273,7 +273,15 @@
   }
 
   async function persist(patch) {
-    settings = await Store.updateSettings(patch);
+    /* Store 现在会把 storage.set 的失败抛上来（以前是吞掉只打一行 warn）。
+       这里必须接住并告诉用户 —— 否则「已保存」闪一下、下次打开又回退，
+       用户只会觉得这个扩展在骗人。 */
+    try {
+      settings = await Store.updateSettings(patch);
+    } catch (e) {
+      toast(t('opt.saveFail', { msg: (e && e.message) || e }), 'err');
+      return;
+    }
     flashSaved();
     // 通知内容脚本刷新设置
     try {
@@ -413,7 +421,12 @@
         ? t('opt.resetConfirm') + '\n\n' + t('opt.resetConfirmExtra', { extra: extra.join(t('cmn.and')) })
         : t('opt.resetConfirm');
       if (!confirm(msg)) return;
-      settings = await Store.resetSettings();
+      try {
+        settings = await Store.resetSettings();
+      } catch (e) {
+        toast(t('opt.saveFail', { msg: (e && e.message) || e }), 'err');
+        return;
+      }
       renderSettings();
       renderRules();
       toast(t('opt.restored'), 'ok');
@@ -483,9 +496,21 @@
     hint.textContent = t('opt.ruleHint');
 
     const commit = U.debounce(async () => {
+      const p = pattern.value.trim();
+      /* 危险正则（`(a+)+` 这类）不许存进去：它要匹配的是**网页给的**地址，
+         一次 replace 就能把 content script 卡死。Store 那一层还会再滤一次，
+         但那是兜底 —— 用户得先知道自己写的规则没生效。 */
+      if (p && !U.isSafePattern(p)) {
+        hint.textContent = t('opt.ruleUnsafe');
+        hint.classList.add('bad');
+        return;
+      }
+      hint.textContent = t('opt.ruleHint');
+      hint.classList.remove('bad');
+
       const list = (settings.customRules || []).slice();
       list[index] = {
-        pattern: pattern.value.trim(),
+        pattern: p,
         flags: flags.value.trim() || 'i',
         replace: replace.value
       };
@@ -526,7 +551,8 @@
       if (!rule || !rule.pattern) continue;
       try {
         const re = new RegExp(rule.pattern, rule.flags || 'i');
-        const v = url.replace(re, rule.replace == null ? '' : rule.replace);
+        // 与 constants.js 的 buildRestoreCandidates 用同一个上限
+        const v = U.clampForPattern(url).replace(re, rule.replace == null ? '' : rule.replace);
         if (v && v !== url) out.push({ by: 'custom', url: v });
       } catch (e) {
         out.push({ by: 'custom', url: '', error: t('opt.ruleErr', { msg: e.message }) });
@@ -757,14 +783,24 @@
 
     $('btnClearHistory').addEventListener('click', async () => {
       if (!confirm(t('opt.clearHistoryConfirm'))) return;
-      await Store.clearHistory();
+      try {
+        await Store.clearHistory();
+      } catch (e) {
+        toast(t('opt.saveFail', { msg: (e && e.message) || e }), 'err');
+        return;
+      }
       await refreshStats();
       toast(t('opt.historyCleared'), 'ok');
     });
 
     $('btnClearFp').addEventListener('click', async () => {
       if (!confirm(t('opt.clearFpConfirm'))) return;
-      await Store.clearFingerprints();
+      try {
+        await Store.clearFingerprints();
+      } catch (e) {
+        toast(t('opt.saveFail', { msg: (e && e.message) || e }), 'err');
+        return;
+      }
       await refreshStats();
       toast(t('opt.fpCleared'), 'ok');
     });

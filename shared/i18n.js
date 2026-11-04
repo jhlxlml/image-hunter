@@ -307,6 +307,9 @@
     'opt.imported': '设置已导入',
     'opt.importedRules': '设置已导入（含 {n} 条自定义还原规则）',
     'opt.importFail': '导入失败：{msg}',
+    /* storage 写失败（配额满 / 被策略禁用）。必须让用户看到 ——
+       以前这条异常在 Store 里被吞掉，界面照常闪「已保存」。 */
+    'opt.saveFail': '没能保存：{msg}',
     'opt.historyCleared': '下载历史已清除',
     'opt.fpCleared': '去重指纹已清除',
     'opt.exportFail': '导出失败：{msg}',
@@ -326,6 +329,7 @@
     'opt.ruleReplacePh': '替换为（留空即删除匹配部分）',
     'opt.ruleDelTitle': '删除该规则',
     'opt.ruleHint': '示例：正则 (-\\d{2,4}x\\d{2,4})(?=\\.jpg)  ·  替换为空 → 去掉 WordPress 尺寸后缀',
+    'opt.ruleUnsafe': '这条正则不安全（量词嵌套，如 (a+)+ 会让页面卡死），已拒绝保存',
     'opt.ruleErr': '正则非法：{msg}',
 
     'opt.testNeedUrl': '请先粘贴一个图片地址',
@@ -634,7 +638,12 @@
     'bg.noSourceTab': '找不到来源标签页',
     'bg.imageTooBig': '图片过大',
     'bg.missingUrl': '缺少图片地址',
-    'bg.cannotConnect': '无法连接到目标页面'
+    'bg.cannotConnect': '无法连接到目标页面',
+    /* 这三个是「按上限读响应体」失败时的说法。要能区分开：
+       「太大」是资源本身的问题，「不是图片」多半是 CDN 回了个错误页，
+       「读取超时」是网络慢 —— 三种情况用户该做的事完全不同。 */
+    'bg.notAnImage': '返回的不是图片（可能是错误页或被拦截了）',
+    'bg.readTimeout': '读取响应内容超时'
   };
 
   /* ---------------------------- English ---------------------------- */
@@ -814,6 +823,7 @@
     'opt.imported': 'Settings imported',
     'opt.importedRules': 'Settings imported (including {n} custom restore rules)',
     'opt.importFail': 'Import failed: {msg}',
+    'opt.saveFail': 'Could not save: {msg}',
     'opt.historyCleared': 'Download history cleared',
     'opt.fpCleared': 'Fingerprints cleared',
     'opt.exportFail': 'Export failed: {msg}',
@@ -834,6 +844,7 @@
     'opt.ruleReplacePh': 'Replace with (empty = delete the match)',
     'opt.ruleDelTitle': 'Delete this rule',
     'opt.ruleHint': 'Example: regex (-\\d{2,4}x\\d{2,4})(?=\\.jpg) with an empty replacement → strips the WordPress size suffix',
+    'opt.ruleUnsafe': 'That pattern is unsafe (nested quantifiers such as (a+)+ can freeze the page) — not saved',
     'opt.ruleErr': 'Invalid regex: {msg}',
 
     'opt.testNeedUrl': 'Paste an image URL first',
@@ -1141,7 +1152,9 @@
     'bg.noSourceTab': 'Cannot find the source tab',
     'bg.imageTooBig': 'The image is too large',
     'bg.missingUrl': 'Missing image URL',
-    'bg.cannotConnect': 'Cannot connect to the target page'
+    'bg.cannotConnect': 'Cannot connect to the target page',
+    'bg.notAnImage': 'That was not an image (an error page, or the request was blocked)',
+    'bg.readTimeout': 'Timed out while reading the response'
   };
 
   /* ------------------------------------------------------------------ *

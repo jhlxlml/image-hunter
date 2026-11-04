@@ -35,6 +35,22 @@ let job = null;                  // 当前批次 { batchId, total, done, failed,
 const recentLog = [];            // 最近若干条下载结果（用于进度面板）
 let jobRestoreCount = 0;
 
+/* 已经在下载中的任务（已经从 queue 里 shift 出去了）。
+ *
+ * 为什么要单独记：persistJob 以前只存 queue，而 queue 里的任务在 worker
+ * `shift()` 出去的那一刻就不在里面了 —— 于是 SW 一被回收，**正在下的那一张
+ * 就彻底消失**：既不在待办里，也没进 done/failed，这个批次的数字永远对不上
+ * （done+failed+skipped 会一直小于 total，进度条卡在 99%）。
+ *
+ * 配上 downloadId 之后还能做更重要的判断：重启后先问 chrome.downloads
+ * 「那个 id 到底下完了没有」，下完了就直接记账（不重下、不留重复文件），
+ * 没下完就重新排队。这叫对账，不是猜。 */
+let activeTasks = [];
+/* 已经记过账的 downloadId。对账要幂等：SW 可能连续重启两次，
+   同一个 id 不能既算一次 done 又写一条历史。 */
+let settledIds = new Set();
+let restoringJob = false;
+
 const pendingDownloads = new Map();   // downloadId -> { resolve, reject, timer }
 const scanSessions = new Map();       // reqId -> session
 
@@ -232,6 +248,11 @@ async function downloadOne(task) {
       conflictAction: 'uniquify',
       saveAs: false
     });
+    /* 拿到 id 立刻记下来并落盘：这是重启后唯一能问「这张下完了吗」的凭据。
+       晚一步（比如等 waitForDownload 之后）记，SW 恰好在那之间被回收，
+       这个 id 就永久丢了 —— 那张图既没进 done，也不会重下。 */
+    task.downloadId = id;
+    await persistJob();
     const info = await waitForDownload(id, task.interactive ? 60000 : 180000);
     return describeSaved(info, requested);
   } catch (err) {
@@ -264,6 +285,21 @@ function describeSaved(info, requested) {
   };
 }
 
+/* 一张图最多收多少。16MB 已经远超常见「原图」，再大多半是
+   「这个 URL 其实指向视频 / 压缩包」或者服务器在灌垃圾。 */
+const MAX_IMAGE_BYTES = 16 * 1024 * 1024;
+const DOWNLOAD_READ_TIMEOUT = 60000;
+const FETCH_IMAGE_READ_TIMEOUT = 20000;
+
+/** 把 readBodyLimited 抛出的 code 翻成人话（否则气泡上会出现 'too-big'） */
+function bodyLimitError(e) {
+  const code = e && e.code;
+  if (code === 'too-big') return new Error(t('bg.imageTooBig'));
+  if (code === 'bad-mime') return new Error(t('bg.notAnImage'));
+  if (code === 'read-timeout') return new Error(t('bg.readTimeout'));
+  return e;
+}
+
 /**
  * 降级方案：在扩展页里 fetch 图片（不受页面 CORS 限制），
  * 拿到 blob 后用 blob URL / dataURL 交给下载 API —— 可绕过缺少 Referer 导致的 403
@@ -279,7 +315,22 @@ async function downloadViaFetch(task, filename) {
 
   const res = await U.fetchWithTimeout(task.url, opts, 30000);
   if (!res.ok) throw new Error('HTTP ' + res.status);
-  const blob = await res.blob();
+
+  /* 这里以前是裸的 `await res.blob()`：先吃完整个响应体，再检查大小 ——
+     等于「先让内存爆掉，再问它是不是太大了」。而且 fetchWithTimeout 的
+     计时器在响应头到达时就 clearTimeout 了，body 可以无限期地慢慢吐。
+     换成有上限、有截止时间的读法（见 shared/utils.js 的 readBodyLimited）。 */
+  let blob;
+  try {
+    const got = await U.readBodyLimited(res, {
+      maxBytes: MAX_IMAGE_BYTES,
+      timeoutMs: DOWNLOAD_READ_TIMEOUT,
+      allowMime: U.isImageMime
+    });
+    blob = got.blob;
+  } catch (e) {
+    throw bodyLimitError(e);
+  }
   if (!blob.size) throw new Error(t('bg.emptyBody'));
 
   let objectUrl = null;
@@ -298,6 +349,9 @@ async function downloadViaFetch(task, filename) {
       conflictAction: 'uniquify',
       saveAs: false
     });
+    // 同 downloadOne：降级路径也要留下 downloadId，否则重启后对不了账
+    task.downloadId = id;
+    await persistJob();
     const info = await waitForDownload(id);
     const described = describeSaved(info, filename);
     if (!described.bytes) described.bytes = blob.size;
@@ -354,6 +408,19 @@ function broadcastProgress() {
   persistJob();
 }
 
+/** 持久化时用的任务瘦身版（去掉 Promise / 闭包，session storage 只收纯数据） */
+function slimTask(t) {
+  return {
+    url: t.url,
+    pageUrl: t.pageUrl,
+    filename: t.filename,
+    width: t.width,
+    height: t.height,
+    index: t.index,
+    restored: !!t.restored
+  };
+}
+
 async function persistJob() {
   try {
     if (!job || job.status !== 'running') {
@@ -369,14 +436,13 @@ async function persistJob() {
         skipped: job.skipped,
         status: job.status,
         restores: jobRestoreCount,
-        pending: queue.map((t) => ({
-          url: t.url,
-          pageUrl: t.pageUrl,
-          filename: t.filename,
-          width: t.width,
-          height: t.height,
-          index: t.index
-        }))
+        pending: queue.map(slimTask),
+        /* 在飞的这几张也要存 —— 见 activeTasks 的注释。
+           downloadId 是关键：没有它就没法在重启后对账。 */
+        active: activeTasks.map((t) => Object.assign(slimTask(t), {
+          downloadId: t.downloadId == null ? null : t.downloadId
+        })),
+        settled: Array.from(settledIds).slice(-200)
       }
     });
   } catch (e) { /* session 存储不可用时忽略 */ }
@@ -387,6 +453,7 @@ async function worker() {
     const task = queue.shift();
     if (!task) break;
     activeCount++;
+    activeTasks.push(task);
     broadcastProgress();
     try {
       await runTask(task);
@@ -395,8 +462,12 @@ async function worker() {
       const msg = String((e && e.message) || e);
       pushRecent({ index: task.index, url: task.url, status: 'failed', error: msg });
       finishTask(task, { ok: false, url: task.url, error: msg });
+    } finally {
+      // 无论成功失败都要移出「在飞」清单，否则重启时会去对账一个早就不存在的任务
+      const at = activeTasks.indexOf(task);
+      if (at >= 0) activeTasks.splice(at, 1);
+      activeCount--;
     }
-    activeCount--;
     broadcastProgress();
   }
 }
@@ -468,18 +539,26 @@ async function runTask(task) {
         status: 'done',
         bytes: result.bytes || 0
       });
-      await Store.addFingerprints([fp]);
-      await Store.bumpStats({ saved: 1, bytes: result.bytes || 0 });
-      await Store.addHistory({
-        ts: Date.now(),
-        url: task.url,
-        pageUrl: task.pageUrl,
-        filename: task.relPath,
-        width: task.width || 0,
-        height: task.height || 0,
-        bytes: result.bytes || 0,
-        status: 'done'
-      });
+      /* 记账（指纹 / 统计 / 历史）。
+         Store.rawSet 现在会抛异常（不再假装成功），但**这里必须吞掉**：
+         文件已经落盘了，把一次成功的下载判成失败是更糟的谎。
+         所以这个「尽力而为」的决定写在这里，而不是藏在 Store 里。 */
+      try {
+        await Store.addFingerprints([fp]);
+        await Store.bumpStats({ saved: 1, bytes: result.bytes || 0 });
+        await Store.addHistory({
+          ts: Date.now(),
+          url: task.url,
+          pageUrl: task.pageUrl,
+          filename: task.relPath,
+          width: task.width || 0,
+          height: task.height || 0,
+          bytes: result.bytes || 0,
+          status: 'done'
+        });
+      } catch (e) {
+        console.warn('[ImageHunter] 下载已落盘，但记账失败：', (e && e.message) || e);
+      }
       broadcastProgress();
       finishTask(task, {
         ok: true,
@@ -503,17 +582,22 @@ async function runTask(task) {
   task.error = String((lastError && lastError.message) || lastError || t('bg.unknownError'));
   job.failed++;
   pushRecent({ index: task.index, url: task.url, status: 'failed', error: task.error });
-  await Store.bumpStats({ failed: 1 });
-  await Store.addHistory({
-    ts: Date.now(),
-    url: task.url,
-    pageUrl: task.pageUrl,
-    filename: task.filename,
-    width: task.width || 0,
-    height: task.height || 0,
-    status: 'failed',
-    error: task.error
-  });
+  try {
+    await Store.bumpStats({ failed: 1 });
+    await Store.addHistory({
+      ts: Date.now(),
+      url: task.url,
+      pageUrl: task.pageUrl,
+      filename: task.filename,
+      width: task.width || 0,
+      height: task.height || 0,
+      status: 'failed',
+      error: task.error
+    });
+  } catch (e) {
+    // 同上：失败已经发生了，记账再失败不该改变这次任务的结果
+    console.warn('[ImageHunter] 失败记账没写进去：', (e && e.message) || e);
+  }
   broadcastProgress();
   finishTask(task, { ok: false, url: task.url, error: task.error });
 }
@@ -550,6 +634,9 @@ async function startBatch(items, options) {
     };
     recentLog.length = 0;
     jobRestoreCount = 0;
+    // 新批次重新开始记账：上一批的 downloadId 不该再拦住这一批
+    settledIds = new Set();
+    activeTasks = [];
   }
 
   // 新批次从 1 开始；追加到运行中的批次则接着当前批次的序号往下排
@@ -1033,6 +1120,19 @@ function onScanResult(msg, sender) {
  * 体积探测
  * ====================================================================== */
 
+/**
+ * 丢掉一个响应体。**只读响应头、不要内容的请求必须调它。**
+ *
+ * 不调会怎样：浏览器会继续把整个响应体收完（白白占带宽、占内存），
+ * 连接也不释放。Range 探测尤其危险 —— 我们只想要 `Content-Range` 里的
+ * 总长度，而**服务器完全可能忽略 Range 直接回 200 + 整个文件**，
+ * 于是一次「探测体积」就把整张原图下载了一遍。
+ */
+async function discardBody(res) {
+  if (!res || !res.body || typeof res.body.cancel !== 'function') return;
+  try { await res.body.cancel(); } catch (e) { /* 已经读完 / 已关闭，忽略 */ }
+}
+
 async function probeRemoteSize(url) {
   if (!url || U.isDataUrl(url)) return null;
 
@@ -1041,8 +1141,9 @@ async function probeRemoteSize(url) {
     if (res.ok) {
       const len = res.headers.get('content-length');
       const type = res.headers.get('content-type') || '';
-      if (len) return { bytes: parseInt(len, 10) || 0, type };
+      if (len) { await discardBody(res); return { bytes: parseInt(len, 10) || 0, type }; }
     }
+    await discardBody(res);
   } catch (e) { /* HEAD 不被支持时继续 */ }
 
   try {
@@ -1054,10 +1155,15 @@ async function probeRemoteSize(url) {
     const cr = res.headers.get('content-range');
     if (cr) {
       const m = cr.match(/\/(\d+)\s*$/);
-      if (m) return { bytes: parseInt(m[1], 10) || 0, type: res.headers.get('content-type') || '' };
+      if (m) { await discardBody(res); return { bytes: parseInt(m[1], 10) || 0, type: res.headers.get('content-type') || '' }; }
     }
     const len = res.headers.get('content-length');
-    if (len && res.status !== 206) return { bytes: parseInt(len, 10) || 0, type: res.headers.get('content-type') || '' };
+    if (len && res.status !== 206) {
+      // 服务器忽略了 Range，回的是 200 + 整个文件：长度就是它，但**必须立刻掐掉**
+      await discardBody(res);
+      return { bytes: parseInt(len, 10) || 0, type: res.headers.get('content-type') || '' };
+    }
+    await discardBody(res);
   } catch (e) { /* ignore */ }
 
   return null;
@@ -1083,14 +1189,19 @@ async function probeMany(urls) {
 /* ====================================================================== *
  * 页内面板的来源校验 token（AUDIT P3-7）
  *
- * 面板 = 「网页里的 iframe 加载扩展页 popup.html?mode=panel&tabId=N」。
+ * 面板 = 「网页里的 iframe 加载扩展页 popup.html?mode=panel」。
  * popup/* 必须在 web_accessible_resources 里（否则 iframe 加载不了），
  * 于是**任何网站都能构造同款 iframe**，把图库叠在自己页面上做套壳点击，
  * 或者靠「能不能加载这个资源」探测用户装没装本扩展。
  *
- * 校验办法：内容脚本向后台领一个只属于本标签页的随机 token，写进 iframe 的 URL；
- * 面板启动时拿 URL 里的 tabId + token 回后台核验。
- * 网页自己没法给后台发消息（不是扩展上下文），拿不到 token，也就伪造不出合法 URL。
+ * 校验办法：内容脚本向后台领一个只属于本标签页的随机 token，
+ * **用 postMessage 交给面板**（不是写进 iframe 的 URL —— 那个 src 在页面的
+ * DOM 里，网页脚本 `host.shadowRoot.querySelector('iframe').src` 就读到了，
+ * 拿到 token 之后它就能自己拼一个合法 iframe 出来，校验等于白做）。
+ * 面板拿 token 回后台核验，后台再用 **sender.tab.id** 确认「这个面板确实
+ * 跑在那个标签页里」—— 请求方自己填的 tabId 一律不认。
+ *
+ * 网页自己没法给后台发消息（不是扩展上下文），拿不到 token，也就伪造不出合法面板。
  *
  * token 存在 storage.session 而不是内存里：MV3 的 SW 会被回收，
  * 内存 Map 一丢，已经打开的面板刷新一次就废了。
@@ -1120,6 +1231,50 @@ async function verifyPanelToken(tabId, token) {
   if (tabId == null || !token) return false;
   const store = await panelTokens();
   return !!store[tabId] && store[tabId] === token;
+}
+
+/* ---------------------------------------------------------------------- *
+ * 「这条消息是谁发的」—— 授权的唯一可信来源
+ *
+ * 不要用 `e.origin` / `msg.payload.tabId` / `sender.url` 里的页面地址来判身份：
+ * 前两个是**请求方自己说的**，第三个在网页内容脚本里就是网页地址（谁都能伪造页面）。
+ *
+ * 能信的只有浏览器填的这几项：
+ *   sender.id        —— 必须等于本扩展 ID（别的扩展发不进来，但白拿一道）
+ *   sender.url       —— **扩展页**是 chrome-extension://<id>/...；内容脚本是网页地址。
+ *                       这是区分「我的扩展页」和「我的内容脚本」的关键。
+ *   sender.tab.id    —— 消息来自哪个标签页。内容脚本和嵌在网页里的扩展页都拿得到，
+ *                       而网页脚本自己**发不出** runtime 消息，所以这个值不可伪造。
+ *   sender.frameId   —— 0 表示顶层（扩展自己开的标签页），>0 表示嵌在别人页面里。
+ * ---------------------------------------------------------------------- */
+
+/** 扩展页的根地址（`chrome-extension://<id>/`） */
+function extBase() {
+  try { return chrome.runtime.getURL(''); } catch (e) { return ''; }
+}
+
+/** 这条消息是不是**本扩展的页面**（popup.html / options.html）发出的 */
+function isExtensionPageSender(sender) {
+  if (!sender) return false;
+  try {
+    if (sender.id && chrome.runtime.id && sender.id !== chrome.runtime.id) return false;
+  } catch (e) { /* 拿不到 runtime.id 就跳过这一道 */ }
+  const base = extBase();
+  if (!base) return false;
+  const url = typeof sender.url === 'string' ? sender.url : '';
+  if (url) return url.indexOf(base) === 0;
+  // 个别 Chrome 版本对扩展页不给 sender.url，退一步看 origin
+  return typeof sender.origin === 'string' && sender.origin === base.replace(/\/$/, '');
+}
+
+/** 消息来源标签页 id（拿不到就是 null）。**不读 msg 里的 tabId。** */
+function senderTabId(sender) {
+  return sender && sender.tab && sender.tab.id != null ? sender.tab.id : null;
+}
+
+/** 是不是顶层 frame（扩展自己开的标签页）。拿不到 frameId 时返回 null（未知）。 */
+function senderFrameId(sender) {
+  return sender && typeof sender.frameId === 'number' ? sender.frameId : null;
 }
 
 /* ====================================================================== *
@@ -1375,10 +1530,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           }
           const res = await U.fetchWithTimeout(p.url, opts, 20000);
           if (!res.ok) throw new Error('HTTP ' + res.status);
-          const blob = await res.blob();
-          if (blob.size > 16 * 1024 * 1024) throw new Error(t('bg.imageTooBig'));
-          const dataUrl = await U.blobToDataUrl(blob);
-          sendResponse({ ok: true, dataUrl, size: blob.size, mime: blob.type });
+          /* 以前是先 `await res.blob()` 再判 `size > 16MB` ——
+             判断发生在内存已经吃完之后，等于没判。改成边读边计数。 */
+          let got;
+          try {
+            got = await U.readBodyLimited(res, {
+              maxBytes: MAX_IMAGE_BYTES,
+              timeoutMs: FETCH_IMAGE_READ_TIMEOUT,
+              allowMime: U.isImageMime
+            });
+          } catch (e) {
+            throw bodyLimitError(e);
+          }
+          if (!got.bytes) throw new Error(t('bg.emptyBody'));
+          const dataUrl = await U.blobToDataUrl(got.blob);
+          sendResponse({ ok: true, dataUrl, size: got.bytes, mime: got.mime });
         } catch (e) {
           sendResponse({ ok: false, error: String((e && e.message) || e) });
         }
@@ -1437,8 +1603,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
 
     case MSG.PANEL_TOKEN: {
-      // 只发给真正的内容脚本：sender.tab 是消息来源标签页，网页伪造不了
-      const tabId = sender && sender.tab ? sender.tab.id : null;
+      /* 只发给**内容脚本**。
+         `sender.tab` 是消息来源标签页，网页脚本发不出 runtime 消息，伪造不了。
+         但嵌在网页里的扩展页（面板自己）也带 sender.tab —— 如果它也来领 token，
+         就变成了「自己给自己发通行证」，所以扩展页要挡掉：
+         它的 sender.url 是 chrome-extension://，内容脚本的是网页地址。 */
+      if (isExtensionPageSender(sender)) {
+        sendResponse({ ok: false, error: '扩展页不能领面板 token' });
+        return true;
+      }
+      const tabId = senderTabId(sender);
       if (tabId == null) { sendResponse({ ok: false, error: '不是来自标签页的请求' }); return true; }
       issuePanelToken(tabId).then(
         (token) => sendResponse({ ok: true, token }),
@@ -1448,11 +1622,49 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
 
     case MSG.PANEL_VERIFY: {
+      /* 面板自证。
+         关键点：**tabId 从 sender 取，不从 payload 取**。
+         以前是 `verifyPanelToken(p.tabId, p.token)` —— p.tabId 是请求方自己填的，
+         只要拿到任意一个标签页的 token，就能声称自己是那个标签页。
+         现在绑成「你确实跑在 sender.tab 里」，网页换不了。 */
       const p = msg.payload || {};
-      verifyPanelToken(p.tabId, p.token).then(
-        (valid) => sendResponse({ ok: true, valid }),
+      const tabId = senderTabId(sender);
+      const frameId = senderFrameId(sender);
+      const ok = !!tabId && isExtensionPageSender(sender);
+      if (!ok) { sendResponse({ ok: true, valid: false, reason: 'not-extension-page' }); return true; }
+      if (frameId === 0) {
+        // 顶层扩展页不是面板 —— 面板一定是被内容脚本嵌进网页的
+        sendResponse({ ok: true, valid: false, reason: 'not-embedded' });
+        return true;
+      }
+      if (p.tabId != null && Number(p.tabId) !== tabId) {
+        sendResponse({ ok: true, valid: false, reason: 'tab-mismatch' });
+        return true;
+      }
+      verifyPanelToken(tabId, p.token).then(
+        (valid) => sendResponse({ ok: true, valid, tabId, frameId }),
         () => sendResponse({ ok: false, valid: false })
       );
+      return true;
+    }
+
+    case MSG.GALLERY_AUTH: {
+      /* 独立页（?mode=page）自证。
+         以前 mode=page 完全跳过校验，理由写在注释里：「网页碰不到」。
+         可网页能 `<iframe src="...popup.html?mode=page">` —— 于是这条假设不成立，
+         等于给了网页一个**零成本、完全可用**的图库套壳。
+         现在要求：必须是本扩展的页面 + 必须是顶层 frame（frameId === 0）。 */
+      const tabId = senderTabId(sender);
+      const frameId = senderFrameId(sender);
+      const isPage = isExtensionPageSender(sender);
+      const topLevel = frameId === 0;
+      sendResponse({
+        ok: true,
+        valid: !!tabId && isPage && topLevel,
+        tabId,
+        frameId,
+        reason: !isPage ? 'not-extension-page' : (!topLevel ? 'not-top-level' : 'ok')
+      });
       return true;
     }
 
@@ -1780,10 +1992,18 @@ chrome.runtime.onStartup.addListener(async () => {
 })();
 
 async function restoreJob() {
+  /* 重入保护：restoreJob 会被 onStartup 和 bootstrap 各调一次。
+     两处同时跑会读到同一份快照，于是同一批任务被恢复两遍 ——
+     done 直接翻倍，历史里出现两份。 */
+  if (restoringJob) return;
+  restoringJob = true;
   try {
     const obj = await chrome.storage.session.get(SESSION_KEY);
     const saved = obj && obj[SESSION_KEY];
-    if (!saved || saved.status !== 'running' || !saved.pending || !saved.pending.length) return;
+    if (!saved || saved.status !== 'running') return;
+    const pending = saved.pending || [];
+    const active = saved.active || [];
+    if (!pending.length && !active.length) return;
 
     // 避免反复恢复造成死循环
     if ((saved.restores || 0) >= 3) {
@@ -1791,6 +2011,7 @@ async function restoreJob() {
       return;
     }
     jobRestoreCount = (saved.restores || 0) + 1;
+    settledIds = new Set(saved.settled || []);
 
     job = {
       batchId: saved.batchId,
@@ -1801,9 +2022,123 @@ async function restoreJob() {
       status: 'running',
       restored: true
     };
-    queue = saved.pending.map((t) => Object.assign({ attempts: 0, status: 'pending' }, t));
-    console.log('[ImageHunter] 恢复未完成的下载队列：', queue.length, '项');
+    queue = pending.map((t) => Object.assign({ attempts: 0, status: 'pending' }, t));
+
+    /* 对账：在飞的那几张，先问 chrome.downloads「到底怎么样了」。
+       这一步就是「幂等」的全部意义 ——
+         · 已经落盘的**不要再下一遍**（会多出一个重名文件）
+         · 已经记过账的**不要重复计数**（历史里会冒出两条一样的记录） */
+    const requeue = [];
+    for (const t of active) {
+      const task = Object.assign({ attempts: 0, status: 'pending' }, t);
+      if (task.downloadId == null) { requeue.push(task); continue; }
+      if (settledIds.has(task.downloadId)) continue;
+
+      let item = null;
+      try {
+        const items = await chrome.downloads.search({ id: task.downloadId });
+        item = items && items[0];
+      } catch (e) { item = null; }
+
+      if (item && item.state === 'complete') await settleRestoredDone(task, item);
+      else if (item && item.state === 'interrupted') await settleRestoredFailed(task, item);
+      else if (item && item.state === 'in_progress') watchRestored(task);
+      else requeue.push(task);      // 连记录都没有了 → 当作没开始过
+    }
+    queue = queue.concat(requeue);
+
+    console.log('[ImageHunter] 恢复未完成的下载队列：待办 ' + queue.length
+      + ' 项，在飞 ' + activeTasks.length + ' 项');
     broadcastProgress();
-    pump();
+
+    if (queue.length) pump();
+    else if (!activeTasks.length) {
+      job.status = 'done';
+      job.finishedAt = Date.now();
+      broadcastProgress();
+    }
   } catch (e) { /* ignore */ }
+  finally { restoringJob = false; }
+}
+
+/* ---------------------------------------------------------------------- *
+ * 恢复对账的两个落点 + 一个「还在下」的接续
+ * ---------------------------------------------------------------------- */
+
+/** 已落盘：补记指纹 / 统计 / 历史，并且**只记一次** */
+async function settleRestoredDone(task, item) {
+  if (task.downloadId != null) {
+    if (settledIds.has(task.downloadId)) return;
+    settledIds.add(task.downloadId);
+  }
+  const bytes = itemBytes(item);
+  const actual = baseName(item && item.filename) || task.filename;
+  job.done++;
+  pushRecent({ index: task.index, url: task.url, filename: actual, status: 'done', bytes });
+  try {
+    const fp = await U.sha256hex(task.url + '|' + (task.width || 0) + 'x' + (task.height || 0));
+    await Store.addFingerprints([fp]);
+    await Store.bumpStats({ saved: 1, bytes });
+    await Store.addHistory({
+      ts: Date.now(),
+      url: task.url,
+      pageUrl: task.pageUrl,
+      filename: actual,
+      width: task.width || 0,
+      height: task.height || 0,
+      bytes,
+      status: 'done'
+    });
+  } catch (e) {
+    // 对账时文件已经在了，记账失败不该让整个恢复流程中断
+    console.warn('[ImageHunter] 对账补记失败：', (e && e.message) || e);
+  }
+}
+
+/** 已失败：同样只记一次 */
+async function settleRestoredFailed(task, item) {
+  if (task.downloadId != null) {
+    if (settledIds.has(task.downloadId)) return;
+    settledIds.add(task.downloadId);
+  }
+  const err = (item && item.error) || t('bg.downloadInterrupted');
+  job.failed++;
+  pushRecent({ index: task.index, url: task.url, status: 'failed', error: err });
+  try {
+    await Store.bumpStats({ failed: 1 });
+    await Store.addHistory({
+      ts: Date.now(),
+      url: task.url,
+      pageUrl: task.pageUrl,
+      filename: task.filename,
+      width: task.width || 0,
+      height: task.height || 0,
+      status: 'failed',
+      error: err
+    });
+  } catch (e) {
+    console.warn('[ImageHunter] 对账补记失败：', (e && e.message) || e);
+  }
+}
+
+/** 重启时那张还在下：接上 onChanged 等它落盘，**而不是重新下一遍** */
+function watchRestored(task) {
+  activeTasks.push(task);
+  activeCount++;
+  const finish = (fn) => {
+    Promise.resolve(fn()).catch(() => {}).then(() => {
+      const at = activeTasks.indexOf(task);
+      if (at >= 0) activeTasks.splice(at, 1);
+      activeCount--;
+      if (job && job.status === 'running' && !queue.length && !activeCount) {
+        job.status = 'done';
+        job.finishedAt = Date.now();
+      }
+      broadcastProgress();
+    });
+  };
+  waitForDownload(task.downloadId, 180000).then(
+    (info) => finish(() => settleRestoredDone(task, info)),
+    () => finish(() => settleRestoredFailed(task, null))
+  );
 }

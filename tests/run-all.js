@@ -47,6 +47,9 @@ const SUITES = [
   ['诊断包测试（白名单 / 脱敏 / 自查不变量）', 'test-diagnostics.js'],
   ['界面语言测试（判定 / 降级链 / 填充 / 落盘）', 'test-i18n.js'],
   ['主题系统测试（兜底值 / 派生 / host 隔离 / 系统跟色）', 'test-theme.js'],
+  ['浏览器挑选逻辑（CI 必须用 Playwright 的 Chromium）', 'test-browser-resolve.js'],
+  ['响应体读取上限测试（大小 / MIME / 超时 / 取消）', 'test-fetch-limits.js'],
+  ['下载任务持久化 / 重启对账测试（MV3 SW 回收）', 'test-job-restore.js'],
   ['交付完整性校验（manifest / 资源 / 图标）', 'validate.js']
 ];
 

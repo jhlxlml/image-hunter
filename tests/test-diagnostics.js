@@ -203,8 +203,32 @@ check(json.indexOf('某个具体的商品标题') < 0, '页面标题不出现');
  * 9. fileName
  * ================================================================== */
 console.log('\n=== 9. fileName ===');
-eq(D.fileName(Date.UTC(2026, 9, 8, 7, 30, 12)), 'image-hunter-diag-20261008-153012.json',
-  '文件名带本地时间戳（UTC+8）');
+/* 这一条曾经写成 `Date.UTC(2026, 9, 8, 7, 30, 12)` → 期望 `...153012`，
+ * 也就是把「跑测试这台机器的时区是 UTC+8」写进了断言。
+ * 本地全绿，CI（ubuntu runner，UTC）必红 —— 而红的是**测试**不是代码：
+ * fileName 用 getHours() 取本地时间本来就是对的。
+ *
+ * 现在改成**用本地时间分量构造输入**：`new Date(2026, 9, 8, 15, 30, 12)`
+ * 在任何时区下本地渲染都是 15:30:12，所以断言与时区无关。 */
+const localAt = new Date(2026, 9, 8, 15, 30, 12);
+eq(D.fileName(localAt.getTime()), 'image-hunter-diag-20261008-153012.json',
+  '文件名用本地时间（与运行环境的时区无关）');
+
+/* 光比「本地渲染对不对」还不够 —— 哪天谁把 getHours 改成 getUTCHours，
+ * 上面那条在 UTC+8 下会**照样绿**（因为本地时间恰好等于它期望的字符串）。
+ * 所以再比一次：同一时刻的 UTC 渲染必须和它不同（除非 offset 恰好为 0）。 */
+const offsetMin = localAt.getTimezoneOffset();
+if (offsetMin !== 0) {
+  const p2 = (n) => String(n).padStart(2, '0');
+  const utcRendered = 'image-hunter-diag-'
+    + localAt.getUTCFullYear() + p2(localAt.getUTCMonth() + 1) + p2(localAt.getUTCDate())
+    + '-' + p2(localAt.getUTCHours()) + p2(localAt.getUTCMinutes()) + p2(localAt.getUTCSeconds())
+    + '.json';
+  check(D.fileName(localAt.getTime()) !== utcRendered,
+    '文件名不是 UTC 渲染的（本机 offset ' + offsetMin + ' 分钟，UTC 会渲染成 ' + utcRendered + '）');
+} else {
+  ok('本机 offset 为 0，本地渲染与 UTC 渲染本就相同 —— 这条差异在此环境下不成立（不是跳过，是前提为假）');
+}
 check(/^image-hunter-diag-\d{8}-\d{6}\.json$/.test(D.fileName()), '文件名格式稳定');
 
 console.log('\n通过 ' + pass + ' 项，失败 ' + fail + ' 项');

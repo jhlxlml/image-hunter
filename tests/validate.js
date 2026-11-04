@@ -2369,6 +2369,65 @@ console.log('\n=== 21. 图标：单一来源（Lucide）+ 同层级同一档 ===
   }
 }
 
+/* ==================================================================== *
+ * 22. 文档里的「套件数量」不许漂
+ *
+ * 为什么值得守：v1.20.0 加了 3 个 Node 套件（17 → 20），而
+ * `.github/workflows/ci.yml` 的 job 名、README 的两行说明、HANDBOOK 的
+ * 命令注释里写着的都是旧数字。这些数字**不参与任何逻辑**，所以没有任何东西
+ * 会因为它错了而失败 —— 它们只是**悄悄变成谎话**，然后某天有人照着
+ * 「17 个套件」去核对输出，发现对不上，再花十分钟确认「到底是谁错了」。
+ *
+ * 守的规则只有一条：**凡是写了数字的地方，数字必须等于磁盘上的实际数量**。
+ * 盘上的事实是唯一真相源（`test-*.js` / `browser-*.js` 的文件数）。
+ * ==================================================================== */
+{
+  const testsDir = path.join(ROOT, 'tests');
+  const list = fs.readdirSync(testsDir);
+  /* Node 套件 = test-*.js + validate.js（校验脚本自己也是 run-all.js 里的一个套件，
+     但它不叫 test-* —— 第一次写这段时漏了它，被自己的守卫抓了个正着） */
+  const nodeCount = list.filter((f) => /^test-.*\.js$/.test(f)).length + (list.includes('validate.js') ? 1 : 0);
+  const browserCount = list.filter((f) => /^browser-.*\.js$/.test(f)).length;
+
+  /* (a) CI 的两个 job 名 */
+  const ci = fs.readFileSync(path.join(ROOT, '.github/workflows/ci.yml'), 'utf8');
+  const ciNode = /name: Node 套件（(\d+) 个）/.exec(ci);
+  const ciBrowser = /name: 真浏览器套件（(\d+) 个）/.exec(ci);
+  if (ciNode && Number(ciNode[1]) === nodeCount) {
+    ok('ci.yml 的 Node job 名写着 ' + nodeCount + ' 个，与实际套件数一致');
+  } else {
+    bad('ci.yml 的 Node job 名与实际套件数不一致',
+      '写着 ' + (ciNode ? ciNode[1] : '（没找到）') + '，实际 ' + nodeCount);
+  }
+  if (ciBrowser && Number(ciBrowser[1]) === browserCount) {
+    ok('ci.yml 的真浏览器 job 名写着 ' + browserCount + ' 个，与实际套件数一致');
+  } else {
+    bad('ci.yml 的真浏览器 job 名与实际套件数不一致',
+      '写着 ' + (ciBrowser ? ciBrowser[1] : '（没找到）') + '，实际 ' + browserCount);
+  }
+
+  /* (b) 两份 README 的目录树与命令注释（中英各两处） */
+  const docNums = [
+    ['README.md', /# (\d+) 个 Node 套件 \+ (\d+) 个真实浏览器套件/, '目录树'],
+    ['README.md', /# Node 套件（(\d+) 个）/, '命令注释'],
+    ['README.en.md', /# (\d+) Node suites \+ (\d+) real-browser suites/, '目录树'],
+    ['README.en.md', /# Node suites \((\d+)\)/, '命令注释']
+  ];
+  docNums.forEach(([rel, re, label]) => {
+    const src = fs.readFileSync(path.join(ROOT, rel), 'utf8');
+    const m = re.exec(src);
+    if (!m) { bad(rel + ' 里找不到「' + label + '」的套件数量', String(re)); return; }
+    const gotNode = Number(m[1]);
+    const gotBrowser = m[2] == null ? browserCount : Number(m[2]);
+    if (gotNode === nodeCount && gotBrowser === browserCount) {
+      ok(rel + ' 的' + label + '写着 ' + nodeCount + ' / ' + browserCount + '，与实际一致');
+    } else {
+      bad(rel + ' 的' + label + '与实际套件数不一致',
+        '写着 ' + gotNode + ' / ' + gotBrowser + '，实际 ' + nodeCount + ' / ' + browserCount);
+    }
+  });
+}
+
 console.log('\n-----------------------------');
 console.log('通过 ' + pass + ' 项，失败 ' + fail + ' 项');
 process.exit(fail ? 1 : 0);

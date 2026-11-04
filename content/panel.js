@@ -16,29 +16,41 @@
   let root = null;
   let frame = null;
   let isOpen = false;
-  let tabId = null;
   let bound = false;
   let panelToken = null;
 
-  async function getTabId() {
-    if (tabId != null) return tabId;
-    const res = await U.sendToBg({ type: MSG.GET_TAB_ID });
-    if (res && res.ok && res.tabId != null) tabId = res.tabId;
-    return tabId;
-  }
-
   /**
-   * 领一个只属于本标签页的 token，写进 iframe 的 URL。
-   * 面板启动时会拿它回后台核验 —— 这样「网页自己伪造一个 iframe 套壳图库」
-   * 就过不了校验（网页拿不到 token，见 AUDIT P3-7）。
+   * 领一个只属于本标签页的 token。
+   *
+   * **不再写进 iframe 的 URL**：那个 src 就在页面 DOM 里，
+   * 网页脚本 `host.shadowRoot.querySelector('iframe').src` 就读得到 ——
+   * 读到之后它能自己拼一个带合法 token 的 iframe，校验等于白做。
+   * 现在改成面板加载完、发回 `ready` 之后，用 postMessage 点对点交给它：
+   * 发给 `frame.contentWindow` 的消息只有那个 window 收得到，网页脚本听不见。
    */
   async function getPanelToken() {
     if (panelToken) return panelToken;
     try {
       const res = await U.sendToBg({ type: MSG.PANEL_TOKEN });
       if (res && res.ok && res.token) panelToken = res.token;
-    } catch (e) { /* 拿不到就不带 token，面板会拒绝启动 */ }
+    } catch (e) { /* 拿不到就不交接，面板会拒绝启动 */ }
     return panelToken;
+  }
+
+  /** 扩展页的 origin（postMessage 的 targetOrigin —— 不给网页任何投递机会） */
+  function extOrigin() {
+    try {
+      const u = new URL(U.extUrl('popup/popup.html'));
+      return u.origin;
+    } catch (e) { return '*'; }
+  }
+
+  /** 把 token 交接给面板（点对点，网页脚本收不到） */
+  function handOff() {
+    if (!frame || !frame.contentWindow) return;
+    const msg = { __ih: true, type: 'init' };
+    if (panelToken) msg.token = panelToken;
+    try { frame.contentWindow.postMessage(msg, extOrigin()); } catch (e) { /* ignore */ }
   }
 
   function build() {
@@ -74,26 +86,30 @@
 
       if (data.type === 'close') hide();
       else if (data.type === 'ready') {
-        // 面板重新加载完成
-        frame.contentWindow.postMessage({ __ih: true, type: 'init', tabId }, '*');
+        // 面板加载完成 → 把 token 点对点交给它（第一次就顺带取 token）
+        getPanelToken().then(handOff, handOff);
       }
     });
   }
 
   async function show() {
-    const id = await getTabId();
     build();
     listen();
 
     if (!frame.getAttribute('src')) {
-      const token = await getPanelToken();
-      const url = U.extUrl('popup/popup.html') +
-        '?mode=panel' +
-        (id != null ? '&tabId=' + encodeURIComponent(id) : '') +
-        (token ? '&token=' + encodeURIComponent(token) : '');
-      frame.setAttribute('src', url);
-    } else {
-      try { frame.contentWindow.postMessage({ __ih: true, type: 'refresh' }, '*'); } catch (e) { /* ignore */ }
+      /* src 里**只有 mode**：token 走 postMessage 交接，tabId 由面板自己
+         向后台问（后台用 sender.tab.id 回答，比 URL 参数可信）。
+         这个 src 会被网页脚本读到，所以它上面不许有任何凭据。 */
+      frame.setAttribute('src', U.extUrl('popup/popup.html') + '?mode=panel');
+      // token 提前取好，`ready` 一到就能立刻交接
+      getPanelToken();
+    } else if (isOpen) {
+      // 已经开着再点一次：让面板重扫。带上 token —— 面板只认带对的 token 的指令
+      getPanelToken().then((tok) => {
+        try {
+          frame.contentWindow.postMessage({ __ih: true, type: 'refresh', token: tok }, extOrigin());
+        } catch (e) { /* ignore */ }
+      });
     }
 
     host.classList.add('ih-open');

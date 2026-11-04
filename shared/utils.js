@@ -417,10 +417,95 @@
    * @param {any} raw
    * @returns {Array<{pattern:string,flags:string,replace:string}>}
    */
+  /* ------------------------------------------------------------------ *
+   * 自定义正则的安全闸门（ReDoS）
+   *
+   * 为什么需要：`customRules` 里的 pattern 是**用户写的**，而它要匹配的字符串
+   * （图片地址）是**网页给的**。网页可以塞一个几百字符的恶意 src，配上一个
+   * `(a+)+$` 这样的正则，一次 `replace` 就能把 content script 卡死 ——
+   * 那一帧的扩展彻底失联，用户只看到页面变卡、按钮没反应。
+   *
+   * JS 里**没法**给正则设执行时间上限（没有 timeout 参数，而且不可中断），
+   * 所以只能在入口静态拒绝那几类会指数回溯的结构：
+   *   1. 量词套量词：`(a+)+` `(a*)*` `(.+){2,}` —— 回溯量是乘出来的
+   *   2. 量词套在「本身就能匹配空」的分组上：`(a?)+`
+   *   3. 超大计数：`a{1,100000}`
+   *   4. 反向引用配量词：`(\w+)\1+`
+   *
+   * 这是**启发式**，不是形式化证明（真判定要做正则 AST 分析）。
+   * 配套的兜底是：调用点对**被匹配的字符串**长度设上限。
+   * 两层一起才够 —— 任何一层单独都不该被当成保证。
+   * ------------------------------------------------------------------ */
+
+  /** 分组里已经带 * 或 +，分组外面又套一层量词 */
+  const RE_NESTED_QUANT = /\((?:[^()\\]|\\.)*[*+](?:[^()\\]|\\.)*\)\s*(?:[*+]|\{\d+,\d*\})/;
+  /** 分组里带 ? / *（可以匹配空），外面又套 * 或 + */
+  const RE_EMPTY_ABLE = /\((?:[^()\\]|\\.)*(?:[?*]|\{\d*,\d*\})(?:[^()\\]|\\.)*\)\s*(?:[*+]|\{\d+,\d*\})/;
+  const RE_BIG_COUNT = /\{\s*\d+\s*,\s*(\d+)\s*\}/;
+  /** 「被量词修饰的、含 | 的分组」—— 用来检查分支是否互相重叠 */
+  const RE_QUANT_GROUP = /\(([^()]*\|[^()]*)\)\s*(?:[*+]|\{\d+,\d*\})/g;
+
+  /**
+   * 被量词修饰的分支里，有没有「一条是另一条的前缀」。
+   *
+   * `(a|aa)+` 这种结构在匹配失败时会尝试 2^n 种切分方式 —— 它不含
+   * 「量词套量词」，前面几条启发式都抓不到，但一样能把线程拖死。
+   * 这里只比较**字面分支**的前缀关系（`(foo|bar)+` 是安全的，放行）；
+   * 带元字符的分支按去转义后的字面比较，宁可漏放也不误杀常见写法。
+   */
+  function hasOverlappingAlternation(pattern) {
+    RE_QUANT_GROUP.lastIndex = 0;
+    let m;
+    while ((m = RE_QUANT_GROUP.exec(pattern))) {
+      const branches = m[1].split('|').map((s) => s.replace(/\\/g, ''));
+      for (let i = 0; i < branches.length; i++) {
+        for (let j = 0; j < branches.length; j++) {
+          if (i === j) continue;
+          if (branches[i] && branches[j] && branches[j].indexOf(branches[i]) === 0) return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /**
+   * 这个正则看起来会不会把线程卡死。
+   * @returns {boolean} true = 可以安全使用
+   */
+  function isSafePattern(pattern) {
+    if (typeof pattern !== 'string') return false;
+    if (!pattern.trim()) return false;
+    // 太长的模式本身就难读，也更容易藏着坏结构
+    if (pattern.length > 300) return false;
+    if (RE_NESTED_QUANT.test(pattern)) return false;
+    if (RE_EMPTY_ABLE.test(pattern)) return false;
+    if (hasOverlappingAlternation(pattern)) return false;
+    const big = RE_BIG_COUNT.exec(pattern);
+    if (big && parseInt(big[1], 10) > 1000) return false;
+    if (/\\[1-9]/.test(pattern) && /[*+]/.test(pattern)) return false;
+    return true;
+  }
+
+  /**
+   * 匹配自定义正则时，最多看这么长的地址。
+   * 正常的图片地址远小于它；超长的多半是网页在灌数据。
+   * 截断之后即使闸门漏了，回溯的规模也是有界的。
+   */
+  const PATTERN_INPUT_LIMIT = 2048;
+
+  function clampForPattern(str) {
+    const s = String(str == null ? '' : str);
+    return s.length > PATTERN_INPUT_LIMIT ? s.slice(0, PATTERN_INPUT_LIMIT) : s;
+  }
+
   function sanitizeCustomRules(raw) {
     if (!Array.isArray(raw)) return [];
     return raw
       .filter((r) => r && typeof r === 'object' && typeof r.pattern === 'string' && r.pattern.trim())
+      /* 危险的模式直接丢掉 —— 留着它等于给网页一个「让扩展卡死」的按钮。
+         注意：这里丢的是**规则**，不是用户的数据文件；
+         设置页在保存时也会用 isSafePattern 拦一次并给出提示。 */
+      .filter((r) => isSafePattern(String(r.pattern).slice(0, 500)))
       .slice(0, 50)
       .map((r) => ({
         pattern: String(r.pattern).slice(0, 500),
@@ -576,6 +661,110 @@
       fr.onerror = () => reject(fr.error);
       fr.readAsDataURL(blob);
     });
+  }
+
+  /* ------------------------------------------------------------------ *
+   * 有上限地读响应体
+   *
+   * 为什么不能直接 `await res.blob()`：
+   *
+   * 1. **它会先把整个响应体读完再交给你**。也就是说「检查大小」这一步
+   *    永远发生在**内存已经吃掉之后** —— 遇到一个 2GB 的响应，
+   *    检查代码还没跑到，标签页/Service Worker 已经先被撑爆了。
+   *    必须先读 `content-length`，再边读边计数，超了就当场掐掉。
+   *
+   * 2. **它没有时间上限**。`fetchWithTimeout` 的 setTimeout 在 `fetch()`
+   *    resolve 时（也就是**响应头到了**）就 clearTimeout 了，
+   *    之后慢慢吐 body 的服务器可以无限期挂着 —— 连接不释放、
+   *    Promise 永远不 settle。所以这里要一个**整体读取截止时间**。
+   *
+   * 3. **它不看 MIME**。图床在出错时经常回一个 200 + text/html 的错误页，
+   *    直接存下来就是一张「打不开的 .jpg」。按白名单拦一道。
+   *
+   * 失败时抛的 Error 带 `code`（too-big / bad-mime / read-timeout），
+   * 调用方据此给用户一句人话，而不是把 'AbortError' 原样甩到气泡上。
+   * ------------------------------------------------------------------ */
+
+  /** 读响应体，带上限、截止时间与 MIME 白名单 */
+  async function readBodyLimited(res, opts) {
+    opts = opts || {};
+    const maxBytes = opts.maxBytes || 16 * 1024 * 1024;
+    const timeoutMs = opts.timeoutMs || 20000;
+    const allowMime = opts.allowMime || null;
+
+    const header = (name) => {
+      try { return (res.headers && res.headers.get(name)) || ''; } catch (e) { return ''; }
+    };
+    const mime = header('content-type');
+    const fail = (code, extra) => {
+      const e = new Error(code + (extra ? ': ' + extra : ''));
+      e.code = code;
+      return e;
+    };
+
+    if (allowMime && !allowMime(mime)) throw fail('bad-mime', mime);
+
+    /* 先看声明的大小。这一步能在**一个字节都不读**的情况下挡掉绝大多数超大响应。 */
+    const declared = parseInt(header('content-length'), 10);
+    if (isFinite(declared) && declared > maxBytes) throw fail('too-big', declared + ' > ' + maxBytes);
+
+    // 没有流式 body 可读（老环境 / 测试桩）→ 退回 blob()，但大小照样要查
+    if (!res.body || typeof res.body.getReader !== 'function') {
+      const blob = await res.blob();
+      if (blob.size > maxBytes) throw fail('too-big', blob.size + ' > ' + maxBytes);
+      return { blob, bytes: blob.size, mime: mime || blob.type || '' };
+    }
+
+    const reader = res.body.getReader();
+    const deadline = Date.now() + timeoutMs;
+    const chunks = [];
+    let total = 0;
+
+    try {
+      for (;;) {
+        const left = deadline - Date.now();
+        if (left <= 0) throw fail('read-timeout', timeoutMs + 'ms');
+        const step = await readOnce(reader, left, fail);
+        if (step.done) break;
+        const chunk = step.value;
+        total += chunk && chunk.byteLength ? chunk.byteLength : 0;
+        if (total > maxBytes) throw fail('too-big', total + ' > ' + maxBytes);
+        chunks.push(chunk);
+      }
+    } catch (e) {
+      /* 无论因为什么放弃，都要**主动取消**读取 —— 否则浏览器会继续把
+         响应体收完（白白占带宽），连接也不释放。这是 Range 探测那条
+         路径上尤其容易漏掉的一步。 */
+      try { await reader.cancel(); } catch (e2) { /* ignore */ }
+      throw e;
+    }
+
+    return { blob: new Blob(chunks, { type: mime || '' }), bytes: total, mime };
+  }
+
+  /** 读一块，超时就 reject（reader.read() 本身没有超时参数） */
+  function readOnce(reader, ms, fail) {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        reject(fail('read-timeout', ms + 'ms'));
+      }, ms);
+      reader.read().then(
+        (v) => { if (settled) return; settled = true; clearTimeout(timer); resolve(v); },
+        (e) => { if (settled) return; settled = true; clearTimeout(timer); reject(e); }
+      );
+    });
+  }
+
+  /** 这个 MIME 能不能当图片收下。空值放行（很多 CDN 干脆不给）。 */
+  function isImageMime(type) {
+    const t = String(type || '').split(';')[0].trim().toLowerCase();
+    if (!t) return true;
+    if (t.indexOf('image/') === 0) return true;
+    // 有些图床/对象存储就发这个，内容确实是图；大小上限仍然兜着
+    return t === 'application/octet-stream';
   }
 
   /** 下载一份数据为文件（在扩展页中使用） */
@@ -746,6 +935,8 @@
     buildFilename,
     buildSubfolder,
     sanitizeCustomRules,
+    isSafePattern,
+    clampForPattern,
     mergeImportedSettings,
     formatBytes,
     formatDim,
@@ -766,6 +957,8 @@
     sleep,
     escapeHtml,
     fetchWithTimeout,
+    readBodyLimited,
+    isImageMime,
     blobToDataUrl,
     downloadText,
     sendToBg,

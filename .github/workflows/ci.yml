@@ -30,10 +30,10 @@ concurrency:
 
 jobs:
   # ------------------------------------------------------------------ #
-  # Node 套件（17 个）：纯 jsdom / vm，秒级到十几秒，是这个项目的主力防线
+  # Node 套件（20 个）：纯 jsdom / vm，秒级到十几秒，是这个项目的主力防线
   # ------------------------------------------------------------------ #
   node-suites:
-    name: Node 套件（17 个）
+    name: Node 套件（20 个）
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -54,6 +54,14 @@ jobs:
 
       - name: 安装开发期依赖
         run: npm ci --no-audit --no-fund
+
+      # 依赖审计。扩展本体零运行时依赖，但 jsdom / playwright-core 会进
+      # CI 和每个开发者的机器，出了问题一样要有人管。
+      #
+      # 只在 high / critical 上失败：moderate 常常「没有可用修复」，
+      # 让它阻断 CI 只会训练大家学会忽略这条检查。
+      - name: 依赖审计
+        run: npm audit --audit-level=high
 
       # run-all.js 会校验每个套件都打印了完成标记
       # （Node 在「事件循环空了但还有 await 挂着」时会静默以退出码 0 结束，
@@ -76,10 +84,10 @@ jobs:
           exit "$status"
 
   # ------------------------------------------------------------------ #
-  # 真浏览器套件（27 个）：真加载扩展，覆盖真实落盘 / 真实鼠标框选 / 面板 token / 真键盘导航
+  # 真浏览器套件（28 个）：真加载扩展，覆盖真实落盘 / 真实鼠标框选 / 面板 token / 真键盘导航
   # ------------------------------------------------------------------ #
   browser-suites:
-    name: 真浏览器套件（27 个）
+    name: 真浏览器套件（28 个）
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -101,9 +109,20 @@ jobs:
       - name: 装一个能加载扩展的 Chromium
         run: npx playwright-core install --with-deps --no-shell chromium
 
-      # run-all-browser.js 自己解析浏览器：IH_BROWSER → 各平台常见路径
-      # → Playwright 缓存。解析失败会立刻退出并打印怎么装，不会让 28 个套件
-      # 各自报一遍 ENOENT 把人淹掉。
+      # run-all-browser.js 自己解析浏览器：IH_BROWSER → **CI 时优先 Playwright
+      # 装的那个** → 各平台常见路径 → Playwright 缓存。
+      #
+      # 「CI 时优先 Playwright」这一条是踩出来的（2026-10-10）：GitHub 的
+      # ubuntu runner **自带 /usr/bin/google-chrome**，而旧顺序是「系统路径优先」，
+      # 于是 CI 上必然选中它。品牌版 Chrome 137 起移除了 --load-extension，
+      # 扩展根本加载不上 —— 28 个套件全部卡在「等 service worker」上超时，
+      # 报出来的错看着像扩展坏了，根因却是浏览器选错了。
+      # 本地永远复现不了（本地装着 Edge，还没移除这个开关），所以挑选逻辑
+      # 拆成了纯函数 tests/lib/browser-pick.js，由 test-browser-resolve.js 钉着。
+      #
+      # 这一行只是把「到底选了哪个」打进日志：选错浏览器时最先要看的就是它。
+      - name: 确认用哪个浏览器
+        run: node tests/run-all-browser.js --print-browser
       #
       # 失败时把汇总里的 ✗ 行做成 annotation：Actions 的**日志 API 需要 admin
       # 权限**（匿名访问 403 `Must have admin rights to Repository.`），而

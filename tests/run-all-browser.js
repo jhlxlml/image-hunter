@@ -11,12 +11,19 @@
  *    shell 循环看到退出码 0 就报绿，而断言一条都没跑。
  *    这里把同一道防线补上。
  *
- * 2. **浏览器解析只做一次**。22 个套件各自写着 `IH_BROWSER || <Windows Edge 路径>`
- *    的默认值 —— 在 Linux / macOS 上直接跑会 22 次 ENOENT。
- *    这里统一解析（环境变量 → 各平台常见路径 → Playwright 缓存），
- *    解析结果注入每个子进程，套件自己不用改。
+ * 2. **浏览器解析只做一次**。28 个套件各自写着 `IH_BROWSER || <Windows Edge 路径>`
+ *    的默认值 —— 在 Linux / macOS 上直接跑会 28 次 ENOENT。
+ *    这里统一解析（IH_BROWSER → CI 时 Playwright 的 Chromium → 各平台常见路径
+ *    → Playwright 缓存），解析结果注入每个子进程，套件自己不用改。
+ *    挑选逻辑本身在 `tests/lib/browser-pick.js`，由 `test-browser-resolve.js`
+ *    在普通 Node 套件里钉着（CI 那一段本地跑不到，只能这么测）。
  *
  * 3. **汇总**。跑完给出「哪些套件红了」，而不是让人从几千行输出里找。
+ *
+ * 用法：
+ *   node tests/run-all-browser.js                 跑全部
+ *   node tests/run-all-browser.js --print-browser 只打印解析到的浏览器路径后退出
+ *                                                 （CI 日志里用来确认「选的是哪个」）
  */
 'use strict';
 
@@ -39,84 +46,42 @@ const CANDIDATE_MODULES = [
 /* ------------------------------------------------------------------ *
  * 浏览器解析
  *
- * 顺序：显式 IH_BROWSER → 各平台常见安装路径 → Playwright 自己下载的 Chromium。
- * 全部找不到时**立刻失败并说清怎么装**，而不是让 22 个套件各自报一遍 ENOENT
+ * 挑选逻辑搬去了 `tests/lib/browser-pick.js` —— 因为「CI 上该选哪个浏览器」
+ * 这件事**本地永远看不出来**（本地装着 Edge，系统路径第一轮就命中，
+ * CI 分支根本不会被执行到）。拆成纯函数之后，`tests/test-browser-resolve.js`
+ * 就能在普通 Node 套件里把它钉死，而不用真的开浏览器。
+ *
+ * 这里只负责把真实环境喂进去：
+ *   CI 里 → Playwright 装的 Chromium 优先（品牌版 Chrome 137+ 移除了
+ *           --load-extension，GitHub runner 自带的 /usr/bin/google-chrome
+ *           加载不上扩展，28 个套件会全部卡在「等 service worker」超时）
+ *   本地   → 系统已安装的浏览器优先（开发体验不变）
+ * 全都没有时**立刻失败并说清怎么装**，而不是让 28 个套件各自报一遍 ENOENT
  * ——那种输出会把人淹掉，真正的原因（「这台机器上没有浏览器」）反而看不见。
  * ------------------------------------------------------------------ */
-const WIN_CANDIDATES = [
-  'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-  'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
-  'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-  'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'
-];
-const MAC_CANDIDATES = [
-  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-  '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
-  '/Applications/Chromium.app/Contents/MacOS/Chromium'
-];
-const LINUX_CANDIDATES = [
-  '/usr/bin/google-chrome',
-  '/usr/bin/google-chrome-stable',
-  '/usr/bin/chromium',
-  '/usr/bin/chromium-browser',
-  '/snap/bin/chromium'
-];
-
-/** Playwright 下载的 Chromium（`npx playwright-core install --no-shell chromium` 装的） */
-function playwrightChromium() {
-  try {
-    const pw = require('playwright-core');
-    const p = pw.chromium.executablePath();
-    if (p && fs.existsSync(p)) return p;
-  } catch (e) { /* 没装 playwright-core 就算了 */ }
-  // 兜底：直接翻缓存目录（executablePath 在个别版本上会指向 headless shell）
-  const roots = [
-    process.env.PLAYWRIGHT_BROWSERS_PATH,
-    path.join(os.homedir(), '.cache', 'ms-playwright'),
-    path.join(os.homedir(), 'Library', 'Caches', 'ms-playwright'),
-    path.join(process.env.LOCALAPPDATA || '', 'ms-playwright')
-  ].filter(Boolean);
-  for (const root of roots) {
-    let dirs = [];
-    try { dirs = fs.readdirSync(root); } catch (e) { continue; }
-    for (const d of dirs.sort().reverse()) {
-      if (!/^chromium-\d/.test(d)) continue;
-      for (const rel of ['chrome-linux/chrome', 'chrome-mac/Chromium.app/Contents/MacOS/Chromium',
-        'chrome-win/chrome.exe']) {
-        const p = path.join(root, d, rel);
-        if (fs.existsSync(p)) return p;
-      }
-    }
-  }
-  return null;
-}
+const BP = require('./lib/browser-pick.js');
 
 function resolveBrowser() {
-  const fromEnv = process.env.IH_BROWSER;
-  if (fromEnv) {
-    if (fs.existsSync(fromEnv)) return { path: fromEnv, from: 'IH_BROWSER 环境变量' };
-    return { error: 'IH_BROWSER 指向的文件不存在：' + fromEnv };
-  }
-  const cands = process.platform === 'win32' ? WIN_CANDIDATES
-    : process.platform === 'darwin' ? MAC_CANDIDATES
-      : LINUX_CANDIDATES;
-  for (const p of cands) {
-    if (fs.existsSync(p)) return { path: p, from: '系统已安装' };
-  }
-  const pw = playwrightChromium();
-  if (pw) return { path: pw, from: 'Playwright 下载的 Chromium' };
-  return {
-    error: '这台机器上找不到可用的 Chrome / Edge / Chromium。\n'
-      + '  装一个即可（任选其一）：\n'
-      + '    npx playwright-core install --with-deps --no-shell chromium\n'
-      + '  或者显式指定：IH_BROWSER=/path/to/chrome node tests/run-all-browser.js'
-  };
+  return BP.pickBrowser({
+    env: process.env,
+    exists: fs.existsSync,
+    candidates: BP.platformCandidates(process.platform),
+    pwPath: BP.findPlaywrightChromium()
+  });
 }
 
 const resolved = resolveBrowser();
 if (resolved.error) {
   console.error('✗ ' + resolved.error);
   process.exit(2);
+}
+
+/* CI 日志里确认「到底选了哪个浏览器」。只打印路径（stdout 可被 $() 捕获），
+   来源说明走 stderr —— 选错浏览器时最先要看的就是这两行。 */
+if (process.argv.includes('--print-browser')) {
+  console.log(resolved.path);
+  console.error('来源 = ' + resolved.from);
+  process.exit(0);
 }
 
 const env = Object.assign({}, process.env, {

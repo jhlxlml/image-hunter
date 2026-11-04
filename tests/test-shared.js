@@ -323,5 +323,128 @@ eq(U.buildFilename({ url: 'https://x.com/a/photo.jpg' },
   eq(svg.indexOf('m7 10 5 5 5-5') >= 0, true, 'U.icon：返回的是 download 那个形状');
 }
 
+/* ================================================================== *
+ * 自定义正则的安全闸门（ReDoS）
+ *
+ * pattern 是**用户写的**，被匹配的字符串是**网页给的**。`(a+)+$` 配上
+ * 一个几百字符的恶意 src，一次 replace 就能把 content script 卡死 ——
+ * 而 JS 没法给正则设执行时间上限，只能在入口静态拒绝。
+ * ================================================================== */
+console.log('\n--- 正则安全闸门（ReDoS）---');
+{
+  const unsafe = [
+    '(a+)+$',
+    '(a*)*b',
+    '(.+)+x',
+    '(\\d+)*\\.jpg',
+    '(a|aa)+$',
+    '(a?)+$',
+    'x{1,100000}',
+    '(\\w+)\\1+'
+  ];
+  unsafe.forEach((p) => {
+    eq(U.isSafePattern(p), false, '拒绝危险模式：' + p);
+  });
+
+  const safe = [
+    '-\\d{2,4}x\\d{2,4}(?=\\.jpg)',
+    '\\?imageView2/2/w/\\d+',
+    '(?:small|thumb)/',
+    '^https?://',
+    '!(?:small|thumb)$',
+    '(-\\d{2,4}x\\d{2,4})(?=\\.jpg)'
+  ];
+  safe.forEach((p) => {
+    eq(U.isSafePattern(p), true, '放行正常模式：' + p);
+  });
+
+  eq(U.isSafePattern(''), false, '空模式不安全（会被上游先过滤掉）');
+  eq(U.isSafePattern(null), false, 'null 不是安全模式');
+  eq(U.isSafePattern('a'.repeat(400)), false, '超长模式直接拒绝');
+
+  // sanitizeCustomRules 必须把危险的丢掉、把安全的留下
+  const cleaned = U.sanitizeCustomRules([
+    { pattern: '(a+)+$', flags: 'i', replace: '' },
+    { pattern: '-\\d+x\\d+(?=\\.jpg)', flags: 'i', replace: '' }
+  ]);
+  eq(cleaned.length, 1, 'sanitizeCustomRules 丢掉了危险模式、留下安全的');
+  eq(cleaned[0] && cleaned[0].pattern, '-\\d+x\\d+(?=\\.jpg)', '留下的是那条安全的');
+
+  /* 真正重要的一条：**危险规则直接塞给 buildRestoreCandidates 也不能卡住**。
+     这里不经过 Store（模拟「有人绕过 withDefaults」），闸门必须在这一层也生效。 */
+  const evil = 'https://x.com/' + 'a'.repeat(300) + '.jpg';
+  const t0 = Date.now();
+  const cands = C.buildRestoreCandidates(evil, {
+    customRules: [{ pattern: '(a+)+$', flags: 'i', replace: '' }]
+  });
+  const took = Date.now() - t0;
+  eq(cands.length, 0, '危险正则没有产出任何候选');
+  eq(took < 200, true, '而且没有卡住（耗时 ' + took + 'ms，未拦截时这里会挂几分钟）');
+
+  // 对照：同一条安全规则照常生效，证明上面不是「整个功能被关掉了」。
+  // 用一个内置规则不会碰的地址，否则候选会先被内置规则占掉（ruleId 就不是 custom 了）。
+  const okCands = C.buildRestoreCandidates(
+    'https://cdn.x.com/pic.jpg?sz=800',
+    { customRules: [{ pattern: '\\?sz=\\d+', flags: 'i', replace: '' }] }
+  );
+  eq(okCands.some((c) => c.ruleId === 'custom' && c.url === 'https://cdn.x.com/pic.jpg'),
+    true, '安全的自定义规则照常产出候选', JSON.stringify(okCands));
+}
+
+/* ================================================================== *
+ * srcset 解析的边界（真实网页里什么都见得到）
+ * ================================================================== */
+console.log('\n--- srcset 边界 ---');
+{
+  eq(U.pickLargestFromSrcset('a.jpg 100w,b.jpg 900w'), 'b.jpg', 'srcset 逗号后无空格');
+  eq(U.pickLargestFromSrcset('  a.jpg 1x ,  b.jpg 2x  '), 'b.jpg', 'srcset 多余空白');
+  eq(U.pickLargestFromSrcset('a.jpg 300w, b.jpg'), 'a.jpg', 'srcset 里有一条没写描述符');
+  eq(U.pickLargestFromSrcset('a.jpg'), 'a.jpg', 'srcset 只有一个裸地址');
+  eq(U.pickLargestFromSrcset('a.jpg 1x, b.jpg 1x'), 'b.jpg',
+    '描述符相同时取后出现的（当前实现；两者分辨率一样，取哪个都不影响画质）');
+  eq(U.pickLargestFromSrcset('a.jpg 0.5x, b.jpg 3x'), 'b.jpg', '小数描述符也能比大小');
+  // data URI 里自带逗号 —— 不能被当成两条候选
+  const dataSrcset = 'data:image/png;base64,AAAA 1x, b.jpg 2x';
+  eq(U.pickLargestFromSrcset(dataSrcset), 'b.jpg', 'data URI 里的逗号不会把一条拆成两条');
+  // 带逗号的查询串
+  eq(U.pickLargestFromSrcset('https://x.com/a.jpg?w=1,2 1x, b.jpg 2x'), 'b.jpg',
+    '查询串里的逗号也不会拆错');
+  eq(U.parseSrcset('').length, 0, 'parseSrcset 空串 → 0 条');
+  eq(U.parseSrcset('   ').length, 0, 'parseSrcset 全空白 → 0 条');
+}
+
+/* ================================================================== *
+ * 原图还原的语义
+ * ================================================================== */
+console.log('\n--- 还原语义 ---');
+{
+  // data: / blob: 不参与还原（没有「更大版本」这回事）
+  eq(C.buildRestoreCandidates('data:image/png;base64,AAA', {}).length, 0, 'data: 不参与还原');
+  eq(C.buildRestoreCandidates('blob:https://x.com/uuid', {}).length, 0, 'blob: 不参与还原');
+  eq(C.buildRestoreCandidates('', {}).length, 0, '空地址不参与还原');
+
+  // 候选上限 6：内置规则命中再多也不能无限膨胀
+  const many = C.buildRestoreCandidates(
+    'https://blog.x.com/wp-content/uploads/2024/05/hero-1024x768.jpg',
+    {}
+  );
+  eq(many.length <= 6, true, '候选数量有上限（≤ 6）', many.length);
+
+  // 还原不出东西时必须返回空数组，而不是把原地址当候选
+  const none = C.buildRestoreCandidates('https://x.com/plain.jpg', {});
+  eq(none.some((c) => c.url === 'https://x.com/plain.jpg'), false,
+    '不会把原地址自己当成还原候选');
+
+  // ruleId 必须能追到具体规则（诊断包里要靠它判断「是哪条规则干的」）
+  eq(many.every((c) => typeof c.ruleId === 'string' && c.ruleId.length > 0), true,
+    '每个候选都带着 ruleId');
+
+  // 重复候选只留第一次命中的那条规则
+  const dup = C.buildRestoreCandidates(
+    'https://blog.x.com/wp-content/uploads/2024/05/hero-1024x768.jpg', {});
+  const urls = dup.map((c) => c.url);
+  eq(urls.length === new Set(urls).size, true, '候选里没有重复地址');
+}
+
 console.log('\n通过 ' + pass + ' 项，失败 ' + fail + ' 项');
 process.exit(fail ? 1 : 0);

@@ -9,6 +9,7 @@
   if (IH.Store) return;
 
   const C = IH.C;
+  const U = IH.U;
   const K = C.STORAGE_KEYS;
 
   const hasStorage = typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local;
@@ -26,8 +27,13 @@
    */
   function withDefaults(stored) {
     const s = Object.assign({}, C.DEFAULT_SETTINGS, stored || {});
-    s.customRules = Array.isArray(s.customRules)
-      ? s.customRules.filter((r) => r && typeof r === 'object').slice()
+    /* 自定义正则要在这里过一遍安全闸门，而不只是「是不是对象」。
+       理由：rules 一旦进到 settingsCache，就会被 buildRestoreCandidates
+       拿去对**网页给的**图片地址做 replace —— 一个 `(a+)+$` 足以把
+       content script 卡死。旧版本导入过的危险规则也得在这一层挡掉，
+       光靠「保存时校验」拦不住历史数据。 */
+    s.customRules = Array.isArray(s.customRules) && U && U.sanitizeCustomRules
+      ? U.sanitizeCustomRules(s.customRules)
       : [];
     s.blockedHosts = Array.isArray(s.blockedHosts)
       ? s.blockedHosts.filter((h) => typeof h === 'string' && h.trim()).slice()
@@ -47,14 +53,47 @@
     }
   }
 
+  /* 最近一次写入失败。
+     以前 rawSet 把异常吞掉只打一行 console.warn，于是设置页照常弹「已保存」、
+     统计照常 +1，而磁盘上什么都没变 —— 用户下次打开发现设置回退了。
+     现在异常会抛给调用方；这份记录留的是「事后可查」的那一份。 */
+  let lastWriteError = null;
+
+  /**
+   * 写一个键。**失败会抛**。
+   *
+   * 这里不吞异常是刻意的：吞掉之后调用方无从判断「到底存进去没有」，
+   * 只能假装成功 —— 设置页弹「已保存」、下载历史显示「已记录」，
+   * 而实际上配额爆了 / storage 被禁用 / 序列化失败。
+   *
+   * 至于「这次失败要不要紧」，由**调用方**决定，不在这里替它决定：
+   *   · 设置 → 必须让用户知道（见 options.js 的 persist）
+   *   · 下载记账 → 文件已经落盘了，记账失败不该把下载判成失败
+   *     （见 background.js runTask 里的 try/catch）
+   */
   async function rawSet(key, value) {
-    if (!hasStorage) return;
+    if (!hasStorage) {
+      const e = new Error('storage 不可用（扩展上下文缺失）');
+      e.code = 'no-storage';
+      throw e;
+    }
     try {
       await area().set({ [key]: value });
+      lastWriteError = null;
     } catch (e) {
-      /* 配额超限等异常静默处理，避免打断主流程 */
-      console.warn('[ImageHunter] storage.set 失败', e);
+      lastWriteError = {
+        key,
+        message: String((e && e.message) || e),
+        at: Date.now()
+      };
+      console.error('[ImageHunter] storage.set 失败（' + key + '）', e);
+      throw e;
     }
+  }
+
+  /** 最近一次写入失败的信息（没失败过就是 null）。给排查用，也供测试断言「确实记下来了」 */
+  function writeError() {
+    return lastWriteError;
   }
 
   /* ------------------------------------------------------------------ *
@@ -280,6 +319,7 @@
     clearFingerprints,
     getStats,
     bumpStats,
-    resetStats
+    resetStats,
+    writeError
   };
 })();

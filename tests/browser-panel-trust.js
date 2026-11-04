@@ -9,18 +9,29 @@
  *   代价是**任何网站都能构造同款 iframe** —— 把图库叠在自己页面上做套壳点击，
  *   或者靠「能不能加载这个资源」探测用户装没装本扩展。
  *
- * 修法：
+ * 修法（v1.20.0 改过一轮，见下面「为什么不能把 token 放进 URL」）：
  *   ① manifest 把 popup/* 通配收窄成三个具体文件（将来往 popup/ 里加文件不会再被
  *      自动暴露，是「默认安全」而不是「默认暴露」）；
- *   ② 内容脚本先向后台领一个只属于本标签页的随机 token 写进 iframe URL，
- *      面板启动时拿它回后台核验 —— 网页拿不到 token（它没法给后台发消息），
- *      伪造的 iframe 一律拒绝启动。
+ *   ② 内容脚本先向后台领一个只属于本标签页的随机 token，
+ *      **用 postMessage 点对点交给面板**，面板启动时拿它回后台核验；
+ *   ③ 后台用 `sender.tab.id` 判身份，**不认消息里自报的 tabId**；
+ *   ④ 独立页（?mode=page）也必须过校验，且必须证明自己没被嵌进别人的页面。
+ *
+ * 为什么不能把 token 放进 URL（这是 v1.20.0 修的那个洞）：
+ *   iframe 的 src 是**页面 DOM 里的属性**。面板的 host 挂在网页里，
+ *   shadow root 又是 `mode: 'open'`，于是网页脚本一句
+ *   `host.shadowRoot.querySelector('iframe').src` 就把 token 读走了。
+ *   读到之后它就能自己拼一个 `?mode=panel&tabId=N&token=<真 token>`，
+ *   校验完全拦不住 —— 等于白做。postMessage 发给 `frame.contentWindow`
+ *   的消息只有那个 window 收得到，网页脚本听不见，这才是点对点。
  *
  * 覆盖：
- *   正面：正常打开面板 → iframe URL 带 tabId + token → 图库真的渲染出图片
- *   反面 A：网页自己 iframe popup.html（不带 token）→ 拒绝启动，不出图库
- *   反面 B：网页自己 iframe popup.html（带一个瞎编的 token）→ 同样拒绝
- *   反面 C：网页拿另一个标签页的 tabId 配自己的 token → 拒绝
+ *   正面：正常打开面板 → iframe src 里**没有任何凭据** → 图库真的渲染出图片
+ *   反面 A：网页自己 iframe popup.html?mode=panel（没有 token）→ 拒绝启动
+ *   反面 B：网页自己 iframe，URL 里塞一个瞎编的 token → 拒绝（URL token 一律不认）
+ *   反面 C：网页脚本往**真面板**投假 init（改 tabId + 假 token）→ 面板不受影响
+ *   反面 D：网页脚本往真面板投不带 token 的 refresh → 不触发
+ *   反面 E：网页自己 iframe popup.html?mode=page → 拒绝（以前这里完全不校验）
  */
 'use strict';
 
@@ -52,6 +63,25 @@ function panelSrc() {
     if (f) return { src: f.getAttribute('src') || '', open: h.classList.contains('ih-open') };
   }
   return null;
+}
+
+/**
+ * 以**网页脚本的视角**扫一遍页面，看能不能捞到任何凭据。
+ * 这里用的就是攻击者的写法：遍历 `[data-ih-host]`，进 `shadowRoot`（open 才进得去），
+ * 把 iframe 的 src 和整段 shadow HTML 都抓出来。
+ */
+function scanForCreds() {
+  const out = { srcs: [], html: '', iframes: 0 };
+  for (const h of Array.from(document.querySelectorAll('[data-ih-host]'))) {
+    const sr = h.shadowRoot;
+    if (!sr) continue;
+    out.html += sr.innerHTML;
+    for (const f of Array.from(sr.querySelectorAll('iframe'))) {
+      out.iframes++;
+      out.srcs.push(f.getAttribute('src') || '');
+    }
+  }
+  return out;
 }
 
 /** 等某个 frame 里的图库渲染出卡片；返回状态 */
@@ -141,9 +171,20 @@ async function waitRefused(frame, budgetMs) {
     console.log('面板 iframe src =', ps && ps.src);
     check(ps != null, '页面里出现了面板 iframe');
     check(ps && /mode=panel/.test(ps.src), 'iframe URL 带 mode=panel');
-    check(ps && /[?&]tabId=\d+/.test(ps.src), 'iframe URL 带 tabId');
-    check(ps && /[?&]token=[0-9a-z]{8,}/i.test(ps.src),
-      'iframe URL 带内容脚本领到的 token', ps && ps.src.replace(/token=\w+/, 'token=<...>'));
+
+    /* 这一段是本套件的核心：**网页脚本读得到 iframe 的 src**，
+       所以 src 里不许有任何凭据。以前 token 就写在上面。 */
+    const creds = await page.evaluate(scanForCreds);
+    console.log('网页脚本能看到的 iframe src =', JSON.stringify(creds.srcs));
+    check(creds.iframes >= 1, '网页脚本确实摸得到面板 iframe（攻击面是真实存在的，不是假想）');
+    check(creds.srcs.every((s) => !/[?&]token=/i.test(s)),
+      'iframe src 里没有 token（token 走 postMessage 点对点交接，网页读不到）',
+      creds.srcs.join(' | '));
+    check(creds.srcs.every((s) => !/[?&]tabId=/i.test(s)),
+      'iframe src 里没有 tabId（扫描目标由后台按 sender.tab.id 回答）',
+      creds.srcs.join(' | '));
+    check(!/token=/i.test(creds.html), '整个 shadow DOM 里都搜不到 token=');
+    check(!/[?&]token=/i.test(ps.src), 'panelSrc 读到的 src 也没有 token');
 
     const panelFrame = page.frames().find((f) => f.url().indexOf('popup/popup.html') >= 0);
     check(panelFrame != null, '能在页面里定位到面板 frame');
@@ -222,30 +263,95 @@ async function waitRefused(frame, budgetMs) {
     check(e2 && !e2.hasGrid && e2.cards === 0, '伪造 token 时连图库界面都不渲染',
       e2 && ('hasGrid=' + e2.hasGrid + ', ' + e2.cards + ' 张卡片'));
 
-    /* ---------- 4. 反面 C：token 与 tabId 不配对 ---------- */
-    console.log('\n=== 4. 反面 C：拿别的标签页的 tabId 配自己的 token ===');
-    // 从真实面板的 URL 里取到 token，但换一个 tabId 用 —— 应当拒绝
-    const realToken = (ps.src.match(/[?&]token=([^&]+)/) || [])[1] || '';
-    check(!!realToken, '取到了真实 token 用于本用例', realToken ? realToken.slice(0, 8) + '…' : '');
+    /* ---------- 4. 反面 C：网页脚本往**真面板**里投假消息 ----------
+     *
+     * 这一节是 v1.20.0 新增的。旧实现的 onParentMessage 既不校验 e.source，
+     * 又允许 init 改 tabId —— 网页脚本一句 postMessage 就能把面板的扫描目标
+     * 换成任意标签页（面板有跨标签页嗅探能力，这等于白送一个读别处的口子）。
+     */
+    console.log('\n=== 4. 反面 C：网页脚本往真面板里投假 init（改 tabId）===');
+    const before = await frameState(panelFrame, 6000);
+    console.log('投毒前 =', JSON.stringify({ cards: before && before.cards, total: before && before.total }));
 
-    await page.evaluate(({ id, tok }) => {
+    await page.evaluate(() => {
+      const h = Array.from(document.querySelectorAll('[data-ih-host]'))
+        .find((x) => x.shadowRoot && x.shadowRoot.querySelector('.ih-panel-frame'));
+      const f = h.shadowRoot.querySelector('.ih-panel-frame');
+      /* 冒充宿主，把完整的攻击链走一遍：
+         ① init 换 tabId 到 999999 + 塞假 token（旧实现会当场改掉 tabId）
+         ② refresh 强制重扫（旧实现不校验 token，会真的去扫那个标签页）
+         两步合起来才能观察到「目标被换掉了」—— 只发 init 不重扫，
+         变量变了但界面不动，断言看不出来。 */
+      f.contentWindow.postMessage(
+        { __ih: true, type: 'init', tabId: 999999, token: 'evil-token-1234' }, '*');
+      f.contentWindow.postMessage({ __ih: true, type: 'refresh' }, '*');
+    });
+    await sleep(3000);
+
+    const after = await frameState(panelFrame, 10000);
+    console.log('投毒后 =', JSON.stringify({ cards: after && after.cards, total: after && after.total }));
+    check(after && after.hasGrid, '投毒后面板还在（没有崩、没有退回拒绝态）');
+    check(after && after.cards > 0, '投毒后照常显示图片（没有切到 tabId=999999 那个不存在的标签页）',
+      after && after.cards + ' 张');
+    check(after && before && after.total === before.total,
+      '投毒后扫描目标没变（统计数一致：' + (before && before.total) + ' → ' + (after && after.total) + '）');
+
+    /* ---------- 5. 反面 D：不带 token 的 refresh 不生效 ---------- */
+    console.log('\n=== 5. 反面 D：网页脚本发不带 token 的 refresh ===');
+    await page.evaluate(() => {
+      const h = Array.from(document.querySelectorAll('[data-ih-host]'))
+        .find((x) => x.shadowRoot && x.shadowRoot.querySelector('.ih-panel-frame'));
+      const f = h.shadowRoot.querySelector('.ih-panel-frame');
+      f.contentWindow.postMessage({ __ih: true, type: 'refresh' }, '*');
+      f.contentWindow.postMessage({ __ih: true, type: 'refresh', token: 'wrong-token' }, '*');
+    });
+    await sleep(2000);
+    const afterRefresh = await frameState(panelFrame, 8000);
+    check(afterRefresh && afterRefresh.cards > 0,
+      '无 token / 错 token 的 refresh 被忽略，面板照常显示', afterRefresh && afterRefresh.cards + ' 张');
+    check(afterRefresh && after.total === before.total, '无 token 的 refresh 没有引发重扫（统计数未变）');
+
+    /* ---------- 6. 反面 E：网页 iframe 一个 mode=page ----------
+     *
+     * 这是 v1.20.0 修掉的第二个洞：旧 verifyPanelOrigin 对 mode=page
+     * 直接 `return true`，理由是「网页碰不到」—— 而网页可以 iframe 它。
+     * 那等于给网页一个零成本、功能完整的图库套壳。
+     */
+    console.log('\n=== 6. 反面 E：网页 iframe popup.html?mode=page ===');
+    await page.evaluate((id) => {
       const f = document.createElement('iframe');
-      f.id = 'evil3';
-      f.style.cssText = 'position:fixed;left:-9999px;width:600px;height:600px';
-      f.src = 'chrome-extension://' + id + '/popup/popup.html?mode=panel&tabId=999999&token=' + tok;
+      f.id = 'evil-page';
+      f.style.cssText = 'position:fixed;left:-9999px;width:900px;height:700px';
+      f.src = 'chrome-extension://' + id + '/popup/popup.html?mode=page';
       document.body.appendChild(f);
-    }, { id: EXT_ID, tok: realToken });
+    }, EXT_ID);
     await sleep(2500);
 
-    const evil3 = page.frames().find((f) => f.url().indexOf('tabId=999999') >= 0);
-    const e3 = await waitRefused(evil3, 12000);
-    console.log('错配 tabId 的 iframe =', JSON.stringify(e3));
-    check(e3 && /已拒绝/.test(e3.text), 'token 与 tabId 不配对时被拒绝', e3 && e3.text);
-    check(e3 && !e3.hasGrid && e3.cards === 0, '错配时连图库界面都不渲染',
-      e3 && ('hasGrid=' + e3.hasGrid + ', ' + e3.cards + ' 张卡片'));
+    const evilPage = page.frames().find((f) => /mode=page/.test(f.url()));
+    const ePage = await waitRefused(evilPage, 12000);
+    console.log('被嵌入的 mode=page =', JSON.stringify(ePage));
+    check(ePage && /已拒绝/.test(ePage.text), '被网页嵌入的 mode=page 拒绝启动', ePage && ePage.text);
+    check(ePage && !ePage.hasGrid && ePage.cards === 0,
+      '被嵌入的 mode=page 连图库界面都不渲染（网页拿不到可套壳的东西）',
+      ePage && ('hasGrid=' + ePage.hasGrid + ', ' + ePage.cards + ' 张卡片'));
 
-    /* ---------- 5. 收窄后的 WAR 仍然够用 ---------- */
-    console.log('\n=== 5. web_accessible_resources 收窄后仍可加载 ===');
+    /* 反向确认：扩展自己开的**顶层** mode=page 必须照常工作 ——
+       否则上面那条「拒绝」可能只是「mode=page 整个坏了」。 */
+    console.log('\n=== 7. 正面：扩展自己开的顶层图库页仍然可用 ===');
+    const gallery = await ctx.newPage();
+    await gallery.goto('chrome-extension://' + EXT_ID + '/popup/popup.html?mode=page&tabId=1',
+      { waitUntil: 'load', timeout: 30000 });
+    await sleep(2500);
+    const g = await gallery.evaluate(() => ({
+      hasGrid: !!document.getElementById('grid'),
+      refused: /已拒绝/.test(document.body.textContent || '')
+    }));
+    console.log('顶层图库页 =', JSON.stringify(g));
+    check(g.hasGrid && !g.refused, '顶层 mode=page 通过校验（GALLERY_AUTH 没有误伤正常用法）');
+    await gallery.close();
+
+    /* ---------- 8. 收窄后的 WAR 仍然够用 ---------- */
+    console.log('\n=== 8. web_accessible_resources 收窄后仍可加载 ===');
     const mf = JSON.parse(fs.readFileSync(path.join(EXT, 'manifest.json'), 'utf8'));
     const war = ((mf.web_accessible_resources || [])[0] || {}).resources || [];
     console.log('WAR =', JSON.stringify(war));

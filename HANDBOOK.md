@@ -605,8 +605,8 @@ image-hunter/
 
 ```bash
 npm ci                # 首次：装开发期依赖（jsdom + playwright-core）
-npm test              # Node 套件（17 个）
-npm run test:browser  # 真实浏览器套件（27 个，需要本机 Edge / Chrome）
+npm test              # Node 套件（20 个）
+npm run test:browser  # 真实浏览器套件（28 个，需要本机 Edge / Chrome）
 npm run test:all      # 两个入口都跑
 ```
 
@@ -636,6 +636,9 @@ IH_AUDIT_VERBOSE=1 node tools/audit-settings.js   # 连每个命中位置的行�
 |---|---|
 | 共享层单元测试 | srcset 解析、URL 规范化、文件名生成（含子目录与路径安全）、原图还原规则；站点排除列表的域名匹配与规范化；还原候选实现唯一性（图库与内容脚本共用同一套规则） |
 | 存储并发写测试 | `chrome.storage` 的「读-改-写」竞态（不丢写入），以及「读的期间有人写了」的镜像竞态（不丢读取的时效性） |
+| 浏览器挑选逻辑测试 | 「CI 上该选哪个浏览器」的纯函数测试。这段逻辑**本地永远跑不到**（开发机装着 Edge，候选表第一轮就命中），所以挑选逻辑搬进 `tests/lib/browser-pick.js`，把 `exists()` 注入进来在普通 Node 套件里钉死：CI 必须优先 Playwright 装的 Chromium、本地行为不变、`IH_BROWSER` 永远最高优先、`chromium_headless_shell-*` 必须拒绝、`executablePath()` 指错版本时要靠缓存目录兜底（`chrome-win64/` 与 `chrome-mac-arm64/` 两种新布局都要认） |
+| 响应体读取上限测试 | `U.readBodyLimited()` 的四种失败方式：`content-length` 声明超限时**一个字节都不读**就抛、边读边计数超限时抛并 `reader.cancel()`、body 慢吐时按**整体截止时间**抛（不是「每块之间的空闲超时」）、MIME 不在白名单时抛。判据打在 `res.body.locked` 上 |
+| 下载任务持久化 / 重启对账测试 | MV3 的 SW 被回收后，在飞的那张图不能凭空消失：按 `chrome.downloads.search({id})` 的四种回包分别验（complete → 直接记账不重下 / interrupted → 记失败 / in_progress → 接着等 / 查不到 → 重新排队），并钉住幂等（同一 `downloadId` 不能既算 done 又写一条历史）与 `restoreJob` 的重入保护 |
 | 嗅探引擎 DOM 测试 | jsdom 真实 DOM 下验证 11 类来源采集、原图还原择优、去重；并钉住**分阶段回报的时序**（「先出图」的中间结果必须早于任何联网加工 —— 补尺寸、还原都还没跑，所以这一版里尺寸可能还是 0）与深度嗅探的无限滚动仿真 |
 | 悬停下载端到端测试 | 悬停 → 出现 → 点击 → 解析原图 → 发出下载请求 → 成功态反馈；点预览 → 整理本页全部图片（含加载态、起始下标定位、三级降级） |
 | 站点排除列表测试 | 被排除的站点上悬停不出按钮、Alt+点击不保存；解除排除后同一页面立即恢复；设置变化时收起已浮出的按钮 |
@@ -645,7 +648,7 @@ IH_AUDIT_VERBOSE=1 node tools/audit-settings.js   # 连每个命中位置的行�
 | 扫描超时判据测试 | 后台 vm 里把三个超时常量替换成小值（替换不到就抛错，免得「测试在跑、测的是别的超时」），逐条验证**扫描结论的三态**：内容脚本已确认但回报晚于「没接话」档时**必须等**（这就是「首次点开图标看不到图、刷新一下反而好了」那条 bug 的正面回归）；一个 frame 都没回报时是**错误态**而不是「成功但 0 张」；内容脚本自报的 `busy` / 异常如实转达；而**页面里确实没有图片时仍然是成功态**（修「撒谎」不能把「如实」也修坏） |
 | 批量序号测试 | 新批次一律从 001 起、不跨批次累加 |
 | 右键菜单幂等性测试 | SW 并发唤醒时不会出现 `duplicate id` |
-| 打包脚本测试 | manifest 引用的文件全在包里、孤儿文件会报错、打出来的 zip 用独立读取器能解析且 CRC 全过、同样的源码打两次字节一致 |
+| 打包脚本测试 | manifest 引用的文件全在包里、孤儿文件会报错、打出来的 zip 用独立读取器能解析且 CRC 全过、同样的源码打两次字节一致；**版本元数据三处一致**（`manifest.json` / `package.json` / `package-lock.json`）；**依赖面**（`dependencies` 必须为空 —— 扩展本体零运行时依赖，`devDependencies` 只许出现已知的两个） |
 | 诊断包测试 | 字段白名单（新增字段不会静默泄露）、`hostOf` 只留主机名、`scrub` 把任何 `scheme://…` 换成 `[url]`、`blockedHosts` 只留条数、`audit` 的路径定位；以及一组**注入式**端到端断言：脏输入进来，序列化后连一个 `http://` 都不该出现 |
 | 交付完整性校验 | manifest 引用、资源路径、元素 id、图标尺寸、脚本加载顺序、图库宿主模式、排除列表/子目录/缓存/快捷键的接线；**没有死设置**（每条默认设置都要有读取点，三条非 `data-key` 形态的界面入口也要认得出）；**图库尺寸滑条契约**（HTML 的 `min/max/step/value` 与 JS 的 `SIZE_MIN_*` 常量逐一对上、默认 256 与上限 4096 单独钉、视图状态键不得混进 `DEFAULT_SETTINGS`）；**多标签页合并嗅探的接线**（默认必须是关的、两个目标控件按设置互斥、合并路径必须带 `finalOnly`）；**键盘与读屏器接线**（listbox 语义、roving tabindex、方向键与动作键、`.sr-only` 不得用 `display:none`、`.card:focus` 必须让悬停按钮显形）；**诊断包的接线**（白名单不得退化成整体透传、扫描摘要不得夹带 `pageUrl` / `title`、`audit` 必须挡在落盘前面） |
 | 设置项巡检（辅助脚本） | `tools/audit-settings.js` 把每条设置的「定义点 / 读取点 / UI 挂点 / 写入点」连行号列出来，把候选缩到一小撮，供人工回源判断（判定仍需人看，见该文件头部的三条判据） |
@@ -818,6 +821,64 @@ A：**刷新那个网页。** 内容脚本只在**页面加载时**注入一次�
 ---
 
 ## 版本
+
+v1.20.0 —— **授权、资源、状态三条边界收口**。审计修复版，不加新功能。
+
+          这一版没有一条来自「功能没做完」，全部来自一次针对边界的审计。
+          六项问题里有五项是**同一个毛病的不同形态：注释里的假设不成立**。
+          代码写着「网页碰不到」，而网页碰得到；写着「超了就报错」，
+          而实际是先吃满内存再报错；写着「失败会抛」，而实际被吞了。
+
+          | 项 | 根因 | 修法 |
+          |---|---|---|
+          | 面板 token 泄露 | token 写在 iframe 的 `src` 里，而 `src` 在**页面的 DOM** 上 —— 网页脚本 `host.shadowRoot.querySelector('iframe').src` 就读得到。**open Shadow DOM 不是安全边界**，它只是「默认不渲染」，不是「读不到」 | token 改走 `postMessage` 交接（`content/panel.js` 的 `handOff()`），`src` 里只剩 `?mode=panel` |
+          | 面板自证可伪造 | 后台拿 `payload.tabId` 去核验 token —— 那个值是请求方自己填的，拿到任意标签页的 token 就能声称自己是那个标签页 | **tabId 从 `sender.tab.id` 取**；面板必须 `frameId > 0`（真的嵌在网页里）；扩展页不许来领 token（否则等于自己给自己发通行证） |
+          | 独立页零校验 | `?mode=page` 直接 `return true`，理由写的是「网页碰不到」。可网页能 `<iframe src="…popup.html?mode=page">`，于是白送一个**完全可用**的图库套壳 | 新增 `MSG.GALLERY_AUTH`：必须是本扩展页面（`sender.url` 前缀 `chrome-extension://<id>/`）**且** `frameId === 0`（顶层） |
+          | 面板消息不设防 | `onParentMessage` 不校验 `e.source`、不校验 token，`init` 里还能改 `tabId` | 只认 `e.source === window.parent`；后续指令必须带对 token；`tabId` 由面板自己 `MSG.GET_TAB_ID` 向后台要 |
+          | 下载先吃后判 | `await res.blob()` **先把整个响应体读完**再判 `size > 16MB` —— 判断发生在内存已经吃掉之后。且 `fetchWithTimeout` 的计时器在**响应头到达**时就 `clearTimeout` 了，body 可以无限期慢吐 | `U.readBodyLimited()`：先看 `content-length` → 边读边计数 → 整体截止时间 → 放弃时 `reader.cancel()`；MIME 白名单挡「200 + text/html 错误页」 |
+          | 探测不掐响应体 | Range 探测只想要 `Content-Range` 里的总长度，可**服务器完全可能忽略 Range 回 200 + 整个文件**，此时函数直接 return，响应体没人管 | `discardBody(res)`，四条返回路径全部 `body.cancel()` |
+          | 在飞任务丢失 | 任务从 queue `shift()` 出去后就不在 queue 里了，`persistJob` 只存 queue → SW 一被回收，**正在下的那一张彻底消失**（done+failed 永远凑不齐 total） | 单独记 `activeTasks` + `downloadId`；重启后 `chrome.downloads.search({id})` **对账**：complete → 直接记账不重下，interrupted → 记失败，in_progress → 接着等，查不到 → 重新排队 |
+          | 保存失败被吞 | `rawSet` 把 `storage.local.set` 的异常吞掉，调用方以为存成功了（设置页 toast 报「已保存」，其实没写进去） | 抛出 + `writeError()` 留痕。「文件已落盘但记账失败」这种**确实该吞**的地方，改成**调用方显式 try/catch 并写清理由** —— 吞不吞是业务决定，不该藏在存储层 |
+          | 自定义正则 | `customRules.pattern` 是**用户写的**，被匹配的字符串是**网页给的**：`(a+)+$` 配一个几百字符的恶意 src 就能把 content script 卡死。而 JS **没法**给正则设超时 | `U.isSafePattern()` 静态拒绝四类结构（量词套量词 / 可空分组套量词 / 超大计数 / 反向引用配量词）+ 分支前缀重叠（`(a|aa)+`）+ 输入截断 2048 字符。**两层缺一不可**：静态闸门是启发式，截断才是硬边界 |
+
+          **授权为什么必须绑 `sender`**：`e.origin`、`msg.payload.tabId`、`sender.url`
+          里的页面地址，全是**请求方自己说的**。浏览器唯一替你填、且网页脚本伪造不出的
+          只有三样：`sender.url`（扩展页是 `chrome-extension://<id>/…`，内容脚本是网页地址）、
+          `sender.tab.id`（网页脚本发不出 runtime 消息）、`sender.frameId`（0 = 顶层）。
+          这一版所有授权判断都只用这三样。
+
+          **token 为什么要收「候选队列」**：面板一打开就广播 `ready`，网页脚本可以
+          **抢先**投递一个自己的 `init`（它比内容脚本快，因为它就在那一帧里）。
+          所以面板不能「收到第一个 token 就用」，而是把所有候选攒着，
+          逐个拿去后台校验 —— 第一个**通过后台校验**的才算真的。伪造的 token
+          后台不认，试完自然落到真的那个上。
+
+          **对账的幂等**：`settledIds` 记下已经记过账的 `downloadId`。
+          SW 连续重启两次时，同一个 id 不能既算一次 `done` 又写一条历史 ——
+          「恢复两次」和「恢复一次」的结果必须一样，这才叫幂等。
+
+          注入验证 8 组（`tests/_inject.py`，临时脚本，不进发行包；每组注入完立刻还原），每组都精确变红：
+
+          | 注入的旧行为 | 变红 |
+          |---|---|
+          | 面板原实现（token 走 URL + 不校验来源 + 可改 tabId） | 27 通过 / **9 失败** |
+          | 只留「可改 tabId + refresh 不校验」 | 34 / **2**（正是第 4、5 节那两条） |
+          | token 写回 URL | 33 / **3** —— 实测网页脚本**真读到了** `token=wks1d…` |
+          | `mode=page` 直接放行 | 34 / **2** —— 被嵌入的 iframe 拿到了 40 张卡片的完整图库 |
+          | `res.blob()` 裸读（无上限无截止） | 23 / **5**，「读取超时」实测 **31819ms**（本该 400ms） |
+          | 探测不 cancel 响应体 | 40 / **2** |
+          | `persistJob` 只存 queue | 3 / **3** |
+          | `rawSet` 吞异常 | 19 / **6** |
+
+          **测试自己的一课**（见 `tests/README.md` 第三十四～三十七个坑）：
+          写这版测试时踩的坑比产品代码里的还多 —— 挑浏览器那段**本地永远跑不到**
+          （本机装着 Edge，第一轮就命中，CI 分支是死代码），只能拆成纯函数才测得到；
+          `new Response(stream)` **构造时自己就会 pull**，用 pull 回调判断「读没读」永远是 true；
+          `let` 声明的变量不在 vm 的 sandbox 对象上，要 `vm.runInContext('job.done', ctx)` 才读得到。
+
+          依赖面：扩展本体仍然**零运行时依赖**。CI 加了 `npm audit --audit-level=high`，
+          顺带把锁文件里 `jsdom → undici` 的 8.11.2 升到 8.12.3（8.0.0–8.12.1 有 8 条
+          high 级公告，全是 dev 链路，但仍然过不了闸门）。
 
 v1.19.2 —— **图标依赖改为可降级 + 加载顺序自动守卫**。承 v1.19.1。
 

@@ -159,9 +159,16 @@ async function targetTab(sw, port) {
     const t1 = await toastText(gallery);
     console.log('命中 ' + hit.length + ' 张；提示 = ' + t1);
 
+    /* 差了几张要能一眼看出来。这个套件曾经在批量跑时偶发红过 2 项，
+       而当时的输出只有「129 张」—— 到底是哪一张没被探到，得靠猜。
+       把缺的下标直接打出来，下次就不用猜了。 */
+    const missing = [];
+    for (let k = 0; k < TOTAL; k++) if (hit.indexOf(k) < 0) missing.push(k);
+
     // 核心断言：旧代码这里恒为 120，第 121 张之后永远探不到
     check(hit.length === TOTAL,
-      '一次点击覆盖全部 ' + TOTAL + ' 张（不再被 120 卡死）', hit.length + ' 张');
+      '一次点击覆盖全部 ' + TOTAL + ' 张（不再被 120 卡死）',
+      '命中 ' + hit.length + ' 张' + (missing.length ? '，缺 ' + missing.join(',') : ''));
     check(hit.length > 0 && hit[hit.length - 1] === TOTAL - 1,
       '第 ' + TOTAL + ' 张（上限之外的尾巴）确实被探到了', hit[hit.length - 1]);
 

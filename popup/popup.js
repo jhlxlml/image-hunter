@@ -25,7 +25,12 @@
   // 只有 page / panel 两种宿主，兜底取 page（与 popup/mode.js 保持一致）。
   // 原来这里兜底成 'popup' —— manifest 没有 default_popup，那个值取不到。
   const MODE = rawMode === 'panel' ? 'panel' : 'page';
-  let tabId = params.get('tabId') ? parseInt(params.get('tabId'), 10) : null;
+  /* 面板模式的 tabId **不从 URL 读**（URL 是请求方自己填的，网页可以随便写）；
+     它由后台按 `sender.tab.id` 回答，见 init。独立页的 tabId 是后台建页时写进去的，
+     网页没法把顶层导航到 chrome-extension:// ，所以那个值可信。 */
+  let tabId = (MODE === 'page' && params.get('tabId'))
+    ? parseInt(params.get('tabId'), 10)
+    : null;
   /* 多标签页合并嗅探（设置页开关，默认关）。两个变量分工明确：
        mergeTabs —— 这一轮到底是不是合并模式（面板模式恒为 false，见 init）
        targetIds —— 合并模式下**勾选了哪些**标签页；tabId 始终同步成它的第一个
@@ -34,7 +39,38 @@
   let mergeTabs = false;
   let targetIds = [];
   let lastTabs = [];           // 最近一次 LIST_TABS 的结果，多选面板据此渲染
-  const panelToken = params.get('token') || '';
+  /* 面板模式的通行证。**不再从 URL 读**（那个 src 在页面 DOM 里，网页脚本读得到）——
+     改由内容脚本在 `ready` 之后用 postMessage 点对点交接过来，见 onParentMessage。
+
+     为什么是「候选队列」而不是「一个变量」：网页脚本也能往这个 iframe 投消息，
+     它完全可以在内容脚本之前塞一个假 token 进来。如果代码认「第一个到达的」，
+     网页就能把面板卡死在「校验失败」上（拒绝服务）。
+     所以这里收下所有候选，逐个拿去后台校验，**第一个通过的就是真的** ——
+     假 token 后台不认识，自然落选。 */
+  let panelToken = '';
+  let panelTokenLocked = false;   // 校验通过后锁定：之后谁再投 init 都不改它
+  const pendingTokens = [];
+  let tokenWaiters = [];
+
+  function pushPanelToken(tok) {
+    if (panelTokenLocked) return;
+    if (typeof tok !== 'string' || !tok) return;
+    if (pendingTokens.indexOf(tok) >= 0) return;
+    pendingTokens.push(tok);
+    const w = tokenWaiters;
+    tokenWaiters = [];
+    for (const f of w) f();
+  }
+
+  function waitPanelToken(ms) {
+    return new Promise((resolve) => {
+      if (pendingTokens.length) { resolve(); return; }
+      let done = false;
+      const fire = () => { if (done) return; done = true; resolve(); };
+      tokenWaiters.push(fire);
+      setTimeout(fire, ms);
+    });
+  }
   /* 「在图库中打开」带过来的那张图。新开标签页时走 URL 参数，
      复用已有标签页时走 GALLERY_TARGET 消息（见 init 里的监听）。 */
   let pendingFocus = params.get('focus') || '';
@@ -249,26 +285,57 @@
    * ------------------------------------------------------------------ */
 
   /**
-   * 页内面板的来源校验（AUDIT P3-7）。
+   * 启动前的授权校验。
    *
-   * popup/* 必须在 web_accessible_resources 里，否则页面里的 iframe 加载不了它 ——
-   * 代价是**任何网站都能构造同款 iframe**，把图库叠在自己页面上套壳点击，
-   * 或者靠「能否加载这个资源」探测用户装没装本扩展。
+   * 两种宿主，两条路径，**都要过**：
    *
-   * 所以面板模式必须先证明「把我嵌进去的是本扩展的内容脚本」：
-   * 内容脚本向后台领一个只属于本标签页的 token 写进 URL，这里拿它回后台核验。
-   * 网页拿不到 token（它没法给后台发消息），伪造的 iframe 一律拒绝启动。
+   * 面板（?mode=panel）—— 它被嵌在**别人的网页**里，而 popup/* 必须在
+   *   web_accessible_resources 里，所以任何网站都能构造同款 iframe 套壳。
+   *   凭据是内容脚本交接过来的 token：网页脚本拿不到它（它发不出 runtime 消息），
+   *   所以伪造的 iframe 一定没有 token → 拒绝启动。
+   *   注意**不校验 e.origin、也不信 URL 里的 tabId**：前者是请求方自己报的，
+   *   后者是请求方自己填的。真正的身份由后台用 `sender.tab.id` 判定。
    *
-   * 只有面板模式需要校验：独立页（?mode=page）是扩展自己开的标签页，网页碰不到。
+   * 独立页（?mode=page）—— 以前这里直接 `return true`，理由是「网页碰不到」。
+   *   那个理由不成立：网页可以 `<iframe src="...popup.html?mode=page">`。
+   *   所以现在两道：① 自己检查有没有被嵌（window.top !== window.self）；
+   *   ② 再问后台「我是不是扩展页 + 顶层 frame」（sender 侧判定，伪造不了）。
    */
   async function verifyPanelOrigin() {
-    if (MODE !== 'panel') return true;
-    if (!panelToken || tabId == null) return false;
+    if (MODE === 'panel') {
+      /* 等「第一个能通过后台校验的 token」。网页脚本抢先塞进来的假 token
+         会在这里被逐个试掉（后台不认识它），随后真正的那个再通过。 */
+      const deadline = Date.now() + 8000;
+      while (Date.now() < deadline) {
+        if (!pendingTokens.length) {
+          await waitPanelToken(Math.max(50, deadline - Date.now()));
+        }
+        while (pendingTokens.length) {
+          const tok = pendingTokens.shift();
+          let ok = false;
+          try {
+            const res = await U.sendToBg({
+              type: MSG.PANEL_VERIFY,
+              payload: { token: tok }
+            });
+            ok = !!(res && res.ok && res.valid);
+          } catch (e) { ok = false; }
+          if (ok) {
+            panelToken = tok;
+            panelTokenLocked = true;
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    // mode === 'page'
+    let embedded = false;
+    try { embedded = window.top !== window.self; } catch (e) { embedded = true; }
+    if (embedded) return false;
     try {
-      const res = await U.sendToBg({
-        type: MSG.PANEL_VERIFY,
-        payload: { tabId, token: panelToken }
-      });
+      const res = await U.sendToBg({ type: MSG.GALLERY_AUTH });
       return !!(res && res.ok && res.valid);
     } catch (e) {
       return false;
@@ -290,9 +357,25 @@
     // 这里再设一次只是兜底：万一 mode.js 没加载成功，至少不会停在无 class 的状态。
     document.body.className = 'mode-' + MODE;
 
+    /* 面板模式：**先挂监听，再喊 ready**。
+       反过来的话，宿主收到 ready 立刻回 init，而那时监听还没注册 ——
+       token 就永远收不到了（表现是面板卡在空白，很难查）。 */
+    if (MODE === 'panel') {
+      window.addEventListener('message', onParentMessage);
+      try { window.parent.postMessage({ __ih: true, type: 'ready' }, '*'); } catch (e) { /* ignore */ }
+    }
+
     if (!await verifyPanelOrigin()) {
       refuseUntrustedEmbed();
       return;
+    }
+
+    if (MODE === 'panel') {
+      /* 扫描目标由后台按 `sender.tab.id` 回答 —— 这个值浏览器填的，不可伪造。
+         URL 里的 tabId 一概不读：那是请求方自己填的，网页可以随便写。 */
+      const res = await U.sendToBg({ type: MSG.GET_TAB_ID });
+      if (res && res.ok && res.tabId != null) tabId = res.tabId;
+      if (tabId == null) { refuseUntrustedEmbed(); return; }
     }
 
     await Store.loadSettings();
@@ -315,12 +398,6 @@
       applyScanUpgrade(msg.payload);
       return undefined;
     });
-
-    if (MODE === 'panel') {
-      // 告知宿主面板已就绪
-      try { window.parent.postMessage({ __ih: true, type: 'ready' }, '*'); } catch (e) { /* ignore */ }
-      window.addEventListener('message', onParentMessage);
-    }
 
     if (MODE === 'page') {
       // 后台据此记住本标签页，避免图标被反复点击时开出一堆图库页
@@ -783,10 +860,34 @@
     renderProgress();
   }
 
+  /**
+   * 父窗口发来的消息。
+   *
+   * 严格到什么程度：**只认 `window.parent`、只认带对 token 的指令**。
+   *
+   * 旧实现有两个洞：
+   *   ① 没校验 `e.source` —— 任何拿到这个 window 引用的脚本都能投递；
+   *   ② `init` 里允许改 `tabId` —— 网页脚本一句
+   *      `iframe.contentWindow.postMessage({__ih:true,type:'init',tabId:9999},'*')`
+   *      就能把面板的扫描目标换成任意标签页（面板有跨标签页嗅探能力）。
+   * 现在 tabId 一律由后台按 `sender.tab.id` 回答，消息里根本不存在这个字段；
+   * 其余指令（refresh）必须回带内容脚本交接的那个 token —— 网页不知道它。
+   */
   function onParentMessage(e) {
     const d = e.data;
     if (!d || typeof d !== 'object' || !d.__ih) return;
-    if (d.type === 'init' && d.tabId != null) tabId = d.tabId;
+    if (MODE !== 'panel') return;
+    if (e.source !== window.parent) return;
+
+    if (d.type === 'init') {
+      // 已认证之后不再接受任何新 token —— 否则网页脚本投一个自己的 init，
+      // 就能把「后续指令必须带对 token」这条判断架空了。
+      pushPanelToken(d.token);
+      return;
+    }
+
+    // 后续指令：必须带着同一个 token，否则就是网页脚本在瞎喊
+    if (!panelToken || d.token !== panelToken) return;
     if (d.type === 'refresh') doScan();
   }
 

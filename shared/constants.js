@@ -57,11 +57,15 @@
     SAVE_BY_SRC: 'IH_SAVE_BY_SRC',
     // 页内面板的来源校验（见 AUDIT P3-7）：
     // 面板是「页面里的 iframe 加载扩展页」，任何网站都能构造同款 iframe 来套壳点击。
-    // 内容脚本先向后台领一个只属于本标签页的 token，写进 iframe 的 URL；
-    // 面板启动时拿它回后台核验。网站拿不到 token（它没法给后台发消息），
-    // 所以伪造的 iframe 过不了校验。
+    // 内容脚本先向后台领一个只属于本标签页的 token，**通过 postMessage 交给面板**
+    // （不再写进 iframe 的 URL —— URL 会出现在页面的 DOM 里，网页脚本读得到）；
+    // 面板启动时拿它回后台核验，后台再用 sender.tab.id 确认「这个面板确实跑在那个标签页里」。
     PANEL_TOKEN: 'IH_PANEL_TOKEN',
     PANEL_VERIFY: 'IH_PANEL_VERIFY',
+    // 独立页（?mode=page）的授权：确认「我是扩展自己的顶层标签页」。
+    // 以前它只靠「网页碰不到 mode=page」这个假设 —— 而网页可以 iframe 一个
+    // mode=page，那个假设直接不成立，等于完全绕过校验。
+    GALLERY_AUTH: 'IH_GALLERY_AUTH',
     // 「单张还原」：撞上还原时间预算时靠后的图会保持缩略图地址，
     // 图库给这些卡片一个「还原」小按钮，对这一张单独重跑一次 tryRestore。
     // 走后台转发是因为图库页（扩展页）与目标图片不在同一个上下文里。
@@ -322,6 +326,16 @@
    * ------------------------------------------------------------------ */
 
   /**
+   * 自定义正则最多匹配这么长的地址。
+   *
+   * 为什么要有这个上限：pattern 是用户写的，而被匹配的字符串（图片地址）
+   * 是**网页给的**。ReDoS 的代价随输入长度指数增长，截断之后即使
+   * `U.isSafePattern` 那道启发式闸门漏了，回溯规模也是有界的。
+   * 正常图片地址远小于 2048。
+   */
+  const PATTERN_INPUT_LIMIT = 2048;
+
+  /**
    * 依据内置规则 + 用户自定义规则，生成原图候选 URL。
    *
    * 放在 shared 而不是 scanner.js，是因为两个宿主都要用它：
@@ -334,7 +348,8 @@
    * 导致 restoreRule 恒为 'builtin'，规则命中信息成了死数据）。
    *
    * 注意：constants.js 在 utils.js **之前**加载（见 manifest 的 js 数组），
-   * 所以这里不能引用 IH.U —— data:/blob: 的判断直接内联。
+   * 所以这里**不能在加载时**引用 IH.U —— data:/blob: 的判断直接内联。
+   * 需要用到 U 的地方一律**延迟到调用时**再取（见下面的 guard）。
    *
    * @returns {Array<{url:string, ruleId:string}>}
    */
@@ -349,11 +364,22 @@
     }
 
     const custom = (settings && settings.customRules) || [];
+    /* 内置规则是写死的，可以放心用完整地址；
+       自定义规则只喂前 2048 个字符（见上面 PATTERN_INPUT_LIMIT 的说明）。
+
+       还要再过一道 `isSafePattern`。为什么不干脆依赖 Store.withDefaults 那一次？
+       因为**兜底不能只有一层**：这个函数是「用户正则 × 网页数据」真正碰面的地方，
+       任何绕过 Store 的调用路径（比如将来某个直接构造 settings 的地方）都会
+       把危险模式送到这里。`IH.U` 是延迟取的 —— constants.js 先于 utils.js 加载，
+       但本函数只在运行时被调用，那时 U 一定已经在了。 */
+    const guard = (IH.U && typeof IH.U.isSafePattern === 'function') ? IH.U.isSafePattern : null;
+    const target = url.length > PATTERN_INPUT_LIMIT ? url.slice(0, PATTERN_INPUT_LIMIT) : url;
     for (const rule of custom) {
       if (!rule || !rule.pattern) continue;
+      if (guard && !guard(rule.pattern)) continue;
       try {
         const re = new RegExp(rule.pattern, rule.flags || 'i');
-        const v = url.replace(re, rule.replace == null ? '' : rule.replace);
+        const v = target.replace(re, rule.replace == null ? '' : rule.replace);
         if (v && v !== url && !out.has(v)) out.set(v, 'custom');
       } catch (e) { /* 用户正则非法时忽略 */ }
     }

@@ -43,8 +43,15 @@ const changeListeners = [];
 let idSeq = 0;
 let downloadCalls = [];
 let failDownload = false;      // download() 直接抛错
+/* 只让**下一次** download() 失败。测降级路径要用它：
+   降级成功后会**再调一次** download()（交 blob URL 给下载 API），
+   如果 flag 一直开着，那一次也会失败，就看不到「降级成功」了。 */
+let failNext = 0;
 let nameOverride = null;       // 模拟 Chrome 纠正扩展名
 let completeDelay = 220;       // 下载完成所需时间
+/* 降级路径（downloadViaFetch）用的 fetch。默认「断网」，
+   需要测「响应体读取上限」时换成真的 Response。 */
+let fetchImpl = () => Promise.reject(new Error('offline'));
 
 function makeItem(id, requestedName) {
   const name = nameOverride || requestedName;
@@ -75,6 +82,7 @@ const chrome = {
   downloads: {
     download(opts) {
       downloadCalls.push(opts);
+      if (failNext > 0) { failNext--; return Promise.reject(new Error('NETWORK_FAILED')); }
       if (failDownload) return Promise.reject(new Error('NETWORK_FAILED'));
       const id = ++idSeq;
       // 模拟：下载启动 → 一段时间后完成
@@ -134,8 +142,11 @@ const sandbox = {
   console, chrome, setTimeout, clearTimeout, setInterval, clearInterval,
   Promise, Object, Array, String, Number, Math, Date, JSON, Map, Set,
   URL, URLSearchParams, TextEncoder,
+  /* 「按上限读响应体」要用到这几个（Node 22 自带）：
+     readBodyLimited 走的是真流式读取，不是桩。 */
+  Blob, Response, ReadableStream, AbortController, Uint8Array,
   crypto: { subtle: null },                       // 走 quickHash 兜底，保证确定性
-  fetch: () => Promise.reject(new Error('offline')),   // 降级路径也失败，便于测失败分支
+  fetch: (url, opts) => fetchImpl(url, opts),
   importScripts: function () {
     for (const f of arguments) {
       vm.runInContext(fs.readFileSync(path.join(BASE, f), 'utf8'), ctx);
@@ -337,6 +348,124 @@ const URL_A = 'https://img.ithome.com/newsuploadfiles/2026/9/f667889f-687e-4167-
     JSON.stringify({ total: finalProgress.total, done: finalProgress.done }));
 
   completeDelay = 220;
+
+  /* --------------------------------------------------------------- *
+   * 8. 降级 fetch 路径：**先限制，再读**
+   *
+   * 回归「先吃完整个响应体、再检查大小」：
+   *   const blob = await res.blob();
+   *   if (blob.size > 16MB) throw ...
+   * 检查永远发生在内存已经吃掉之后。而且 fetchWithTimeout 的计时器
+   * 在响应头到达时就 clearTimeout 了，body 可以无限期慢慢吐。
+   * 现在必须：① 声明大小超限时一个字节都不读；② 错误页（text/html）拒收；
+   * ③ 正常小图仍然成功（别把好路径一起改坏）。
+   * --------------------------------------------------------------- */
+  console.log('\n=== 8. 降级 fetch：先限制再读 ===');
+  downloadCalls = [];
+
+  // 8a. CDN 回了个 200 + text/html 的错误页
+  failNext = 1;             // 只让第一次 download 失败 → 逼进降级路径
+  fetchImpl = () => Promise.resolve(new Response('<html>oops</html>', {
+    headers: { 'content-type': 'text/html; charset=utf-8' }
+  }));
+  const r8a = await sendMessage({
+    type: 'IH_DOWNLOAD_ONE',
+    payload: { url: URL_A + '?html=1', filename: 'e1.jpg', width: 800, height: 600, pageUrl: PAGE }
+  });
+  console.log('错误页 →', JSON.stringify(r8a));
+  check(r8a && r8a.ok === false, '错误页不会被当成图片存下来');
+  /* 这条断言的语言跟着界面语言走（这个套件没钉语言，默认英文），
+     所以两种语言都认 —— 但**必须**是那句人话，不能是 'bad-mime' 这种码。 */
+  check(r8a && /不是图片|not an image/i.test(r8a.error || ''),
+    '错误信息说清是「不是图片」（不是把错误码原样甩出来）', r8a && r8a.error);
+
+  // 8b. 声明 200MB 的「图片」
+  failNext = 1;
+  fetchImpl = () => Promise.resolve(new Response(
+    new ReadableStream({ pull(c) { c.enqueue(new Uint8Array(8)); } }),
+    { headers: { 'content-type': 'image/jpeg', 'content-length': String(200 * 1024 * 1024) } }
+  ));
+  const r8b = await sendMessage({
+    type: 'IH_DOWNLOAD_ONE',
+    payload: { url: URL_A + '?huge=1', filename: 'e2.jpg', width: 800, height: 600, pageUrl: PAGE }
+  });
+  console.log('200MB →', JSON.stringify(r8b));
+  check(r8b && r8b.ok === false, '超大响应被拒绝');
+  check(r8b && /图片过大|too large/i.test(r8b.error || ''),
+    '错误信息说清是「图片过大」', r8b && r8b.error);
+
+  // 8c. 正常小图：降级路径必须仍然能用
+  failNext = 1;
+  fetchImpl = () => Promise.resolve(new Response(new Uint8Array(2048), {
+    headers: { 'content-type': 'image/jpeg' }
+  }));
+  const r8c = await sendMessage({
+    type: 'IH_DOWNLOAD_ONE',
+    payload: { url: URL_A + '?ok=1', filename: 'e3.jpg', width: 800, height: 600, pageUrl: PAGE }
+  });
+  console.log('正常小图 →', JSON.stringify(r8c));
+  check(r8c && r8c.ok === true, '正常小图走降级路径仍然成功', r8c && r8c.error);
+  /* 落盘字节数以**磁盘上那个文件**为准（桩里是 1234），不该等于读取量。
+     真正要确认的是「交给下载 API 的是我们读出来的那份数据」—— 看 URL 是不是 blob:。 */
+  const lastCall = downloadCalls[downloadCalls.length - 1] || {};
+  check(/^blob:/.test(lastCall.url || ''),
+    '交给下载 API 的是读出来的 blob（而不是把原 URL 再交一次）', lastCall.url);
+  check(r8c && r8c.bytes > 0, '回传了正的字节数', r8c && String(r8c.bytes));
+
+  failNext = 0;
+  fetchImpl = () => Promise.reject(new Error('offline'));
+
+  /* --------------------------------------------------------------- *
+   * 9. 体积探测：只读响应头的请求必须把响应体掐掉
+   *
+   * 服务器**完全可能忽略 `Range: bytes=0-0` 直接回 200 + 整个文件**。
+   * 我们只要 Content-Range / Content-Length 里的数字，但如果不 cancel，
+   * 浏览器会把整个响应体收完 —— 一次「探测体积」等于把原图下载了一遍。
+   * --------------------------------------------------------------- */
+  console.log('\n=== 9. 体积探测遇 200 要取消响应体 ===');
+  {
+    let headCancelled = 0;
+    let rangeCancelled = 0;
+    let calls = 0;
+
+    fetchImpl = (url, opts) => {
+      calls++;
+      const isHead = opts && opts.method === 'HEAD';
+      if (isHead) {
+        // HEAD 也给一个带 body 的响应（有些服务器确实这么干），必须被 cancel
+        return Promise.resolve(new Response(
+          new ReadableStream({ pull() {}, cancel() { headCancelled++; } }),
+          { headers: { 'content-type': 'image/jpeg' } }
+        ));
+      }
+      // Range 被忽略 → 200 + 整个文件
+      return Promise.resolve(new Response(
+        new ReadableStream({ pull() {}, cancel() { rangeCancelled++; } }),
+        {
+          status: 200,
+          headers: { 'content-type': 'image/jpeg', 'content-length': String(3 * 1024 * 1024) }
+        }
+      ));
+    };
+
+    const r9 = await sendMessage({
+      type: 'IH_PROBE_SIZE',
+      payload: { urls: ['https://img.example.com/a.jpg'] }
+    }, 8000);
+    console.log('探测结果 =', JSON.stringify(r9));
+    console.log('calls=' + calls + ', headCancelled=' + headCancelled + ', rangeCancelled=' + rangeCancelled);
+
+    check(r9 && r9.ok === true, '探测返回 ok:true');
+    const got = (r9 && r9.sizes && r9.sizes['https://img.example.com/a.jpg']) || null;
+    check(!!got && got.bytes === 3 * 1024 * 1024,
+      'HEAD 没给长度时退到 Range 路径，从 200 的 content-length 取到体积',
+      got && String(got.bytes));
+    check(headCancelled === 1, 'HEAD 那个响应的 body 被 cancel 了', String(headCancelled));
+    check(rangeCancelled === 1,
+      'Range 回 200 时 body 被 cancel 了（不会白下载一整个文件）', String(rangeCancelled));
+  }
+
+  fetchImpl = () => Promise.reject(new Error('offline'));
 
   console.log('\n通过 ' + pass + ' 项，失败 ' + fail + ' 项');
   process.exit(fail ? 1 : 0);
