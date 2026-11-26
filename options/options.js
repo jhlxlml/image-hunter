@@ -653,6 +653,30 @@
       p.textContent = t('opt.histEmpty');
       body.appendChild(p);
     } else {
+      const toolbar = document.createElement('div');
+      toolbar.className = 'hist-toolbar';
+      const searchInput = document.createElement('input');
+      searchInput.type = 'search';
+      searchInput.placeholder = t('opt.histSearchPh');
+      searchInput.setAttribute('aria-label', t('opt.histSearchPh'));
+      const statusSel = document.createElement('select');
+      [
+        ['all', t('opt.histFilterAll')],
+        ['done', t('opt.histOk')],
+        ['failed', t('opt.histFail')]
+      ].forEach(([val, label]) => {
+        const opt = document.createElement('option');
+        opt.value = val;
+        opt.textContent = label;
+        statusSel.appendChild(opt);
+      });
+      const countEl = document.createElement('span');
+      countEl.className = 'hist-count';
+      toolbar.appendChild(searchInput);
+      toolbar.appendChild(statusSel);
+      toolbar.appendChild(countEl);
+      body.appendChild(toolbar);
+
       const table = document.createElement('table');
       table.className = 'hist-table';
       const thead = document.createElement('thead');
@@ -669,21 +693,41 @@
       table.appendChild(thead);
 
       const tb = document.createElement('tbody');
+      const slice = history.slice(0, 300);
 
-      history.slice(0, 300).forEach((h) => {
-        const tr = document.createElement('tr');
-        const st = h.status === 'done'
-          ? '<span class="pill ok">' + U.escapeHtml(t('opt.histOk')) + '</span>'
-          : '<span class="pill err">' + U.escapeHtml(t('opt.histFail')) + '</span>';
-        tr.innerHTML =
-          '<td>' + U.formatTime(h.ts) + '</td>' +
-          '<td>' + U.escapeHtml(h.filename || '') + '</td>' +
-          '<td>' + ((h.width && h.height) ? h.width + '×' + h.height : '—') + '</td>' +
-          '<td>' + (h.bytes ? U.formatBytes(h.bytes) : '—') + '</td>' +
-          '<td>' + st + '</td>' +
-          '<td class="url">' + U.escapeHtml(h.pageUrl || '') + '</td>';
-        tb.appendChild(tr);
-      });
+      const renderRows = () => {
+        const q = searchInput.value.trim().toLowerCase();
+        const stFilter = statusSel.value;
+        const matched = slice.filter((h) => {
+          if (stFilter !== 'all' && (h.status === 'done' ? 'done' : 'failed') !== stFilter) return false;
+          if (!q) return true;
+          return (h.filename && h.filename.toLowerCase().indexOf(q) >= 0)
+            || (h.pageUrl && h.pageUrl.toLowerCase().indexOf(q) >= 0)
+            || (h.url && h.url.toLowerCase().indexOf(q) >= 0);
+        });
+
+        tb.textContent = '';
+        matched.forEach((h) => {
+          const tr = document.createElement('tr');
+          const st = h.status === 'done'
+            ? '<span class="pill ok">' + U.escapeHtml(t('opt.histOk')) + '</span>'
+            : '<span class="pill err">' + U.escapeHtml(t('opt.histFail')) + '</span>';
+          tr.innerHTML =
+            '<td>' + U.formatTime(h.ts) + '</td>' +
+            '<td>' + U.escapeHtml(h.filename || '') + '</td>' +
+            '<td>' + ((h.width && h.height) ? h.width + '×' + h.height : '—') + '</td>' +
+            '<td>' + (h.bytes ? U.formatBytes(h.bytes) : '—') + '</td>' +
+            '<td>' + st + '</td>' +
+            '<td class="url">' + U.escapeHtml(h.pageUrl || '') + '</td>';
+          tb.appendChild(tr);
+        });
+        countEl.textContent = t('opt.histMatchCount', { shown: matched.length, total: slice.length });
+      };
+
+      searchInput.addEventListener('input', renderRows);
+      statusSel.addEventListener('change', renderRows);
+      renderRows();
+
       table.appendChild(tb);
       body.appendChild(table);
     }

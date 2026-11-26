@@ -552,7 +552,7 @@
   function openInTab() {
     const c = current();
     if (!c) return;
-    if (U.isDataUrl(c.url)) return;
+    if (!U.isOpenableUrl(c.url)) return;
     try { window.open(c.url, '_blank', 'noopener'); } catch (e) { /* ignore */ }
   }
 

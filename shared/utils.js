@@ -58,6 +58,8 @@
 
   function isDataUrl(u) { return /^data:/i.test(u || ''); }
   function isBlobUrl(u) { return /^blob:/i.test(u || ''); }
+  function isHttpUrl(u) { return /^https?:\/\//i.test(String(u || '').trim()); }
+  function isOpenableUrl(u) { return isHttpUrl(u) || isBlobUrl(String(u || '').trim()); }
 
   /** 从 URL 推断扩展名（小写，不含点）；无法推断返回 '' */
   function extFromUrl(url) {
@@ -925,6 +927,8 @@
     normalizeUrl,
     isDataUrl,
     isBlobUrl,
+    isHttpUrl,
+    isOpenableUrl,
     extFromUrl,
     isProbablyImageUrl,
     parseSrcset,

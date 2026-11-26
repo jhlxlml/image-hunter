@@ -277,7 +277,10 @@ const scanMsg = (extra) => Object.assign({ type: 'IH_SCAN_TAB', tabId: 1 }, extr
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^[ \t]*\/\/.*$/gm, '');
 
-  const src = stripComments(fs.readFileSync(path.join(BASE, 'background.js'), 'utf8'));
+  const src = stripComments(
+    fs.readFileSync(path.join(BASE, 'background.js'), 'utf8') + '\n'
+    + fs.readFileSync(path.join(BASE, 'bg/scan.js'), 'utf8')
+  );
   check(/noReply/.test(src) && /reported === 0/.test(src),
     'finalizeScan 里有「一个 frame 都没回报」的判断');
   check(/session\.pending\.size === 0/.test(src),

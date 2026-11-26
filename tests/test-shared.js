@@ -446,5 +446,20 @@ console.log('\n--- 还原语义 ---');
   eq(urls.length === new Set(urls).size, true, '候选里没有重复地址');
 }
 
+console.log('\n--- 协议白名单（isHttpUrl / isOpenableUrl）---');
+{
+  eq(U.isHttpUrl('https://example.com/a.jpg'), true, 'https 允许探测');
+  eq(U.isHttpUrl('http://example.com/a.jpg'), true, 'http 允许探测');
+  eq(U.isHttpUrl('data:image/png;base64,AA=='), false, 'data URL 拒绝探测');
+  eq(U.isHttpUrl('blob:https://example.com/123'), false, 'blob URL 拒绝探测');
+  eq(U.isHttpUrl('file:///etc/passwd'), false, 'file URL 拒绝探测');
+  eq(U.isHttpUrl('javascript:alert(1)'), false, 'javascript URL 拒绝探测');
+  eq(U.isOpenableUrl('https://example.com/a.jpg'), true, 'https 允许新标签页打开');
+  eq(U.isOpenableUrl('blob:https://example.com/123'), true, 'blob 允许新标签页打开');
+  eq(U.isOpenableUrl('data:image/png;base64,AA=='), false, 'data URL 拒绝新标签页打开');
+  eq(U.isOpenableUrl('javascript:alert(1)'), false, 'javascript URL 拒绝新标签页打开');
+  eq(U.isOpenableUrl('file:///etc/passwd'), false, 'file URL 拒绝新标签页打开');
+}
+
 console.log('\n通过 ' + pass + ' 项，失败 ' + fail + ' 项');
 process.exit(fail ? 1 : 0);

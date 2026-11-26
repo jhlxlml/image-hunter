@@ -23,6 +23,7 @@ const vm = require('vm');
 
 const BASE = path.resolve(__dirname, '..');
 const i18nSrc = fs.readFileSync(path.join(BASE, 'shared/i18n.js'), 'utf8');
+const i18nExtSrc = fs.readFileSync(path.join(BASE, 'shared/i18n-ext.js'), 'utf8');
 const constSrc = fs.readFileSync(path.join(BASE, 'shared/constants.js'), 'utf8');
 const utilSrc = fs.readFileSync(path.join(BASE, 'shared/utils.js'), 'utf8');
 const storeSrc = fs.readFileSync(path.join(BASE, 'shared/store.js'), 'utf8');
@@ -46,6 +47,7 @@ function plainCtx(navLang) {
   if (navLang !== undefined) ctx.navigator = { language: navLang };
   vm.createContext(ctx);
   vm.runInContext(i18nSrc, ctx);
+  vm.runInContext(i18nExtSrc, ctx);
   return ctx;
 }
 
@@ -78,6 +80,7 @@ function storeCtx(uiLang, html) {
   load(utilSrc);
   load(storeSrc);
   load(i18nSrc);
+  load(i18nExtSrc);
   return { dom, ctx, IH: ctx.IH, stored };
 }
 

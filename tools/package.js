@@ -30,7 +30,7 @@ const zlib = require('zlib');
 
 const ROOT = path.resolve(__dirname, '..');
 /** 会进包的所有目录（根目录下的 manifest.json / background.js 单独算） */
-const RUNTIME_DIRS = ['shared', 'content', 'popup', 'options', 'icons', '_locales'];
+const RUNTIME_DIRS = ['shared', 'content', 'popup', 'options', 'bg', 'icons', '_locales'];
 /* LICENSE 与第三方声明必须**跟着分发物走**：AGPL 要求随作品提供许可全文，
    Lucide 的 ISC 要求「上述版权声明与本许可声明出现在所有副本中」。
    它们不在 manifest 的引用链上，所以只能在这里显式列出来 ——
@@ -135,7 +135,15 @@ function collectFiles() {
   }
 
   // 后台
-  if (mf.background && mf.background.service_worker) add(mf.background.service_worker);
+  if (mf.background && mf.background.service_worker) {
+    add(mf.background.service_worker);
+    try {
+      const swSrc = fs.readFileSync(path.join(ROOT, mf.background.service_worker), 'utf8');
+      for (const m of swSrc.matchAll(/importScripts\(([\s\S]*?)\)/g)) {
+        for (const s of m[1].matchAll(/['"]([^'"]+)['"]/g)) add(s[1]);
+      }
+    } catch (e) { /* ignore */ }
+  }
   if (mf.background && Array.isArray(mf.background.scripts)) mf.background.scripts.forEach(add);
 
   // 内容脚本（js + css 都要，css 是 manifest 直接注入的那部分）

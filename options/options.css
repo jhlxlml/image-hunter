@@ -622,6 +622,46 @@ select.sel:focus { border-color: var(--primary); background-color: var(--surface
 
 .modal-bd { overflow: auto; padding: 6px 18px 18px; }
 
+.hist-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0 8px;
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 2;
+}
+
+.hist-toolbar input[type="search"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 12px;
+  outline: none;
+}
+
+.hist-toolbar input[type="search"]:focus { border-color: var(--primary); }
+
+.hist-toolbar select {
+  padding: 6px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.hist-count {
+  font-size: 11.5px;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
 .hist-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 
 .hist-table th {

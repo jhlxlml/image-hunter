@@ -28,7 +28,7 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
 
 /** 产品代码（不含测试、不含打包产物） */
-const SRC_DIRS = ['shared', 'content', 'popup', 'options'];
+const SRC_DIRS = ['shared', 'content', 'popup', 'options', 'bg'];
 const SRC_FILES = ['background.js'];
 const EXTS = ['.js', '.html', '.css', '.json'];
 

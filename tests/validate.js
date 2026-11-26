@@ -32,6 +32,7 @@ function tagSrcIdx(html, name) {
  * 所以这里直接加载文案表，断言打在**键**上，并额外验一遍中英是否齐平。 */
 globalThis.IH = globalThis.IH || {};
 require(path.join(ROOT, 'shared/i18n.js'));
+require(path.join(ROOT, 'shared/i18n-ext.js'));
 const STRINGS = (globalThis.IH.I18n && globalThis.IH.I18n.STRINGS) || { zh: {}, en: {} };
 /** 这个键在中英两种语言里都真的有内容 */
 const hasI18n = (k) => STRINGS.zh[k] != null && STRINGS.en[k] != null;
@@ -216,10 +217,12 @@ rules.forEach(([a, b, label]) => {
 
 console.log('\n=== 7. 背景脚本 importScripts ===');
 const bg = fs.readFileSync(path.join(ROOT, 'background.js'), 'utf8');
-const imp = Array.from(bg.matchAll(/importScripts\(([^)]+)\)/g))[0];
-if (imp) {
-  const list = Array.from(imp[1].matchAll(/'([^']+)'/g)).map((m) => m[1]);
-  list.forEach((f) => { if (exists(f)) ok('importScripts → ' + f); else bad('importScripts → ' + f + ' 不存在'); });
+const imps = Array.from(bg.matchAll(/importScripts\(([^)]+)\)/g));
+if (imps.length) {
+  for (const imp of imps) {
+    const list = Array.from(imp[1].matchAll(/'([^']+)'/g)).map((m) => m[1]);
+    list.forEach((f) => { if (exists(f)) ok('importScripts → ' + f); else bad('importScripts → ' + f + ' 不存在'); });
+  }
 } else bad('background.js 未找到 importScripts');
 
 console.log('\n=== 8. 消息类型一致性 ===');
@@ -444,7 +447,8 @@ const codeOf = (rel) => {
 const constCode = codeOf('shared/constants.js');
 const scannerCode = codeOf('content/scanner.js');
 const mainCode = codeOf('content/main.js');
-const bgCode = codeOf('background.js');
+const bgCode = ['background.js', 'bg/probe.js', 'bg/auth.js', 'bg/scan.js', 'bg/downloads.js']
+  .map(codeOf).join('\n');
 
 // (a) 实现在 shared 里，并且被导出
 if (/function\s+buildRestoreCandidates\s*\(/.test(constCode)) {
@@ -849,7 +853,7 @@ function productCode() {
       if (/\.(js|html)$/.test(name)) out.push([rel, fs.readFileSync(abs, 'utf8')]);
     }
   };
-  for (const d of ['shared', 'content', 'popup', 'options']) walk(d);
+  for (const d of ['shared', 'content', 'popup', 'options', 'bg']) walk(d);
   out.push(['background.js', fs.readFileSync(path.join(ROOT, 'background.js'), 'utf8')]);
   return out;
 }
@@ -924,7 +928,8 @@ if (noUi.length) {
  * 这类错在浏览器里极难发现（拖一下就好、看着也"没坏"），
  * 所以必须在静态层面钉死。
  * ------------------------------------------------------------------ */
-const popupJsSrc = fs.readFileSync(path.join(ROOT, 'popup/popup.js'), 'utf8');
+const popupJsSrc = ['popup/popup.js', 'popup/marquee.js', 'popup/actions.js', 'popup/targets.js']
+  .map((f) => fs.readFileSync(path.join(ROOT, f), 'utf8')).join('\n');
 
 const sliderTag = (popupHtml.match(/<input[^>]*id\s*=\s*["']sizeMin["'][^>]*>/) || [])[0] || '';
 const sliderAttr = (name) => {
@@ -1324,7 +1329,8 @@ console.log('\n=== 15. 键盘与读屏器接线 ===');
 console.log('\n=== 16. 诊断包的接线 ===');
 {
   const constSrc3 = fs.readFileSync(path.join(ROOT, 'shared/constants.js'), 'utf8');
-  const bgSrc2 = fs.readFileSync(path.join(ROOT, 'background.js'), 'utf8');
+  const bgSrc2 = ['background.js', 'bg/scan.js', 'bg/probe.js']
+    .map((f) => fs.readFileSync(path.join(ROOT, f), 'utf8')).join('\n');
   const optHtml = fs.readFileSync(path.join(ROOT, 'options/options.html'), 'utf8');
   const optJs = fs.readFileSync(path.join(ROOT, 'options/options.js'), 'utf8');
   const diagSrc = fs.readFileSync(path.join(ROOT, 'shared/diagnostics.js'), 'utf8');
@@ -1448,7 +1454,10 @@ console.log('\n=== 16. 诊断包的接线 ===');
  * ------------------------------------------------------------------ */
 console.log('\n=== 17. 扫描结论的三态 ===');
 {
-  const bgSrc3 = stripComments(fs.readFileSync(path.join(ROOT, 'background.js'), 'utf8'));
+  const bgSrc3 = stripComments(
+    fs.readFileSync(path.join(ROOT, 'background.js'), 'utf8') + '\n'
+    + fs.readFileSync(path.join(ROOT, 'bg/scan.js'), 'utf8')
+  );
   const popupSrc = stripComments(fs.readFileSync(path.join(ROOT, 'popup/popup.js'), 'utf8'));
   const mainSrc3 = stripComments(fs.readFileSync(path.join(ROOT, 'content/main.js'), 'utf8'));
   const scanSrc3 = stripComments(fs.readFileSync(path.join(ROOT, 'content/scanner.js'), 'utf8'));
@@ -1575,9 +1584,9 @@ console.log('\n=== 18. 界面语言 ===');
      拼错的键不会报错 —— t() 找不到就**把 key 原样返回**，
      界面上会出现 "pop.svaeSelected" 这种东西，而测试全绿。 */
   const uiFiles = [
-    'popup/popup.html', 'popup/popup.js',
+    'popup/popup.html', 'popup/popup.js', 'popup/marquee.js', 'popup/actions.js', 'popup/targets.js',
     'options/options.html', 'options/options.js',
-    'background.js',
+    'background.js', 'bg/probe.js', 'bg/auth.js', 'bg/scan.js', 'bg/downloads.js',
     'content/hover.js', 'content/lightbox.js', 'content/panel.js', 'content/main.js'
   ];
   const used = new Set();
@@ -2223,7 +2232,7 @@ console.log('\n=== 21. 图标：单一来源（Lucide）+ 同层级同一档 ===
         if (/<svg\b/.test(src)) offenders.push(rel);
       });
     };
-    ['shared', 'content', 'popup', 'options'].forEach(walk);
+    ['shared', 'content', 'popup', 'options', 'bg'].forEach(walk);
     if (fs.existsSync(path.join(ROOT, 'background.js'))
         && /<svg\b/.test(fs.readFileSync(path.join(ROOT, 'background.js'), 'utf8'))) {
       offenders.push('background.js');

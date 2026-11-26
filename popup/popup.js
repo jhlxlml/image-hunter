@@ -31,14 +31,29 @@
   let tabId = (MODE === 'page' && params.get('tabId'))
     ? parseInt(params.get('tabId'), 10)
     : null;
-  /* 多标签页合并嗅探（设置页开关，默认关）。两个变量分工明确：
-       mergeTabs —— 这一轮到底是不是合并模式（面板模式恒为 false，见 init）
-       targetIds —— 合并模式下**勾选了哪些**标签页；tabId 始终同步成它的第一个
-                     （页内面板、定位等仍按「单目标」语义工作，不用改）
-     关闭合并时 targetIds 恒为空，一切按单个 tabId 走 —— 与改动前完全一致。 */
-  let mergeTabs = false;
-  let targetIds = [];
-  let lastTabs = [];           // 最近一次 LIST_TABS 的结果，多选面板据此渲染
+  /* 扫描目标控制器（实现在 popup/targets.js） */
+  let tgt = null;
+  function getTgt() {
+    if (!tgt) {
+      tgt = IH.PopupTargets.create({
+        $, MODE, state, t,
+        getTabId: () => tabId,
+        setTabId: (id) => { tabId = id; },
+        doScan,
+        focusImage
+      });
+    }
+    return tgt;
+  }
+  function activeTargetIds() { return getTgt().activeTargetIds(); }
+  function applyTargetMode() { return getTgt().applyTargetMode(); }
+  function loadTabList() { return getTgt().loadTabList(); }
+  function renderTargets() { return getTgt().renderTargets(); }
+  function onTargetChange(e) { return getTgt().onTargetChange(e); }
+  function switchTarget(nextId, focusUrl) { return getTgt().switchTarget(nextId, focusUrl); }
+  function bindTargetPicker() { return getTgt().bindTargetPicker(); }
+  function onSettingsChanged() { return getTgt().onSettingsChanged(); }
+  function mergeTabResults(ids, results) { return getTgt().mergeTabResults(ids, results); }
   /* 面板模式的通行证。**不再从 URL 读**（那个 src 在页面 DOM 里，网页脚本读得到）——
      改由内容脚本在 `ready` 之后用 postMessage 点对点交接过来，见 onParentMessage。
 
@@ -158,7 +173,8 @@
     search: '',
     onlyRestored: false,
     hideDownloaded: false,
-    maxOnly: false
+    maxOnly: false,
+    onlySelected: false
   };
 
   /** 合法的排序维度 / 方向。改这里就要同步改设置页那个 select 的 option 值。 */
@@ -192,7 +208,6 @@
   let renderedCount = 0;
   let fillToken = 0;          // 每次重建自增，用来作废上一轮还没跑完的「分片补全」
   let fillHandle = null;      // rAF / timeout 句柄
-  let progressTimer = null;
   let exportFormat = 'json';
 
   /* 网格的「roving tabindex」：整个网格只占**一个** Tab 停靠点，
@@ -205,32 +220,30 @@
   let rovingIndex = 0;
   let srTimer = null;         // 读屏器播报的防抖句柄
   let lastAnnouncedSelected = 0;   // 上一次播报过的勾选数（避免重复念同一句）
-  let lastProgressStatus = 'idle'; // 上一次的保存状态（只在「开始 / 结束」播报一次）
 
-  /**
-   * 框选（拖拽画框多选）状态机。
-   * 坐标一律用「grid-wrap 内容坐标系」（client 坐标 - wrap 位置 + wrap 滚动量），
-   * 这样无论是弹窗内网格滚动，还是独立页整页滚动，遮罩层都能贴在正确的图片上。
-   *
-   * 默认语义是**切换**：框内已勾选的取消、未勾选的勾上。
-   * 于是「多次框选不同区域」天然是累加，而「框回已选区域」就是反选取消。
-   */
-  const marquee = {
-    armed: false,          // 已按下鼠标，等待位移超过阈值
-    dragging: false,       // 已真正进入框选
-    sx: 0, sy: 0,          // 起点
-    cx: 0, cy: 0,          // 当前点
-    mode: 'toggle',        // toggle（默认）/ add（Ctrl 只加）/ sub（Alt 只减）
-    base: null,            // 按下时的选择快照，供三种语义使用
-    hits: new Set(),       // 当前落入选框的卡片 id
-    preview: null,         // 松手后将要生效的选择集合
-    pointer: { x: 0, y: 0 },  // 最近一次指针的 client 坐标（自动滚动用）
-    geom: null,            // 拖拽期间的卡片几何快照（见 buildMarqueeGeom）
-    raf: null
-  };
-  const DRAG_THRESHOLD = 4;   // 位移阈值（px），小于它仍视为单击
-  const SCROLL_EDGE = 44;     // 距边缘多少像素开始自动滚动
-  const SCROLL_SPEED = 16;    // 自动滚动速度（px / 帧）
+  /* ------------------------------------------------------------------ *
+   * 动作控制器（实现在 popup/actions.js）
+   * ------------------------------------------------------------------ */
+  let actions = null;
+  function getActions() {
+    if (!actions) {
+      actions = IH.PopupActions.create({
+        $, state, t, toast, announce, applyFilters, fileNameOf
+      });
+    }
+    return actions;
+  }
+  function probeSizes() { return getActions().probeSizes(); }
+  function saveSelected() { return getActions().saveSelected(); }
+  function renderProgress() { return getActions().renderProgress(); }
+  function exportList() { return getActions().exportList(exportFormat); }
+
+  /* ------------------------------------------------------------------ *
+   * 框选控制器（实现在 popup/marquee.js）
+   * ------------------------------------------------------------------ */
+  let mq = null;
+  function paintSelection(set, geom) { if (mq) mq.paintSelection(set, geom); }
+  function invalidateMarqueeGeom() { if (mq) mq.invalidateGeom(); }
 
   /* ------------------------------------------------------------------ *
    * 工具
@@ -439,7 +452,7 @@
 
     /* 合并嗅探只在独立页里提供 —— 页内面板天生是「贴着当前这一页」的窄条，
        让它去合并别的标签页既装不下那个多选面板，也违背面板的定位。 */
-    mergeTabs = MODE === 'page' && !!Store.getSettings().mergeTabs;
+    getTgt().setMerge(MODE === 'page' && !!Store.getSettings().mergeTabs);
     applyTargetMode();
 
     // 滑条值要在 buildSizePresets（它会 syncSizeSlider）**之前**读回来，
@@ -486,275 +499,7 @@
    * 两者互斥显示，避免「到底听谁的」这种歧义。
    * ------------------------------------------------------------------ */
 
-  /** 本轮真正要扫的标签页。合并模式下以勾选为准（可能为空 —— 那就是「还没选」）。 */
-  function activeTargetIds() {
-    if (mergeTabs) return targetIds.slice();
-    return tabId != null ? [tabId] : [];
-  }
-
-  /** 按设置切换「扫描目标」用哪个控件 */
-  function applyTargetMode() {
-    const sel = $('selTargetTab');
-    const multi = $('targetMulti');
-    if (!sel || !multi) return;
-    sel.hidden = mergeTabs;
-    multi.hidden = !mergeTabs;
-    if (!mergeTabs) closeTargetsPanel();
-  }
-
-  function closeTargetsPanel() {
-    const panel = $('targetsPanel');
-    const btn = $('btnTargets');
-    if (panel) panel.hidden = true;
-    if (btn) btn.setAttribute('aria-expanded', 'false');
-  }
-
-  /** 拉取所有可选的普通网页标签页，填充单选下拉与多选列表 */
-  async function loadTabList() {
-    const sel = $('selTargetTab');
-    const res = await U.sendToBg({ type: MSG.LIST_TABS });
-    const tabs = (res && res.tabs) || [];
-    lastTabs = tabs;
-
-    /* ---- 单选下拉（合并关闭时用）---- */
-    if (sel) {
-      sel.innerHTML = '';
-      if (!tabs.length) {
-        const o = document.createElement('option');
-        o.value = '';
-        o.textContent = t('pop.noTabs');
-        sel.appendChild(o);
-        sel.disabled = true;
-      } else {
-        tabs.forEach((t) => {
-          const o = document.createElement('option');
-          o.value = String(t.id);
-          const label = (t.title || t.host || t.url).trim().slice(0, 60);
-          o.textContent = t.active ? '● ' + label : label;
-          o.title = t.url;
-          sel.appendChild(o);
-        });
-
-        if (tabId != null && tabs.some((t) => t.id === tabId)) {
-          sel.value = String(tabId);
-        } else {
-          // 目标标签页已关闭：退回到后台推荐的那个
-          const fallback = res && res.current;
-          if (fallback != null && tabs.some((t) => t.id === fallback)) {
-            sel.value = String(fallback);
-            tabId = fallback;
-          }
-        }
-        sel.disabled = false;
-      }
-    }
-
-    /* ---- 多选列表（合并打开时用）----
-       先清掉已经关掉的标签页，再保证「至少选中一个」——
-       否则用户打开图库会看到一个空列表，还以为嗅探坏了。 */
-    if (tabs.length) {
-      const alive = new Set(tabs.map((t) => t.id));
-      if (mergeTabs) {
-        targetIds = targetIds.filter((id) => alive.has(id));
-        if (!targetIds.length) {
-          const fallback = res && res.current;
-          const seed = (tabId != null && alive.has(tabId)) ? tabId
-            : (fallback != null && alive.has(fallback)) ? fallback
-              : tabs[0].id;
-          targetIds = [seed];
-        }
-        tabId = targetIds[0];
-      } else {
-        /* 单选模式下 `tabId` 才是唯一真相源，勾选列表只是跟着它走 ——
-           这里**绝不能**反过来用 `targetIds` 覆盖 `tabId`。
-           `switchTarget()` 会先把 `tabId` 改成新目标、紧接着调本函数刷新列表；
-           若在刷新时被覆盖回旧值，那次「切换」就等于当场被撤销 ——
-           表现是「顶栏和目标下拉都换了，图却还是上一页的」。
-           目标标签页已被关闭时，退回列表第一个（与原行为一致）。 */
-        targetIds = (tabId != null && alive.has(tabId)) ? [tabId] : [];
-        if (!targetIds.length) {
-          tabId = tabs[0].id;
-          targetIds = [tabId];
-        }
-      }
-    } else {
-      targetIds = [];
-    }
-
-    renderTargets();
-  }
-
-  /** 渲染多选面板里的勾选列表 + 胶囊上的摘要文字 */
-  function renderTargets() {
-    const list = $('targetsList');
-    if (!list) return;
-
-    list.textContent = '';
-    if (!lastTabs.length) {
-      const d = document.createElement('div');
-      d.className = 'tm-empty';
-      d.textContent = t('pop.noTabs');
-      list.appendChild(d);
-    } else {
-      /* 循环变量叫 tab 不叫 t —— `t` 是本文件的「取词」助手，
-         同名会把它盖掉，写出来的 `t('pop.xxx')` 会当场抛 TypeError。 */
-      for (const tab of lastTabs) {
-        const row = document.createElement('label');
-        row.className = 'tm-row';
-
-        const cb = document.createElement('input');
-        cb.type = 'checkbox';
-        cb.value = String(tab.id);
-        cb.checked = targetIds.indexOf(tab.id) >= 0;
-        cb.addEventListener('change', () => {
-          if (cb.checked) {
-            if (targetIds.indexOf(tab.id) < 0) targetIds.push(tab.id);
-          } else {
-            targetIds = targetIds.filter((id) => id !== tab.id);
-          }
-          onTargetsChanged();
-        });
-        row.appendChild(cb);
-
-        const txt = document.createElement('span');
-        txt.className = 'tm-txt';
-        txt.textContent = (tab.title || tab.url || '').trim().slice(0, 80) || t('pop.untitled');
-        txt.title = tab.url || '';
-        row.appendChild(txt);
-
-        const host = document.createElement('span');
-        host.className = 'tm-host';
-        host.textContent = tab.host || '';
-        row.appendChild(host);
-
-        list.appendChild(row);
-      }
-    }
-
-    const sum = $('targetsSummary');
-    if (sum) {
-      const n = targetIds.length;
-      if (!n) {
-        sum.textContent = t('pop.targetSummary');
-        sum.title = t('pop.noPagePicked');
-      } else if (n === 1) {
-        const one = lastTabs.find((x) => x.id === targetIds[0]);
-        sum.textContent = one
-          ? ((one.title || one.url || '').trim().slice(0, 40) || t('pop.pageCount', { n: 1 }))
-          : t('pop.pageCount', { n: 1 });
-        sum.title = one ? (one.url || '') : '';
-      } else {
-        sum.textContent = t('pop.pageCount', { n });
-        sum.title = targetIds.map((id) => {
-          const found = lastTabs.find((x) => x.id === id);
-          return found ? (found.title || found.url) : String(id);
-        }).join('\n');
-      }
-    }
-  }
-
-  /** 勾选变化：立刻刷摘要，扫描**防抖**后只跑一次 */
-  function onTargetsChanged() {
-    if (targetIds.length) tabId = targetIds[0];
-    renderTargets();
-    scheduleMergedRescan();
-  }
-
-  /* 连点几个复选框（或「全选」）会连着触发好几次变更。
-     不防抖的话就是好几次**并发**的合并扫描同时在跑 ——
-     它们各自 await 完之后都会去写 state.all，谁后到谁说了算，
-     用户看到的是「结果闪来闪去，最后停在哪个全看运气」。
-     等 260ms 再扫，中间的中间态自然被合并掉。 */
-  const scheduleMergedRescan = U.debounce(() => {
-    state.selected.clear();
-    doScan();
-  }, 260);
-
-  /** 单选下拉切换 */
-  async function onTargetChange(e) {
-    const v = parseInt(e.target.value, 10);
-    if (!isFinite(v) || v === tabId) return;
-    tabId = v;
-    state.selected.clear();
-    await doScan();
-  }
-
-  /**
-   * 切换扫描目标并重新嗅探；带 focusUrl 时顺便定位到那一张。
-   *
-   * 目标没变也要继续走定位 —— 用户可能就是在同一个页面的灯箱里又点了一次
-   * 「在图库中打开」，那时候不该白重扫一遍。
-   */
-  async function switchTarget(nextId, focusUrl) {
-    let changed = false;
-    if (nextId != null) {
-      // 合并模式下，「在图库中打开」表达的是「我只要这一页」——
-      // 于是把勾选收缩成这一个，而不是在原有多个目标上再加一个。
-      if (mergeTabs && (targetIds.length !== 1 || targetIds[0] !== nextId)) {
-        targetIds = [nextId];
-        changed = true;
-      }
-      if (nextId !== tabId) { tabId = nextId; changed = true; }
-    }
-    if (changed) {
-      state.selected.clear();
-      await loadTabList();   // 顺带刷新列表（期间可能又开了新标签页）
-      await doScan();
-    }
-    if (focusUrl) await focusImage(focusUrl);
-  }
-
-  /** 多选面板的开合、全选 / 清空、点外部关闭 */
-  function bindTargetPicker() {
-    const btn = $('btnTargets');
-    const panel = $('targetsPanel');
-    if (!btn || !panel) return;
-
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const open = panel.hidden;
-      panel.hidden = !open;
-      btn.setAttribute('aria-expanded', String(open));
-    });
-
-    $('btnTargetsAll').addEventListener('click', (e) => {
-      e.stopPropagation();
-      targetIds = lastTabs.map((t) => t.id);
-      onTargetsChanged();
-    });
-
-    $('btnTargetsNone').addEventListener('click', (e) => {
-      e.stopPropagation();
-      targetIds = [];
-      onTargetsChanged();
-    });
-
-    // 点面板以外的地方 → 收起（和搜索框同一套做法）
-    document.addEventListener('pointerdown', (e) => {
-      if (panel.hidden) return;
-      if (e.target.closest && e.target.closest('.target-multi')) return;
-      closeTargetsPanel();
-    });
-  }
-
-  /**
-   * 设置里改了「多标签页合并嗅探」→ 立刻切换控件并重扫。
-   * 与排除列表那套一致：改完立即生效，不用刷新页面。
-   */
-  async function onSettingsChanged() {
-    if (MODE !== 'page') return;                 // 面板模式恒为单目标
-    const next = !!Store.getSettings().mergeTabs;
-    if (next === mergeTabs) return;
-    mergeTabs = next;
-    applyTargetMode();
-    if (mergeTabs) {
-      // 从单选切过来：把当前主目标作为唯一的勾选项
-      targetIds = tabId != null ? [tabId] : [];
-    }
-    await loadTabList();
-    state.selected.clear();
-    await doScan();
-  }
+  /* (扫描目标选择器 / 多标签页合并 已拆分至 popup/targets.js) */
 
   /* ------------------------------------------------------------------ *
    * 定位到某一张图（「在图库中打开」的落点）
@@ -950,7 +695,8 @@
   const SWITCHES = [
     { key: 'onlyRestored', i18n: 'pop.swRestored' },
     { key: 'hideDownloaded', i18n: 'pop.swHideDownloaded' },
-    { key: 'maxOnly', i18n: 'pop.swMaxOnly' }
+    { key: 'maxOnly', i18n: 'pop.swMaxOnly' },
+    { key: 'onlySelected', i18n: 'pop.swSelected' }
   ];
 
   /** 渲染一组单选 chips。current 决定高亮项，onPick 里再决定是否重排列表 */
@@ -1409,11 +1155,23 @@
 
     // 网格事件委托
     $('grid').addEventListener('click', onGridClick);
+    $('grid').addEventListener('dblclick', (e) => {
+      if (e.target.closest && e.target.closest('.pick, .zoom, .restore')) return;
+      const card = e.target.closest ? e.target.closest('.card') : null;
+      if (!card) return;
+      const idx = state.filtered.findIndex((c) => c.id === card.dataset.id);
+      if (idx >= 0) openLightbox(idx);
+    });
 
     // 框选：在网格空白或卡片上按下并拖动即可画框
-    $('gridWrap').addEventListener('pointerdown', onWrapPointerDown);
+    mq = IH.PopupMarquee.create({
+      $, state, t, toast, updateStats, syncSelectionUI,
+      scheduleFill, cancelFill,
+      hasMoreToRender: () => renderedCount < state.filtered.length
+    });
+    $('gridWrap').addEventListener('pointerdown', mq.onPointerDown);
     // 拖拽期间若窗口失焦（切标签页、点开开发者工具），按当前选区直接落定
-    window.addEventListener('blur', () => { if (marquee.armed) onWindowPointerUp(); });
+    window.addEventListener('blur', () => { if (mq.isArmed()) mq.onPointerUp(); });
 
     // 窗口尺寸变化会改列宽 → 每张卡片的位置都变，几何快照必须作废。
     // 拖拽中改尺寸是极端情况，但快照错了会框错图，宁可重算一次。
@@ -1446,7 +1204,7 @@
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         // 正在框选时，Esc 先用来放弃框选
-        if (marquee.dragging) { cancelMarquee(); return; }
+        if (mq && mq.isDragging()) { mq.cancel(); return; }
         // 其次收起搜索框（搜索框自己处理了 Esc，这里兜底）
         if (!$('searchPop').hidden) { clearSearch(); return; }
         if (MODE === 'panel') {
@@ -1514,359 +1272,6 @@
   }
 
   /* ------------------------------------------------------------------ *
-   * 框选（在网格中按住鼠标拖出矩形，批量勾选）
-   * ------------------------------------------------------------------ */
-
-  /** 框选要滚动哪个容器：网格自身能滚就用网格，否则（独立页）用整页 */
-  function scrollerOf() {
-    const wrap = $('gridWrap');
-    if (!wrap) return document.scrollingElement || document.documentElement;
-    return wrap.scrollHeight > wrap.clientHeight + 2
-      ? wrap
-      : (document.scrollingElement || document.documentElement);
-  }
-
-  /** client 坐标 → grid-wrap 内容坐标 */
-  function toLocal(clientX, clientY) {
-    const wrap = $('gridWrap');
-    const r = wrap.getBoundingClientRect();
-    return {
-      x: clientX - r.left + wrap.scrollLeft,
-      y: clientY - r.top + wrap.scrollTop
-    };
-  }
-
-  function marqueeRect() {
-    const x1 = Math.min(marquee.sx, marquee.cx);
-    const y1 = Math.min(marquee.sy, marquee.cy);
-    const x2 = Math.max(marquee.sx, marquee.cx);
-    const y2 = Math.max(marquee.sy, marquee.cy);
-    return { x1, y1, x2, y2, w: x2 - x1, h: y2 - y1 };
-  }
-
-  /* ---- 框选几何缓存 ----
-     拖拽时每一帧都要判断「哪些卡片落进了选框」。最直白的写法是每帧遍历所有
-     已渲染卡片、逐个 getBoundingClientRect()，但那是**每帧 N 次强制布局**：
-     上千张卡片时，一次拖拽要跑几十帧 × 上千次，掉帧非常明显。
-
-     做法改成分两步：
-       1) 按下鼠标（或自动滚动把新卡片带进视口）时，取一次几何快照
-       2) 拖动过程只做纯数学比较，不再碰 DOM
-
-     坐标系与 toLocal() 一致 —— 都是「相对 gridWrap 内容原点（含滚动偏移）」，
-     这样自动滚动时选框与卡片一起平移，不需要重算卡片位置。
-     卡片尺寸由 CSS 决定（.thumb 是 aspect-ratio: 4/3 + width:100%），
-     与图片是否加载完成无关，所以快照在布局不变期间一直有效。
-
-     快照失效的三种情况，都显式清掉（见 invalidateMarqueeGeom）：
-       - 网格重渲染 / 分片补全追加了新卡片（换行可能让最后一行重排）
-       - 窗口尺寸变化（列宽变了，卡片位置全变）
-       - 筛选/排序变化 */
-  function invalidateMarqueeGeom() {
-    marquee.geom = null;
-  }
-
-  function buildMarqueeGeom() {
-    const wrap = $('gridWrap');
-    const grid = $('grid');
-    if (!wrap || !grid) return null;
-
-    // 基准偏移：offsetTop/offsetLeft 是相对「offsetParent 内容盒」的，
-    // 而 toLocal() 用的是 border box 原点。两者的差 = gridWrap 的 padding，
-    // 但这里**不写死 padding 数值**，而是拿第一张卡片实测一次求差 —— 以后改 CSS 也不会算错。
-    const cards = grid.querySelectorAll('.card');
-    const wr = wrap.getBoundingClientRect();
-    const baseX = wr.left + wrap.scrollLeft;
-    const baseY = wr.top + wrap.scrollTop;
-
-    const list = new Array(cards.length);
-    let offX = null, offY = null;
-    for (let i = 0; i < cards.length; i++) {
-      const el = cards[i];
-      // offsetParent 不是 gridWrap 时（理论上不该发生）就没有可信的 offset 坐标，
-      // 退回逐张 rect —— 慢一点，但不能算错。
-      if (el.offsetParent !== wrap) return null;
-      if (offX === null) {
-        const cr = el.getBoundingClientRect();
-        offX = (cr.left + wrap.scrollLeft) - baseX - el.offsetLeft;
-        offY = (cr.top + wrap.scrollTop) - baseY - el.offsetTop;
-      }
-      list[i] = {
-        id: el.dataset.id,
-        el,
-        x: el.offsetLeft + offX,
-        y: el.offsetTop + offY,
-        w: el.offsetWidth,
-        h: el.offsetHeight
-      };
-    }
-    return list;
-  }
-
-  function marqueeGeom() {
-    if (!marquee.geom) marquee.geom = buildMarqueeGeom();
-    return marquee.geom;
-  }
-
-  /* 只刷新已渲染卡片的选中态（不重建网格）。
-     传了 geom（框选的几何快照）就直接用里面缓存的元素引用 —— 省掉一次
-     querySelectorAll('.card') 全量查询；框选热路径上这已经是第二次遍历了。 */
-  function paintSelection(set, geom) {
-    if (geom) {
-      for (let i = 0; i < geom.length; i++) {
-        const el = geom[i].el;
-        const on = set.has(geom[i].id);
-        // 只在真的变了的时候写 DOM：框选热路径上每帧都要走这里，
-        // 无条件 classList.toggle + setAttribute 是白白的开销
-        if (el.classList.contains('selected') !== on) {
-          el.classList.toggle('selected', on);
-          el.setAttribute('aria-selected', on ? 'true' : 'false');
-        }
-      }
-      return;
-    }
-    const grid = $('grid');
-    if (!grid) return;
-    Array.prototype.forEach.call(grid.querySelectorAll('.card'), (card) => {
-      const on = set.has(card.dataset.id);
-      card.classList.toggle('selected', on);
-      card.setAttribute('aria-selected', on ? 'true' : 'false');
-    });
-  }
-
-  /** 根据修饰键决定本次框选的语义 */
-  function modeOf(e) {
-    if (e.ctrlKey || e.metaKey) return 'add';   // 只加不减
-    if (e.altKey) return 'sub';                 // 只减不加
-    return 'toggle';                            // 默认：已选→取消，未选→勾上
-  }
-
-  /**
-   * 拖拽结束后，浏览器会紧接着在鼠标抬起的位置补发一次 click，
-   * 如果不拦，会把那张卡片点反（刚框选完就被取消）。
-   *
-   * 拦截必须用「捕获阶段的一次性监听」，**不能用标志位 + setTimeout(0)**：
-   * 后台标签页里 Chrome 会把定时器节流到至少 1 秒，等 click 到达时标志位还没清掉，
-   * 于是这一次真实的点击也被误吞了（实测过，很隐蔽）。
-   * 捕获监听在 click 派发的同一轮里同步执行，与定时器无关，确定可靠。
-   */
-  function swallowNextClick() {
-    const swallow = (ev) => {
-      ev.stopPropagation();          // 别让事件走到 #grid 上的委托监听
-      window.removeEventListener('click', swallow, true);
-    };
-    window.addEventListener('click', swallow, true);
-    // 兜底：万一这次交互压根没产生 click，别把监听器永久挂着
-    setTimeout(() => window.removeEventListener('click', swallow, true), 400);
-  }
-
-  /** 按下鼠标：进入「预备框选」，位移超过阈值才真正开始 */
-  function onWrapPointerDown(e) {
-    if (e.button !== 0 || e.isPrimary === false) return;
-    // 按钮、状态层上按下不参与框选
-    if (e.target.closest && e.target.closest('.pick, .zoom, .restore, .tbtn, .state')) return;
-    const wrap = $('gridWrap');
-    if (!wrap || !$('marquee')) return;
-
-    const p = toLocal(e.clientX, e.clientY);
-    marquee.armed = true;
-    marquee.dragging = false;
-    marquee.sx = p.x; marquee.sy = p.y;
-    marquee.cx = p.x; marquee.cy = p.y;
-    marquee.pointer.x = e.clientX; marquee.pointer.y = e.clientY;
-    marquee.mode = modeOf(e);
-    marquee.base = new Set(state.selected);
-    marquee.hits = new Set();
-    marquee.preview = null;
-    // 每次开始新的拖拽都丢掉上次的快照：期间可能补过卡片、也可能改过筛选
-    invalidateMarqueeGeom();
-
-    /* 拖拽期间**冻结分片补全**。两个理由，缺一不可：
-       1) 正确性：拖动时网格还在往后面塞卡片，用户看到一个不断变长的列表，
-          「此刻松手会选中哪些」变得不可预测 —— 而且要选中新补出来的卡片，
-          几何快照就得每帧重建，优化也就白做了。
-       2) 性能：补全和拖拽都在 rAF 上跑，叠在一起必然掉帧。
-       冻结点是「按下鼠标」（还没真正进拖拽），松手/取消时恢复；
-       如果从头到尾没超过位移阈值（就是一次普通单击），恢复时也会立刻续上。 */
-    cancelFill();
-
-    window.addEventListener('pointermove', onWindowPointerMove);
-    window.addEventListener('pointerup', onWindowPointerUp);
-    window.addEventListener('pointercancel', onWindowPointerUp);
-  }
-
-  function onWindowPointerMove(e) {
-    if (!marquee.armed) return;
-    marquee.pointer.x = e.clientX; marquee.pointer.y = e.clientY;
-
-    const p = toLocal(e.clientX, e.clientY);
-    marquee.cx = p.x; marquee.cy = p.y;
-
-    if (!marquee.dragging) {
-      if (Math.abs(p.x - marquee.sx) < DRAG_THRESHOLD &&
-          Math.abs(p.y - marquee.sy) < DRAG_THRESHOLD) return;
-      marquee.dragging = true;
-      document.body.classList.add('ih-selecting');
-      $('marquee').hidden = false;
-      startAutoScroll();
-    }
-
-    // 修饰键可在拖拽过程中随时改变语义
-    marquee.mode = modeOf(e);
-    paintMarquee();
-  }
-
-  function onWindowPointerUp() {
-    window.removeEventListener('pointermove', onWindowPointerMove);
-    window.removeEventListener('pointerup', onWindowPointerUp);
-    window.removeEventListener('pointercancel', onWindowPointerUp);
-    stopAutoScroll();
-
-    /* 解除「拖拽期间冻结分片补全」（见 onWrapPointerDown）。
-       必须放在下面那个 early return **之前** —— 按下鼠标但没拖动（就是一次单击）
-       的路径也会走到这里，那时同样要恢复补全，否则列表就永远停在半截了。 */
-    if (renderedCount < state.filtered.length) scheduleFill();
-
-    if (!marquee.armed) return;
-    const wasDragging = marquee.dragging;
-    marquee.armed = false;
-    marquee.dragging = false;
-    document.body.classList.remove('ih-selecting');
-    if ($('marquee')) $('marquee').hidden = true;
-
-    if (wasDragging) swallowNextClick();   // 吃掉紧跟着的那次合成 click
-
-    if (wasDragging && marquee.preview) {
-      state.selected = marquee.preview;
-      paintSelection(state.selected);
-      updateStats();
-      const n = state.selected.size;
-      if (!marquee.hits.size) toast(t('pop.marqueeMiss'));
-      else if (marquee.mode === 'add') toast(t('pop.marqueeAdd', { n }));
-      else if (marquee.mode === 'sub') toast(t('pop.marqueeSub', { n }));
-      else toast(n ? t('pop.marqueeToggle', { n }) : t('pop.marqueeCleared'));
-    }
-    marquee.preview = null;
-    marquee.base = null;
-    marquee.hits = new Set();
-  }
-
-  /** 计算「此刻松手会得到什么」，并刷新遮罩层 / 卡片高亮 / 计数 */
-  function paintMarquee() {
-    const rect = marqueeRect();
-    const el = $('marquee');
-    if (el) {
-      el.style.left = rect.x1 + 'px';
-      el.style.top = rect.y1 + 'px';
-      el.style.width = rect.w + 'px';
-      el.style.height = rect.h + 'px';
-      el.dataset.mode = marquee.mode;
-    }
-
-    /* 用几何快照做纯数学比较，不再每帧逐卡 getBoundingClientRect（见 buildMarqueeGeom）。
-       快照拿不到时（布局异常）退回逐张 rect，慢但不会算错。 */
-    const geom = marqueeGeom();
-    const hits = new Set();
-    if (geom) {
-      for (let i = 0; i < geom.length; i++) {
-        const g = geom[i];
-        if (!(g.x + g.w < rect.x1 || g.x > rect.x2 ||
-              g.y + g.h < rect.y1 || g.y > rect.y2)) {
-          hits.add(g.id);
-        }
-      }
-    } else {
-      const wrap = $('gridWrap');
-      const wr = wrap.getBoundingClientRect();
-      Array.prototype.forEach.call($('grid').querySelectorAll('.card'), (card) => {
-        const cr = card.getBoundingClientRect();
-        const x = cr.left - wr.left + wrap.scrollLeft;
-        const y = cr.top - wr.top + wrap.scrollTop;
-        const overlap = !(x + cr.width < rect.x1 || x > rect.x2 ||
-                          y + cr.height < rect.y1 || y > rect.y2);
-        if (overlap) hits.add(card.dataset.id);
-      });
-    }
-    marquee.hits = hits;
-
-    // 从「按下鼠标时的快照」出发重新算，所以拖拽过程中来回扫不会反复翻转
-    const next = new Set(marquee.base);
-    hits.forEach((id) => {
-      if (marquee.mode === 'add') next.add(id);
-      else if (marquee.mode === 'sub') next.delete(id);
-      else if (next.has(id)) next.delete(id);   // toggle：已选 → 取消
-      else next.add(id);                        // toggle：未选 → 勾上
-    });
-    marquee.preview = next;
-
-    paintSelection(next, geom);
-
-    const cnt = $('mqCount');
-    if (cnt) {
-      const sign = marquee.mode === 'add' ? '+' : (marquee.mode === 'sub' ? '−' : '');
-      cnt.textContent = sign + next.size;
-    }
-    // 底部计数实时预览，松手即生效
-    $('statSelected').textContent = String(next.size);
-    $('saveCount').textContent = String(next.size);
-    $('btnSave').disabled = next.size === 0;
-  }
-
-  /** Esc 放弃本次框选，选择状态回到按下鼠标之前 */
-  function cancelMarquee() {
-    stopAutoScroll();
-    const wasDragging = marquee.dragging;
-    marquee.armed = false;
-    marquee.dragging = false;
-    marquee.preview = null;
-    // Esc 也会走到这里，同样要解除「拖拽期间冻结分片补全」
-    if (renderedCount < state.filtered.length) scheduleFill();
-    document.body.classList.remove('ih-selecting');
-    if ($('marquee')) $('marquee').hidden = true;
-    paintSelection(state.selected);
-    syncSelectionUI();
-    if (wasDragging) swallowNextClick();
-  }
-
-  /* 拖到网格边缘时自动滚动，方便一次框选很长的列表 */
-  function startAutoScroll() {
-    if (marquee.raf) return;
-    marquee.raf = requestAnimationFrame(autoScrollStep);
-  }
-
-  function stopAutoScroll() {
-    if (marquee.raf) {
-      cancelAnimationFrame(marquee.raf);
-      marquee.raf = null;
-    }
-  }
-
-  function autoScrollStep() {
-    marquee.raf = null;
-    if (!marquee.dragging) return;
-
-    const sc = scrollerOf();
-    const isWrap = sc === $('gridWrap');
-    const box = isWrap ? sc.getBoundingClientRect()
-                       : { top: 0, bottom: window.innerHeight };
-
-    let dy = 0;
-    if (marquee.pointer.y < box.top + SCROLL_EDGE) {
-      dy = -SCROLL_SPEED * Math.min(1, (box.top + SCROLL_EDGE - marquee.pointer.y) / SCROLL_EDGE);
-    } else if (marquee.pointer.y > box.bottom - SCROLL_EDGE) {
-      dy = SCROLL_SPEED * Math.min(1, (marquee.pointer.y - (box.bottom - SCROLL_EDGE)) / SCROLL_EDGE);
-    }
-
-    if (dy) {
-      sc.scrollTop += dy;
-      const p = toLocal(marquee.pointer.x, marquee.pointer.y);
-      marquee.cx = p.x; marquee.cy = p.y;
-      paintMarquee();
-    }
-    marquee.raf = requestAnimationFrame(autoScrollStep);
-  }
-
-  /* ------------------------------------------------------------------ *
    * 扫描
    * ------------------------------------------------------------------ */
 
@@ -1915,13 +1320,13 @@
     state.cachedAt = 0;
     syncSelectionUI();
 
-    if (!mergeTabs && tabId == null) await resolveTab();
+    if (!getTgt().isMerge() && tabId == null) await resolveTab();
     const ids = activeTargetIds();
     if (!ids.length) {
       state.deepScanning = false;
       $('loading').hidden = true;
       showEmpty(MODE === 'page'
-        ? (mergeTabs ? t('pop.noTargetMerge') : t('pop.noTargetSingle'))
+        ? (getTgt().isMerge() ? t('pop.noTargetMerge') : t('pop.noTargetSingle'))
         : t('pop.noTargetPanel'));
       return;
     }
@@ -2052,102 +1457,7 @@
     }
   }
 
-  /**
-   * 把 N 个页面的扫描结果合并成一份。
-   *
-   * 合并规则（刻意简单、可解释）：
-   *   - 去重按**图片地址**（U.normalizeUrl），跨页面同样生效；
-   *   - 同一张图出现在多个页面时只留一张，并把「还出现在哪些页面」记进 pageHosts；
-   *   - 每张图带上 pageUrl / pageHost / pageIndex，供「站点」排序与卡片角标使用；
-   *   - order 重排成全局序号，于是「页面顺序」排序 = 按页面依次排，页内保持原顺序。
-   *
-   * @param {number[]} ids    这一轮的目标标签页（顺序 = 页面顺序）
-   * @param {Array}    results 与 ids 一一对应的扫描结果；还没回来的位置是 null
-   */
-  function mergeTabResults(ids, results) {
-    const seen = new Map();
-    const out = [];
-    const pages = [];
-    let truncated = false;
-    let restoreTruncated = false;
-    let deepTruncated = false;
-    let bgTruncatedFrames = 0;
-    let bgTruncatedElements = 0;
-    let okCount = 0;
-    let blockedCount = 0;
-    let failCount = 0;
-    let firstError = '';
-
-    results.forEach((r, idx) => {
-      const pageUrl = (r && r.pageUrl) || '';
-      const pageHost = U.prettyHost(pageUrl) || '';
-      pages.push({
-        id: ids[idx],
-        pageUrl,
-        host: pageHost,
-        title: (r && r.title) || '',
-        count: (r && Array.isArray(r.images)) ? r.images.length : 0,
-        ok: !!(r && r.ok),
-        blocked: !!(r && r.blocked)
-      });
-
-      if (!r) return;                      // 还没回来
-      if (!r.ok) {
-        if (r.blocked) blockedCount++;
-        else { failCount++; if (!firstError && r.error) firstError = String(r.error); }
-        return;
-      }
-      okCount++;
-      if (r.truncated) truncated = true;
-      if (r.restoreTruncated) restoreTruncated = true;
-      if (r.deepTruncated) deepTruncated = true;
-      bgTruncatedFrames += r.bgTruncatedFrames || 0;
-      bgTruncatedElements = Math.max(bgTruncatedElements, r.bgTruncatedElements || 0);
-
-      for (const img of (r.images || [])) {
-        if (!img || !img.url) continue;
-        const key = U.normalizeUrl(img.url);
-        const prev = seen.get(key);
-        if (prev) {
-          // 同一张图出现在别的页面：只留一张，但把「还出现在哪」记下来
-          if (prev.pageIndex !== idx && prev.pageHosts.indexOf(pageHost) < 0) {
-            prev.pageHosts.push(pageHost);
-          }
-          continue;
-        }
-        const item = Object.assign({}, img);
-        item.pageIndex = idx;
-        item.pageUrl = pageUrl;
-        item.pageHost = pageHost;
-        item.pageHosts = [pageHost];
-        // host（图片自身域名）由后台补；这里兜底，防止老版本后台的结果缺这个字段
-        if (!item.host) item.host = U.prettyHost(item.url);
-        // 全局顺序：页面顺序 → 页内顺序
-        item.order = out.length;
-        seen.set(key, item);
-        out.push(item);
-      }
-    });
-
-    const settled = results.filter((r) => r != null).length;
-    return {
-      ok: okCount > 0,
-      // 「全都被排除」才叫 blocked；只要有一页扫到了，就不该拿排除列表来搪塞
-      blocked: okCount === 0 && blockedCount > 0 && failCount === 0,
-      error: okCount === 0 ? (firstError || (settled ? t('pop.allPagesEmpty') : '')) : undefined,
-      images: out,
-      found: out.length,
-      truncated,
-      restoreTruncated,
-      deepTruncated,
-      bgTruncatedFrames,
-      bgTruncatedElements,
-      pageUrl: pages[0] ? pages[0].pageUrl : '',
-      title: pages[0] ? pages[0].title : '',
-      targetCount: ids.length,
-      pages
-    };
-  }
+  /* (mergeTabResults 已拆分至 popup/targets.js) */
 
   /**
    * 多标签页合并嗅探。
@@ -2394,6 +1704,11 @@
     // 隐藏已下载
     if (filters.hideDownloaded && state.downloaded.size) {
       list = list.filter((c) => !state.downloaded.has(c.id));
+    }
+
+    // 仅看已选
+    if (filters.onlySelected) {
+      list = list.filter((c) => state.selected.has(c.id));
     }
 
     // 搜索
@@ -3245,224 +2560,7 @@
    * 否则前 N 张一直失败（站点禁跨域）就会永远占据队首，后面的图一辈子轮不到 ——
    * 这正是 AUDIT P1-5 里的死循环。
    */
-  async function probeSizes() {
-    const pending = state.filtered.filter((c) => state.sizes[c.url] === undefined
-      || (state.sizes[c.url] === null && !state.probeFailed.has(c.url)));
-    const failed = state.filtered.filter((c) => state.sizes[c.url] === null
-      && state.probeFailed.has(c.url));
-
-    let targets;
-    let retrying = false;
-    if (pending.length) {
-      targets = pending;
-    } else if (failed.length) {
-      targets = failed;
-      retrying = true;
-      state.probeFailed.clear();     // 放开重试，失败再重新记进去
-    } else {
-      toast(t('pop.probeNothing'));
-      return;
-    }
-
-    const btn = $('btnProbe');
-    const baseTitle = t('pop.probeTitle');
-    /* 注意这里是 aria-disabled 而**不是** disabled：
-       用 disabled 会让浏览器把 :hover / 图标旋转一并压掉，那个转圈是
-       「正在忙」的唯一反馈；aria-disabled 只声明不可点，样式照常。
-       真正防重复触发靠的是下面 finally 里恢复 aria-disabled，加上探测
-       本身是对 fixed 的 targets 列表跑的（重入也只是多跑一遍同一批）。 */
-    btn.setAttribute('aria-disabled', 'true');
-    btn.classList.add('busy');
-    btn.title = t('pop.probing');
-    toast(retrying
-      ? t('pop.probeRetrying', { n: targets.length })
-      : t('pop.probeRunning', { n: targets.length }));
-
-    let okCount = 0;
-    let doneCount = 0;
-
-    try {
-      for (let i = 0; i < targets.length; i += C.PROBE_LIMIT) {
-        const chunk = targets.slice(i, i + C.PROBE_LIMIT);
-        const res = await U.sendToBg({
-          type: MSG.PROBE_SIZE,
-          payload: { urls: chunk.map((c) => c.url) }
-        });
-
-        if (res && res.ok && res.sizes) {
-          for (const c of chunk) {
-            const v = res.sizes[c.url];
-            if (v && typeof v.bytes === 'number' && v.bytes > 0) {
-              state.sizes[c.url] = v.bytes;
-              okCount++;
-            } else {
-              state.sizes[c.url] = null;
-              state.probeFailed.add(c.url);
-            }
-          }
-        } else {
-          // 这一批整体失败（后台异常 / 消息通道断了）：全部记为失败，
-          // 但**继续下一批** —— 一批失败不该拖住后面的图片。
-          for (const c of chunk) {
-            state.sizes[c.url] = null;
-            state.probeFailed.add(c.url);
-          }
-        }
-
-        doneCount += chunk.length;
-        if (doneCount < targets.length) {
-          btn.title = t('pop.probeProgress', { done: doneCount, total: targets.length });
-        }
-      }
-    } finally {
-      btn.setAttribute('aria-disabled', 'false');
-      btn.classList.remove('busy');
-      btn.title = baseTitle;
-    }
-
-    applyFilters();
-
-    const failedNow = targets.length - okCount;
-    if (okCount) {
-      toast(failedNow
-        ? t('pop.probeDoneFail', { n: okCount, failed: failedNow })
-        : t('pop.probeDone', { n: okCount }));
-    } else {
-      toast(t('pop.probeAllFail'), 'err');
-    }
-  }
-
-  /* ------------------------------------------------------------------ *
-   * 批量保存
-   * ------------------------------------------------------------------ */
-
-  async function saveSelected() {
-    const items = state.all.filter((c) => state.selected.has(c.id));
-    if (!items.length) { toast(t('pop.saveNothing')); return; }
-
-    const settings = Store.getSettings();
-    const payload = items.map((c, i) => ({
-      url: c.url,
-      pageUrl: state.pageUrl || '',
-      width: c.width || 0,
-      height: c.height || 0,
-      filename: U.buildFilename(c, settings, i + 1)
-    }));
-
-    const btn = $('btnSave');
-    btn.disabled = true;
-    const res = await U.sendToBg({ type: MSG.DOWNLOAD_BATCH, payload: { items: payload } });
-    btn.disabled = state.selected.size === 0;
-
-    if (res && res.ok) {
-      toast(t('pop.queued', { n: items.length }), 'ok');
-      $('progress').hidden = false;
-      renderProgress();
-    } else {
-      toast(t('pop.saveFail', { msg: (res && res.error) || t('cmn.unknownError') }), 'err');
-    }
-  }
-
-  function renderProgress() {
-    const p = state.progress;
-    if (!p || p.status === 'idle') {
-      $('progress').hidden = true;
-      return;
-    }
-    $('progress').hidden = false;
-
-    const finished = (p.done || 0) + (p.failed || 0) + (p.skipped || 0);
-    const total = Math.max(p.total || 0, finished);
-    const pct = total ? Math.round((finished / total) * 100) : 0;
-    $('progressFill').style.width = pct + '%';
-    /* progressbar 角色的数值状态：读屏器可以随时查询「现在到哪儿了」，
-       不需要我们主动把每一张都念出来（那会吵得没法用）。 */
-    const bar = $('progress');
-    if (bar) bar.setAttribute('aria-valuenow', String(pct));
-
-    /* 只在「开始」和「结束」各播报一句 —— 中间过程交给上面的 aria-valuenow。 */
-    if (p.status === 'running' && lastProgressStatus !== 'running') {
-      announce(t('pop.savingStart', { n: total }));
-    } else if (p.status !== 'running' && lastProgressStatus === 'running') {
-      announce(t('pop.saveEnd', { n: p.done || 0 })
-        + (p.failed ? t('pop.saveEndFailed', { n: p.failed }) : '')
-        + (p.skipped ? t('pop.saveEndSkipped', { n: p.skipped }) : ''));
-    }
-    lastProgressStatus = p.status;
-
-    const parts = [];
-    if (p.status === 'running') parts.push(t('pop.stRunning'));
-    else if (p.status === 'done') parts.push(t('pop.stDone'));
-    else if (p.status === 'cancelled') {
-      // 停止后还在飞的那几张会照常落盘，进度条上得写明白
-      parts.push(p.active ? t('pop.stStoppedActive', { n: p.active }) : t('pop.stStopped'));
-    }
-
-    parts.push(finished + ' / ' + total);
-    if (p.done) parts.push(t('pop.pDone', { n: p.done }));
-    if (p.failed) parts.push(t('pop.pFailed', { n: p.failed }));
-    if (p.skipped) parts.push(t('pop.pSkipped', { n: p.skipped }));
-    $('progressText').textContent = parts.join(' · ');
-
-    if (p.status !== 'running') {
-      clearTimeout(progressTimer);
-      progressTimer = setTimeout(() => { $('progress').hidden = true; }, 4000);
-    }
-  }
-
-  /* ------------------------------------------------------------------ *
-   * 导出清单
-   * ------------------------------------------------------------------ */
-
-  function exportList() {
-    // 判断「有没有图」要用 state.all；导出的是「当前筛选结果」。
-    // 原来写成 `state.filtered.length ? state.filtered : state.all`，
-    // 结果用户把条件筛到 0 张时点导出，拿到的是**全部图片**的清单。
-    if (!state.all.length) { toast(t('pop.exportNothing')); return; }
-    const list = state.filtered;
-    if (!list.length) {
-      toast(t('pop.exportEmpty'), 'err');
-      return;
-    }
-
-    /* CSV / JSON 的表头。中英文下**列名要跟着变**，导出的是给人看的清单；
-       键写英文，值才是翻译 —— 否则切了语言导出的表头还是中文。 */
-    const rows = list.map((c, i) => ({
-      [t('pop.csvIndex')]: i + 1,
-      [t('pop.csvFilename')]: fileNameOf(c.url),
-      [t('pop.csvWidth')]: c.width || '',
-      [t('pop.csvHeight')]: c.height || '',
-      [t('pop.csvBytes')]: state.sizes[c.url] != null ? state.sizes[c.url] : '',
-      [t('pop.csvType')]: c.type || U.extFromUrl(c.url),
-      [t('pop.csvSource')]: (c.allSources || [c.source]).map((s) => I18n.sourceLabel(s)).join('/'),
-      [t('pop.csvRestored')]: c.restored ? t('cmn.yes') : t('cmn.no'),
-      [t('pop.csvHost')]: c.host || '',
-      /* 合并嗅探时，一条记录属于哪个页面必须写出来 ——
-         否则导出之后这一列信息就永久丢了（用户没法再从别的渠道还原出来）。
-         单页扫描时它就是 state.pageUrl，等于多一列常量，无害。 */
-      [t('pop.csvPageUrl')]: c.pageUrl || state.pageUrl || '',
-      [t('pop.csvUrl')]: c.url
-    }));
-
-    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
-    const base = (state.targetCount > 1
-      ? 'merged_' + state.targetCount + 'pages'
-      : (U.prettyHost(state.pageUrl) || 'page')) + '_' + stamp;
-
-    if (exportFormat === 'csv') {
-      const headers = Object.keys(rows[0]);
-      const csv = [headers.join(',')].concat(rows.map((r) =>
-        headers.map((h) => {
-          const v = String(r[h] == null ? '' : r[h]).replace(/"/g, '""');
-          return /[",\n]/.test(v) ? '"' + v + '"' : v;
-        }).join(',')
-      )).join('\r\n');
-      U.downloadText(base + '.csv', '\uFEFF' + csv, 'text/csv;charset=utf-8');
-    } else {
-      U.downloadText(base + '.json', JSON.stringify(rows, null, 2), 'application/json');
-    }
-    toast(t('pop.exported', { n: rows.length, fmt: exportFormat.toUpperCase() }), 'ok');
-  }
+  /* (探测体积 / 批量保存 / 进度 / 导出清单 已拆分至 popup/actions.js) */
 
   /* ------------------------------------------------------------------ *
    * 预览
