@@ -154,6 +154,20 @@ function startExtraServer() {
   check(scanInfo.imgSrcs.some((s) => /^data:image\/png/i.test(s)), '真机扫描成功采集到 canvas/blob 转存后的 data:image/png 图片', JSON.stringify(scanInfo));
   check(scanInfo.count >= 2, '真机扫描采集到额外标签与画布图片 (count=' + scanInfo.count + ')');
 
+  // 3. 验证 ZIP 批量打包进度条与下载触发
+  await popPage.click('#btnSelectAll');
+  await popPage.click('#btnSaveZip');
+  await popPage.waitForFunction(() => {
+    const p = document.getElementById('progress');
+    return p && !p.hidden && p.getAttribute('aria-valuenow') === '100';
+  }, { timeout: 10000 });
+  const zipUi = await popPage.evaluate(() => ({
+    hidden: document.getElementById('progress').hidden,
+    now: document.getElementById('progress').getAttribute('aria-valuenow'),
+    text: document.getElementById('progressText').textContent
+  }));
+  check(!zipUi.hidden && zipUi.now === '100' && zipUi.text.length > 0, 'ZIP 打包显示进度条并推进至 100%', JSON.stringify(zipUi));
+
   await ctx.close();
   srv.close();
   try { fs.rmSync(PROFILE, { recursive: true, force: true }); } catch (e) { /* ignore */ }

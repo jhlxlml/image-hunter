@@ -28,6 +28,8 @@
 
     let progressTimer = null;
     let lastProgressStatus = 'idle';
+    let zipPacking = false;
+    let zipCancelled = false;
 
     /* ------------------------------------------------------------------ *
      * 探测文件体积（HEAD / Range）
@@ -191,64 +193,126 @@
       return out;
     }
 
+    function setZipProgress(done, failed, total, text) {
+      const bar = $('progress');
+      const fill = $('progressFill');
+      const txt = $('progressText');
+      if (!bar || !fill || !txt) return;
+      clearTimeout(progressTimer);
+      bar.hidden = false;
+      const finished = done + failed;
+      const pct = total ? Math.min(100, Math.round((finished / total) * 100)) : 0;
+      fill.style.width = pct + '%';
+      bar.setAttribute('aria-valuenow', String(pct));
+      txt.textContent = text;
+    }
+
     async function saveSelectedZip() {
+      if (zipPacking) return;
       const items = state.all.filter((c) => state.selected.has(c.id));
       if (!items.length) { toast(t('pop.saveNothing')); return; }
       if (!IH.Zip || typeof IH.Zip.build !== 'function') return;
 
+      zipPacking = true;
+      zipCancelled = false;
       const zipBtn = $('btnSaveZip');
       if (zipBtn) zipBtn.disabled = true;
-      toast(t('pop.zipPacking', { n: items.length }));
 
+      const total = items.length;
       const settings = Store.getSettings();
       const usedNames = new Set();
-      const entries = [];
+      const rawEntries = new Array(total);
+      let done = 0;
       let failed = 0;
+      let cursor = 0;
 
-      for (let i = 0; i < items.length; i++) {
-        const c = items[i];
-        const rawName = U.buildFilename(c, settings, i + 1);
-        let bytes = null;
-        if (U.isDataUrl(c.url)) {
-          bytes = dataUrlToBytes(c.url);
-        } else {
-          const res = await U.sendToBg({
-            type: MSG.FETCH_IMAGE,
-            payload: { url: c.url, pageUrl: state.pageUrl || '' }
-          });
-          if (res && res.ok && res.dataUrl) bytes = dataUrlToBytes(res.dataUrl);
+      const refreshBar = () => {
+        const parts = [t('pop.zipProgress', { done: done + failed, total })];
+        if (done) parts.push(t('pop.pDone', { n: done }));
+        if (failed) parts.push(t('pop.pFailed', { n: failed }));
+        setZipProgress(done, failed, total, parts.join(' · '));
+      };
+
+      announce(t('pop.zipPacking', { n: total }));
+      refreshBar();
+
+      try {
+        const workers = [];
+        const conc = Math.min(4, total);
+        for (let w = 0; w < conc; w++) {
+          workers.push((async () => {
+            while (!zipCancelled && cursor < total) {
+              const idx = cursor++;
+              const c = items[idx];
+              let bytes = null;
+              if (U.isDataUrl(c.url)) {
+                bytes = dataUrlToBytes(c.url);
+              } else {
+                const res = await U.sendToBg({
+                  type: MSG.FETCH_IMAGE,
+                  payload: { url: c.url, pageUrl: state.pageUrl || '' }
+                });
+                if (res && res.ok && res.dataUrl) bytes = dataUrlToBytes(res.dataUrl);
+              }
+              if (zipCancelled) break;
+              if (bytes && bytes.length) {
+                rawEntries[idx] = { rawName: U.buildFilename(c, settings, idx + 1), data: bytes };
+                done++;
+              } else {
+                failed++;
+              }
+              refreshBar();
+            }
+          })());
         }
-        if (bytes && bytes.length) {
-          entries.push({ name: uniqueZipName(rawName, usedNames), data: bytes });
-        } else {
-          failed++;
+        await Promise.all(workers);
+
+        if (zipCancelled) {
+          setZipProgress(done, failed, total, t('pop.zipCancelled'));
+          progressTimer = setTimeout(() => { $('progress').hidden = true; }, 3000);
+          toast(t('pop.zipCancelled'));
+          return;
         }
+
+        const entries = [];
+        for (let i = 0; i < total; i++) {
+          if (rawEntries[i]) {
+            entries.push({ name: uniqueZipName(rawEntries[i].rawName, usedNames), data: rawEntries[i].data });
+          }
+        }
+
+        if (!entries.length) {
+          $('progress').hidden = true;
+          toast(t('pop.zipEmpty'), 'err');
+          return;
+        }
+
+        setZipProgress(total, 0, total, t('pop.zipBuilding'));
+        const zipBytes = IH.Zip.build(entries);
+        const blob = new Blob([zipBytes], { type: 'application/zip' });
+        const blobUrl = URL.createObjectURL(blob);
+        const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+        const host = (state.targetCount > 1
+          ? 'merged_' + state.targetCount + 'pages'
+          : (U.prettyHost(state.pageUrl) || 'images'));
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = host + '_' + stamp + '.zip';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => { try { URL.revokeObjectURL(blobUrl); } catch (e) { /* ignore */ } }, 10000);
+
+        const doneMsg = failed
+          ? t('pop.zipDonePartial', { n: entries.length, failed })
+          : t('pop.zipDone', { n: entries.length });
+        setZipProgress(total, 0, total, doneMsg);
+        progressTimer = setTimeout(() => { $('progress').hidden = true; }, 4000);
+        toast(doneMsg, 'ok');
+      } finally {
+        zipPacking = false;
+        if (zipBtn) zipBtn.disabled = state.selected.size === 0;
       }
-
-      if (zipBtn) zipBtn.disabled = state.selected.size === 0;
-      if (!entries.length) {
-        toast(t('pop.zipEmpty'), 'err');
-        return;
-      }
-
-      const zipBytes = IH.Zip.build(entries);
-      const blob = new Blob([zipBytes], { type: 'application/zip' });
-      const blobUrl = URL.createObjectURL(blob);
-      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
-      const host = (state.targetCount > 1
-        ? 'merged_' + state.targetCount + 'pages'
-        : (U.prettyHost(state.pageUrl) || 'images'));
-      const a = document.createElement('a');
-      a.href = blobUrl;
-      a.download = host + '_' + stamp + '.zip';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => { try { URL.revokeObjectURL(blobUrl); } catch (e) { /* ignore */ } }, 10000);
-
-      toast(failed
-        ? t('pop.zipDonePartial', { n: entries.length, failed })
-        : t('pop.zipDone', { n: entries.length }), 'ok');
     }
 
     function renderProgress() {
@@ -355,7 +419,11 @@
       toast(t('pop.exported', { n: rows.length, fmt: fmt.toUpperCase() }), 'ok');
     }
 
-    return { probeSizes, saveSelected, saveSelectedZip, renderProgress, exportList };
+    return {
+      probeSizes, saveSelected, saveSelectedZip, renderProgress, exportList,
+      isZipPacking: () => zipPacking,
+      cancelZip: () => { zipCancelled = true; }
+    };
   }
 
   IH.PopupActions = { create };

@@ -1109,6 +1109,12 @@
     $('btnSave').addEventListener('click', saveSelected);
     if ($('btnSaveZip')) $('btnSaveZip').addEventListener('click', saveSelectedZip);
     $('btnCancel').addEventListener('click', async () => {
+      const act = getActions();
+      if (act && act.isZipPacking && act.isZipPacking()) {
+        act.cancelZip();
+        toast(t('pop.zipCancelling'));
+        return;
+      }
       const res = await U.sendToBg({ type: MSG.CANCEL_BATCH });
       const dropped = (res && res.dropped) || 0;
       const active = (res && res.active) || 0;
