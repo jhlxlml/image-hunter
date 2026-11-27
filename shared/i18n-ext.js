@@ -79,6 +79,11 @@
     'opt.rulesBuiltin': '内置规则',
     'opt.rulesCustom': '自定义规则',
     'opt.rulesAdd': '+ 添加规则',
+    'opt.rulesExport': '导出规则',
+    'opt.rulesImport': '导入规则',
+    'opt.rulesExported': '已导出 {n} 条自定义规则',
+    'opt.rulesImported': '已导入 {n} 条新规则',
+    'opt.rulesImportFail': '规则文件无效，导入失败',
     'opt.rulesDebug': '规则调试',
     'opt.rulesTestPh': '粘贴一个缩略图地址，例如 https://blog.x.com/wp-content/uploads/2024/05/hero-1024x768.jpg',
 
@@ -163,6 +168,14 @@
     'opt.diagMissing': '诊断模块未加载，请重新加载扩展',
     'opt.diagAuditFail': '诊断包自查未通过（{n} 处地址未清洗），已中止导出',
     'opt.diagExported': '诊断包已导出（{n} 条下载记录）',
+    'opt.scanPerf': '资源记录兜底',
+    'opt.scanPerfHint': '从浏览器资源加载记录中补采已卸载或脚本预加载的图片',
+    'opt.scanCanvas': '画布导出',
+    'opt.scanCanvasHint': '尝试导出同源 <canvas> 绘制的图像（跨域受限画布会自动跳过）',
+    'opt.convertBlob': 'Blob 地址转存',
+    'opt.convertBlobHint': '将页面内的 blob: 图片转为持久数据，避免打开独立图库后预览或下载失效',
+    'opt.autoWatch': '面板实时增量监听',
+    'opt.autoWatchHint': '页内面板打开时自动监听页面新增或切换的图片并刷新列表',
     'opt.imported': '设置已导入',
     'opt.importedRules': '设置已导入（含 {n} 条自定义还原规则）',
     'opt.importFail': '导入失败：{msg}',
@@ -204,6 +217,7 @@
     'opt.histSearchPh': '搜索文件名、图片地址或来源页…',
     'opt.histFilterAll': '全部状态',
     'opt.histMatchCount': '显示 {shown} / {total} 条',
+    'opt.histExportCsv': '导出 CSV',
     'opt.histTime': '时间',
     'opt.histName': '文件名',
     'opt.histDims': '尺寸',
@@ -394,6 +408,12 @@
     'pop.saveNothing': '请先勾选要保存的图片',
     'pop.queued': '已加入下载队列：{n} 张',
     'pop.saveFail': '批量保存失败：{msg}',
+    'pop.saveZip': 'ZIP',
+    'pop.saveZipTitle': '打包选中图片为 ZIP 下载',
+    'pop.zipPacking': '正在打包 {n} 张图片…',
+    'pop.zipEmpty': '没有可打包的图片',
+    'pop.zipDone': '已打包下载 {n} 张图片',
+    'pop.zipDonePartial': '已打包 {n} 张图片（{failed} 张获取失败）',
     'pop.savingStart': '开始保存 {n} 张图片',
     'pop.saveEnd': '保存结束：成功 {n} 张',
     'pop.saveEndFailed': '，失败 {n} 张',
@@ -525,6 +545,11 @@
     'opt.rulesBuiltin': 'Built-in rules',
     'opt.rulesCustom': 'Custom rules',
     'opt.rulesAdd': '+ Add rule',
+    'opt.rulesExport': 'Export rules',
+    'opt.rulesImport': 'Import rules',
+    'opt.rulesExported': 'Exported {n} custom rules',
+    'opt.rulesImported': 'Imported {n} new rules',
+    'opt.rulesImportFail': 'Invalid rules file',
     'opt.rulesDebug': 'Rule tester',
     'opt.rulesTestPh': 'Paste a thumbnail URL, e.g. https://blog.x.com/wp-content/uploads/2024/05/hero-1024x768.jpg',
 
@@ -607,6 +632,14 @@
     'opt.restored': 'Defaults restored',
     'opt.exported': 'Settings exported',
     'opt.diagMissing': 'Diagnostics module is not loaded — please reload the extension',
+    'opt.scanPerf': 'Resource timing fallback',
+    'opt.scanPerfHint': 'Recover images from browser resource timing entries (catches virtualized or preloaded images)',
+    'opt.scanCanvas': 'Export <canvas>',
+    'opt.scanCanvasHint': 'Export same-origin <canvas> graphics as PNG (cross-origin tainted canvases are skipped)',
+    'opt.convertBlob': 'Persist blob: URLs',
+    'opt.convertBlobHint': 'Convert page blob: URLs to data URLs so gallery previews and downloads stay valid',
+    'opt.autoWatch': 'Live panel watch',
+    'opt.autoWatchHint': 'Watch for DOM image additions or src changes while the in-page panel is open',
     'opt.diagAuditFail': 'Diagnostics self-check failed ({n} unscrubbed addresses); export aborted',
     'opt.diagExported': 'Diagnostics exported ({n} download records)',
     'opt.imported': 'Settings imported',
@@ -649,6 +682,7 @@
     'opt.histSearchPh': 'Search filename, image URL or page…',
     'opt.histFilterAll': 'All statuses',
     'opt.histMatchCount': 'Showing {shown} / {total}',
+    'opt.histExportCsv': 'Export CSV',
     'opt.histTime': 'Time',
     'opt.histName': 'File',
     'opt.histDims': 'Dimensions',
@@ -839,6 +873,12 @@
     'pop.saveNothing': 'Select the images you want to save first',
     'pop.queued': 'Queued for download: {n}',
     'pop.saveFail': 'Batch save failed: {msg}',
+    'pop.saveZip': 'ZIP',
+    'pop.saveZipTitle': 'Download selected images as ZIP',
+    'pop.zipPacking': 'Packing {n} images…',
+    'pop.zipEmpty': 'No images could be packed',
+    'pop.zipDone': 'Downloaded ZIP with {n} images',
+    'pop.zipDonePartial': 'Packed {n} images ({failed} failed)',
     'pop.savingStart': 'Saving {n} images',
     'pop.saveEnd': 'Finished: {n} saved',
     'pop.saveEndFailed': ', {n} failed',
@@ -905,12 +945,12 @@
       zh: {
       img: '页面图片', srcset: 'srcset 大图', picture: 'picture', lazy: '懒加载图',
       bg: '背景图', pseudo: '伪元素背景', poster: '视频封面', svg: '内联 SVG',
-      link: '图片链接', preload: '预加载图', og: '社交主图'
+      link: '图片链接', preload: '预加载图', og: '社交主图', perf: '资源记录', canvas: '画布导出'
       },
       en: {
       img: 'Page image', srcset: 'srcset larger', picture: 'picture', lazy: 'Lazy-loaded',
       bg: 'Background', pseudo: 'Pseudo-element', poster: 'Video poster', svg: 'Inline SVG',
-      link: 'Image link', preload: 'Preloaded', og: 'Social image'
+      link: 'Image link', preload: 'Preloaded', og: 'Social image', perf: 'Resource entry', canvas: 'Canvas export'
       }
     },
     rules: {
@@ -923,7 +963,15 @@
       'bce-process': '百度云加速 BCE（?x-bce-process=…）',
       'upyun': '又拍云（! 分隔的缩略参数）',
       'taobao-cdn': '淘宝/天猫 CDN（abc.jpg_300x300q75.jpg）',
-      'query-size': '通用查询参数（?w= &h= &q= &resize= …）'
+      'query-size': '通用查询参数（?w= &h= &q= &resize= …）',
+      'shopify-size': 'Shopify 尺寸后缀（_800x800.jpg → .jpg）',
+      'reddit-orig': 'Reddit 原图（preview.redd.it → i.redd.it）',
+      'discord-orig': 'Discord 原图（media.discordapp.net → cdn.discordapp.com）',
+      'bilibili-orig': 'B 站原图（去掉 @…w_…h 后缀）',
+      'nextjs-image': 'Next.js 图片代理（/_next/image?url=…）',
+      'cf-image': 'Cloudflare Image Resizing（/cdn-cgi/image/…）',
+      'twitter-orig': 'X / Twitter 原图参数（name=orig）',
+      'sina-large': '微博图片原图段（/mw690/ → /large/）'
       },
       en: {
       'wp-size': 'WordPress size suffix (image-300x200.jpg)',
@@ -934,7 +982,15 @@
       'bce-process': 'Baidu BCE (?x-bce-process=…)',
       'upyun': 'UPYUN (! separated thumbnail params)',
       'taobao-cdn': 'Taobao / Tmall CDN (abc.jpg_300x300q75.jpg)',
-      'query-size': 'Generic query params (?w= &h= &q= &resize= …)'
+      'query-size': 'Generic query params (?w= &h= &q= &resize= …)',
+      'shopify-size': 'Shopify size suffix (_800x800.jpg → .jpg)',
+      'reddit-orig': 'Reddit original (preview.redd.it → i.redd.it)',
+      'discord-orig': 'Discord original (media.discordapp.net → cdn.discordapp.com)',
+      'bilibili-orig': 'Bilibili original (strip @…w_…h suffix)',
+      'nextjs-image': 'Next.js image proxy (/_next/image?url=…)',
+      'cf-image': 'Cloudflare Image Resizing (/cdn-cgi/image/…)',
+      'twitter-orig': 'X / Twitter original (name=orig)',
+      'sina-large': 'Weibo large segment (/mw690/ → /large/)'
       }
     }
   });

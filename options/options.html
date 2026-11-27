@@ -161,6 +161,22 @@
           <div class="control"><label class="switch"><input type="checkbox" data-key="scanOg"><i></i></label></div>
         </div>
         <div class="row">
+          <div class="label"><b data-i18n="opt.scanPerf">资源记录兜底</b><span data-i18n="opt.scanPerfHint">从浏览器资源加载记录中补采已卸载或脚本预加载的图片</span></div>
+          <div class="control"><label class="switch"><input type="checkbox" data-key="scanPerf"><i></i></label></div>
+        </div>
+        <div class="row">
+          <div class="label"><b data-i18n="opt.scanCanvas">画布导出</b><span data-i18n="opt.scanCanvasHint">尝试导出同源 &lt;canvas&gt; 绘制的图像（跨域受限画布会自动跳过）</span></div>
+          <div class="control"><label class="switch"><input type="checkbox" data-key="scanCanvas"><i></i></label></div>
+        </div>
+        <div class="row">
+          <div class="label"><b data-i18n="opt.convertBlob">Blob 地址转存</b><span data-i18n="opt.convertBlobHint">将页面内的 blob: 图片转为持久数据，避免打开独立图库后预览或下载失效</span></div>
+          <div class="control"><label class="switch"><input type="checkbox" data-key="convertBlob"><i></i></label></div>
+        </div>
+        <div class="row">
+          <div class="label"><b data-i18n="opt.autoWatch">面板实时增量监听</b><span data-i18n="opt.autoWatchHint">页内面板打开时自动监听页面新增或切换的图片并刷新列表</span></div>
+          <div class="control"><label class="switch"><input type="checkbox" data-key="autoWatch"><i></i></label></div>
+        </div>
+        <div class="row">
           <div class="label"><b data-i18n="opt.probeConc">尺寸探测并发数</b><span data-i18n="opt.probeConcHint">同时探测多少张图片的真实分辨率，过大可能拖慢页面</span></div>
           <div class="control">
             <input type="range" min="2" max="12" step="1" data-key="probeConcurrency">
@@ -202,6 +218,9 @@
         <div class="rules" id="customRules"></div>
         <div class="rules-actions">
           <button class="btn" id="btnAddRule" data-i18n="opt.rulesAdd">+ 添加规则</button>
+          <button class="btn ghost" id="btnExportRules" data-i18n="opt.rulesExport">导出规则</button>
+          <button class="btn ghost" id="btnImportRules" data-i18n="opt.rulesImport">导入规则</button>
+          <input type="file" id="importRulesFile" accept=".json,application/json" hidden>
         </div>
 
         <div class="sub-title" data-i18n="opt.rulesDebug">规则调试</div>

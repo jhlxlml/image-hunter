@@ -18,6 +18,53 @@
   let isOpen = false;
   let bound = false;
   let panelToken = null;
+  let watcher = null;
+  let watchTimer = null;
+
+  function stopWatch() {
+    if (watchTimer) { clearTimeout(watchTimer); watchTimer = null; }
+    if (watcher) { try { watcher.disconnect(); } catch (e) { /* ignore */ } watcher = null; }
+  }
+
+  function startWatch() {
+    stopWatch();
+    const s = IH.Store && IH.Store.getSettings ? IH.Store.getSettings() : {};
+    if (!s.autoWatch || typeof MutationObserver !== 'function') return;
+    const target = document.body || document.documentElement;
+    if (!target) return;
+
+    const scheduleRefresh = () => {
+      if (watchTimer) clearTimeout(watchTimer);
+      watchTimer = setTimeout(() => {
+        watchTimer = null;
+        const cur = IH.Store && IH.Store.getSettings ? IH.Store.getSettings() : {};
+        if (!isOpen || !cur.autoWatch || !frame || !frame.contentWindow) return;
+        getPanelToken().then((tok) => {
+          try {
+            frame.contentWindow.postMessage({ __ih: true, type: 'refresh', token: tok }, extOrigin());
+          } catch (e) { /* ignore */ }
+        });
+      }, 1200);
+    };
+
+    watcher = new MutationObserver((records) => {
+      for (const r of records) {
+        if (host && (r.target === host || host.contains(r.target))) continue;
+        if (r.type === 'attributes' || (r.addedNodes && r.addedNodes.length)) {
+          scheduleRefresh();
+          break;
+        }
+      }
+    });
+    try {
+      watcher.observe(target, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['src', 'srcset', 'data-src', 'style']
+      });
+    } catch (e) { stopWatch(); }
+  }
 
   /**
    * 领一个只属于本标签页的 token。
@@ -115,10 +162,12 @@
     host.classList.add('ih-open');
     host.style.pointerEvents = 'auto';
     isOpen = true;
+    startWatch();
   }
 
   function hide() {
     if (!host) return;
+    stopWatch();
     host.classList.remove('ih-open');
     host.style.pointerEvents = 'none';
     isOpen = false;

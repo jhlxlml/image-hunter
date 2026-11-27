@@ -470,6 +470,9 @@
           <span data-i18n="pop.saveSelected">保存选中</span>
           <em id="saveCount">0</em>
         </button>
+        <button class="tbtn zip-btn" id="btnSaveZip" disabled
+                data-i18n="pop.saveZip" data-i18n-title="pop.saveZipTitle"
+                title="打包选中图片为 ZIP 下载">ZIP</button>
       </div>
     </footer>
 
@@ -483,6 +486,7 @@
 
   <script src="../shared/constants.js"></script>
   <script src="../shared/utils.js"></script>
+  <script src="../shared/zip.js"></script>
   <!-- 图标来源。必须在 lightbox.js / popup.js 之前 —— 它们靠 IH.Lucide.svg()
        生成卡片角标与灯箱按钮（HTML 里那些是静态副本，见 shared/lucide.js 头注释） -->
   <script src="../shared/lucide.js"></script>

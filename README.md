@@ -181,7 +181,7 @@ image-hunter/
 ├── popup/                 # 图库主界面（独立页面 / 页内面板共用同一份代码）
 ├── options/               # 设置页
 ├── tools/                 # 打包、设置项巡检
-├── tests/                 # 21 个 Node 套件 + 28 个真实浏览器套件
+├── tests/                 # 21 个 Node 套件 + 29 个真实浏览器套件
 ├── docs/screenshots/      # 界面截图
 ├── _locales/              # 仅扩展名称/描述/命令标题/右键菜单文案（服务 manifest）；界面文案由 shared/i18n.js 负责
 └── icons/
@@ -196,7 +196,7 @@ image-hunter/
 ```bash
 npm ci                 # 首次：装开发期依赖（jsdom + playwright-core）
 npm test               # Node 套件（21 个）
-npm run test:browser   # 真实浏览器套件（28 个，需要本机 Edge / Chrome）
+npm run test:browser   # 真实浏览器套件（29 个，需要本机 Edge / Chrome）
 npm run test:all       # 两个入口都跑
 npm run package        # 打包
 npm run audit:settings # 巡检设置项：列出每条设置的读取点 / UI 挂点，找死设置

@@ -461,5 +461,57 @@ console.log('\n--- 协议白名单（isHttpUrl / isOpenableUrl）---');
   eq(U.isOpenableUrl('file:///etc/passwd'), false, 'file URL 拒绝新标签页打开');
 }
 
+console.log('\n--- 现代 CDN 还原规则（Next.js / Cloudflare / Twitter / 微博）---');
+{
+  const nx1 = C.buildRestoreCandidates('https://site.example.com/_next/image?url=%2Fphotos%2Fhero.jpg&w=640&q=75', {});
+  eq(nx1.some((c) => c.ruleId === 'nextjs-image' && c.url === 'https://site.example.com/photos/hero.jpg'), true,
+    'Next.js 相对路径还原');
+
+  const nx2 = C.buildRestoreCandidates('https://site.example.com/_next/image?url=https%3A%2F%2Fcdn.example.com%2Fa.png&w=1080&q=80', {});
+  eq(nx2.some((c) => c.ruleId === 'nextjs-image' && c.url === 'https://cdn.example.com/a.png'), true,
+    'Next.js 绝对路径还原');
+
+  const cf1 = C.buildRestoreCandidates('https://site.example.com/cdn-cgi/image/width=400,quality=80/uploads/pic.jpg', {});
+  eq(cf1.some((c) => c.ruleId === 'cf-image' && c.url === 'https://site.example.com/uploads/pic.jpg'), true,
+    'Cloudflare Image Resizing 相对路径还原');
+
+  const cf2 = C.buildRestoreCandidates('https://site.example.com/cdn-cgi/image/w=300/https://origin.example.com/raw.webp', {});
+  eq(cf2.some((c) => c.ruleId === 'cf-image' && c.url === 'https://origin.example.com/raw.webp'), true,
+    'Cloudflare Image Resizing 嵌套原站还原');
+
+  const tw = C.buildRestoreCandidates('https://pbs.twimg.com/media/AbCdEf?format=jpg&name=small', {});
+  eq(tw.some((c) => c.ruleId === 'twitter-orig' && c.url === 'https://pbs.twimg.com/media/AbCdEf?format=jpg&name=orig'), true,
+    'Twitter/X name=orig 还原');
+
+  const twOrig = C.buildRestoreCandidates('https://pbs.twimg.com/media/AbCdEf?format=jpg&name=orig', {});
+  eq(twOrig.some((c) => c.ruleId === 'twitter-orig'), false, '已是 name=orig 不重复生成候选');
+
+  const wb = C.buildRestoreCandidates('https://wx2.sinaimg.cn/mw690/001abcdegy1.jpg', {});
+  eq(wb.some((c) => c.ruleId === 'sina-large' && c.url === 'https://wx2.sinaimg.cn/large/001abcdegy1.jpg'), true,
+    '微博 mw690 → large 还原');
+
+  const css1 = U.extractCssUrls('image-set("https://cdn.example.com/1x.jpg" 1x, "https://cdn.example.com/2x.jpg" 2x)');
+  eq(css1.length === 2 && css1[1] === 'https://cdn.example.com/2x.jpg', true, 'extractCssUrls 支持无 url() 的 image-set 写法');
+
+  const sh = C.buildRestoreCandidates('https://cdn.shopify.com/s/files/1/shirt_800x800.jpg?v=123', {});
+  eq(sh.some((c) => c.ruleId === 'shopify-size' && c.url === 'https://cdn.shopify.com/s/files/1/shirt.jpg?v=123'), true, 'Shopify 尺寸后缀还原');
+
+  const rd = C.buildRestoreCandidates('https://preview.redd.it/abc123.jpg?width=640&format=pjpg', {});
+  eq(rd.some((c) => c.ruleId === 'reddit-orig' && c.url === 'https://i.redd.it/abc123.jpg'), true, 'Reddit 原图还原');
+
+  const dc = C.buildRestoreCandidates('https://media.discordapp.net/attachments/1/2/pic.png?width=400&height=300', {});
+  eq(dc.some((c) => c.ruleId === 'discord-orig' && c.url === 'https://cdn.discordapp.com/attachments/1/2/pic.png'), true, 'Discord 原图还原');
+
+  const bl = C.buildRestoreCandidates('https://i0.hdslb.com/bfs/archive/abc.jpg@640w_400h_1c.webp', {});
+  eq(bl.some((c) => c.ruleId === 'bilibili-orig' && c.url === 'https://i0.hdslb.com/bfs/archive/abc.jpg'), true, 'B站 @后缀原图还原');
+
+  require(path.resolve(__dirname, '../shared/zip.js'));
+  const zipBytes = globalThis.IH.Zip.build([
+    { name: 'hello.txt', data: new TextEncoder().encode('world') }
+  ]);
+  eq(zipBytes[0] === 0x50 && zipBytes[1] === 0x4b && zipBytes[2] === 0x03 && zipBytes[3] === 0x04, true, 'Zip.build 生成合法 PK 本地文件头');
+  eq(zipBytes.includes(0x06) && zipBytes[zipBytes.length - 22] === 0x50 && zipBytes[zipBytes.length - 21] === 0x4b, true, 'Zip.build 生成合法 EOCD 尾记录');
+}
+
 console.log('\n通过 ' + pass + ' 项，失败 ' + fail + ' 项');
 process.exit(fail ? 1 : 0);

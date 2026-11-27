@@ -290,9 +290,45 @@
     }
   }
 
-  function collectImgs(push) {
+  function collectShadowRoots(root, out, cap) {
+    if (!root || out.length >= 64) return;
+    const all = root.querySelectorAll ? root.querySelectorAll('*') : [];
+    const limit = Math.min(all.length, cap || 4000);
+    for (let i = 0; i < limit; i++) {
+      const sr = all[i].shadowRoot;
+      if (sr) {
+        out.push(sr);
+        collectShadowRoots(sr, out, 1000);
+      }
+    }
+  }
+
+  function collectImgs(push, shadowRoots) {
     const imgs = document.images;
     for (let i = 0; i < imgs.length; i++) collectFromImg(imgs[i], push);
+    const roots = [document].concat(shadowRoots || []);
+    for (const root of roots) {
+      if (!root.querySelectorAll) continue;
+      if (root !== document) {
+        const list = root.querySelectorAll('img');
+        for (let i = 0; i < list.length; i++) collectFromImg(list[i], push);
+      }
+      // <input type="image" src>, <object data type="image/...">, <embed src type="image/...">
+      const extras = root.querySelectorAll('input[type="image"][src],object[data][type^="image/"],embed[src][type^="image/"]');
+      for (const el of extras) {
+        const raw = el.tagName === 'OBJECT' ? el.getAttribute('data') : el.getAttribute('src');
+        if (!raw) continue;
+        let rect;
+        try { rect = el.getBoundingClientRect(); } catch (e) { rect = { width: 0, height: 0 }; }
+        push(raw, {
+          source: 'img',
+          element: el,
+          displayWidth: Math.round(rect.width),
+          displayHeight: Math.round(rect.height),
+          alt: el.getAttribute('alt') || ''
+        });
+      }
+    }
   }
 
   /* --------------------------- 背景图 --------------------------- */
@@ -303,116 +339,258 @@
      超限不是「静默丢弃」—— 截断情况会随扫描结果一起上报，界面会告诉用户（P2-3）。 */
   const BG_ELEMENT_LIMIT = 8000;
 
-  function collectBackgrounds(push, opts) {
-    const all = document.body ? document.body.getElementsByTagName('*') : [];
-    const limit = Math.min(all.length, opts.maxElements || BG_ELEMENT_LIMIT);
-    for (let i = 0; i < limit; i++) {
-      const el = all[i];
-      if (SKIP_TAGS[el.tagName]) continue;
-
-      let rect;
-      try { rect = el.getBoundingClientRect(); } catch (e) { continue; }
-      if (rect.width < 24 || rect.height < 24) continue;
-
-      let bg = '';
-      try { bg = getComputedStyle(el).backgroundImage; } catch (e) { continue; }
-
-      if (bg && bg !== 'none' && bg.indexOf('url(') >= 0) {
-        for (const raw of U.extractCssUrls(bg)) {
-          push(raw, {
-            source: 'bg',
-            element: el,
-            displayWidth: Math.round(rect.width),
-            displayHeight: Math.round(rect.height)
-          });
-        }
+  function pushCssProps(cs, props, source, el, rect, push) {
+    for (const prop of props) {
+      if (!prop || prop === 'none' || (prop.indexOf('url(') < 0 && prop.indexOf('image-set(') < 0)) continue;
+      for (const raw of U.extractCssUrls(prop)) {
+        push(raw, {
+          source,
+          element: el,
+          displayWidth: Math.round(rect.width),
+          displayHeight: Math.round(rect.height)
+        });
       }
+    }
+  }
 
-      if (opts.scanPseudo && rect.width >= 48 && rect.height >= 48) {
-        for (const pseudo of ['::before', '::after']) {
-          let pbg = '';
-          try { pbg = getComputedStyle(el, pseudo).backgroundImage; } catch (e) { continue; }
-          if (!pbg || pbg === 'none' || pbg.indexOf('url(') < 0) continue;
-          for (const raw of U.extractCssUrls(pbg)) {
-            push(raw, {
-              source: 'pseudo',
-              element: el,
-              displayWidth: Math.round(rect.width),
-              displayHeight: Math.round(rect.height)
-            });
+  function collectBackgrounds(push, opts) {
+    const maxEl = opts.maxElements || BG_ELEMENT_LIMIT;
+    const roots = [document.body].concat(opts.shadowRoots || []).filter(Boolean);
+    let total = 0;
+    let scanned = 0;
+
+    for (const root of roots) {
+      const all = root.getElementsByTagName ? root.getElementsByTagName('*') : root.querySelectorAll('*');
+      total += all.length;
+      const budget = Math.max(0, maxEl - scanned);
+      const limit = Math.min(all.length, budget);
+      for (let i = 0; i < limit; i++) {
+        scanned++;
+        const el = all[i];
+        if (SKIP_TAGS[el.tagName]) continue;
+
+        let rect;
+        try { rect = el.getBoundingClientRect(); } catch (e) { continue; }
+        if (rect.width < 24 || rect.height < 24) continue;
+
+        let cs = null;
+        try { cs = getComputedStyle(el); } catch (e) { continue; }
+        if (!cs) continue;
+
+        pushCssProps(
+          cs,
+          [cs.backgroundImage, cs.maskImage, cs.webkitMaskImage, cs.borderImageSource, cs.listStyleImage],
+          'bg',
+          el,
+          rect,
+          push
+        );
+
+        if (opts.scanPseudo && rect.width >= 48 && rect.height >= 48) {
+          for (const pseudo of ['::before', '::after']) {
+            let pcs = null;
+            try { pcs = getComputedStyle(el, pseudo); } catch (e) { continue; }
+            if (!pcs) continue;
+            pushCssProps(
+              pcs,
+              [pcs.backgroundImage, pcs.content, pcs.maskImage, pcs.webkitMaskImage],
+              'pseudo',
+              el,
+              rect,
+              push
+            );
           }
         }
       }
     }
-    return { total: all.length, scanned: limit };
+    return { total, scanned };
   }
 
   /* --------------------------- poster --------------------------- */
 
-  function collectPosters(push) {
-    const videos = document.querySelectorAll('video[poster]');
-    for (const v of videos) {
-      const poster = v.getAttribute('poster');
-      if (!poster) continue;
-      const rect = v.getBoundingClientRect();
-      push(poster, {
-        source: 'poster',
-        element: v,
-        displayWidth: Math.round(rect.width),
-        displayHeight: Math.round(rect.height)
-      });
+  function collectPosters(push, shadowRoots) {
+    const roots = [document].concat(shadowRoots || []);
+    for (const root of roots) {
+      const videos = root.querySelectorAll ? root.querySelectorAll('video[poster]') : [];
+      for (const v of videos) {
+        const poster = v.getAttribute('poster');
+        if (!poster) continue;
+        const rect = v.getBoundingClientRect();
+        push(poster, {
+          source: 'poster',
+          element: v,
+          displayWidth: Math.round(rect.width),
+          displayHeight: Math.round(rect.height)
+        });
+      }
     }
   }
 
   /* --------------------------- 内联 SVG --------------------------- */
 
-  function collectSvg(push) {
-    const svgs = document.querySelectorAll('svg');
-    for (const svg of svgs) {
-      let rect;
-      try { rect = svg.getBoundingClientRect(); } catch (e) { continue; }
-      if (rect.width < 48 || rect.height < 48) continue;
+  function inlineSvgSymbols(clone, origSvg) {
+    const uses = clone.querySelectorAll ? clone.querySelectorAll('use') : [];
+    if (!uses.length) return;
+    let defs = clone.querySelector('defs');
+    const seenIds = new Set();
+    const rootNode = origSvg && typeof origSvg.getRootNode === 'function' ? origSvg.getRootNode() : document;
+    for (const u of uses) {
+      const ref = u.getAttribute('href') || u.getAttribute('xlink:href') || '';
+      if (!ref || ref.charAt(0) !== '#') continue;
+      const id = ref.slice(1);
+      if (!id || seenIds.has(id)) continue;
+      const escId = (typeof CSS !== 'undefined' && CSS.escape)
+        ? CSS.escape(id)
+        : id.replace(/([^\w-])/g, '\\$1');
+      if (clone.querySelector('#' + escId)) continue;
+      seenIds.add(id);
+      let target = null;
       try {
-        const clone = svg.cloneNode(true);
-        clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-        if (!clone.getAttribute('width')) clone.setAttribute('width', String(Math.round(rect.width)));
-        if (!clone.getAttribute('height')) clone.setAttribute('height', String(Math.round(rect.height)));
-        const str = new XMLSerializer().serializeToString(clone);
-        if (str.length > 300000) continue;
-        const dataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(str);
-        push(dataUrl, {
-          source: 'svg',
-          element: svg,
-          width: Math.round(rect.width),
-          height: Math.round(rect.height),
-          displayWidth: Math.round(rect.width),
-          displayHeight: Math.round(rect.height)
-        });
-      } catch (e) { /* ignore */ }
+        target = (rootNode && rootNode.getElementById && rootNode.getElementById(id))
+          || (rootNode && rootNode.querySelector && rootNode.querySelector('#' + escId))
+          || document.getElementById(id);
+      } catch (e) { target = document.getElementById(id); }
+      if (!target) continue;
+      if (!defs) {
+        defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+        clone.insertBefore(defs, clone.firstChild);
+      }
+      defs.appendChild(target.cloneNode(true));
+    }
+  }
+
+  function serializeSvgToDataUrl(svg, width, height) {
+    const clone = svg.cloneNode(true);
+    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    if (!clone.getAttribute('width')) clone.setAttribute('width', String(width));
+    if (!clone.getAttribute('height')) clone.setAttribute('height', String(height));
+    inlineSvgSymbols(clone, svg);
+    const str = new XMLSerializer().serializeToString(clone);
+    if (str.length > 300000) return null;
+    return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(str);
+  }
+
+  function collectSvg(push, shadowRoots) {
+    const roots = [document].concat(shadowRoots || []);
+    for (const root of roots) {
+      const svgs = root.querySelectorAll ? root.querySelectorAll('svg') : [];
+      for (const svg of svgs) {
+        let rect;
+        try { rect = svg.getBoundingClientRect(); } catch (e) { continue; }
+        if (rect.width < 48 || rect.height < 48) continue;
+        try {
+          const w = Math.round(rect.width);
+          const h = Math.round(rect.height);
+          const dataUrl = serializeSvgToDataUrl(svg, w, h);
+          if (!dataUrl) continue;
+          push(dataUrl, {
+            source: 'svg',
+            element: svg,
+            width: w,
+            height: h,
+            displayWidth: w,
+            displayHeight: h
+          });
+        } catch (e) { /* ignore */ }
+      }
+    }
+  }
+
+  /* --------------------------- 资源记录 / 画布 --------------------------- */
+
+  function collectPerfResources(push) {
+    if (typeof performance === 'undefined' || typeof performance.getEntriesByType !== 'function') return;
+    let entries;
+    try { entries = performance.getEntriesByType('resource'); } catch (e) { return; }
+    if (!entries || !entries.length) return;
+    const allowedInitiators = { img: 1, css: 1, fetch: 1, xmlhttprequest: 1, link: 1, other: 1 };
+    for (const entry of entries) {
+      const name = entry && entry.name;
+      if (!name || U.isDataUrl(name) || U.isBlobUrl(name)) continue;
+      if (/^(?:chrome-extension|edge|moz-extension):/i.test(name)) continue;
+      if (/\/favicon\.ico(?:[?#]|$)/i.test(name)) continue;
+      if (entry.initiatorType && !allowedInitiators[entry.initiatorType]) continue;
+      if (!U.isProbablyImageUrl(name)) continue;
+      push(name, { source: 'perf', element: null });
+    }
+  }
+
+  function collectCanvas(push, shadowRoots) {
+    const roots = [document].concat(shadowRoots || []);
+    for (const root of roots) {
+      const canvases = root.querySelectorAll ? root.querySelectorAll('canvas') : [];
+      for (const cv of canvases) {
+        const w = cv.width | 0;
+        const h = cv.height | 0;
+        if (w < 32 || h < 32 || w * h < 4096) continue;
+        let rect;
+        try { rect = cv.getBoundingClientRect(); } catch (e) { rect = { width: w, height: h }; }
+        try {
+          const dataUrl = cv.toDataURL('image/png');
+          if (!dataUrl || dataUrl.length < 64) continue;
+          push(dataUrl, {
+            source: 'canvas',
+            element: cv,
+            width: w,
+            height: h,
+            displayWidth: Math.round(rect.width) || w,
+            displayHeight: Math.round(rect.height) || h
+          });
+        } catch (e) { /* 跨域污染的 canvas 会抛 SecurityError，忽略 */ }
+      }
     }
   }
 
   /* --------------------------- 链接图片 --------------------------- */
 
-  function collectLinks(push) {
-    const links = document.querySelectorAll('a[href]');
-    for (const a of links) {
-      const href = a.getAttribute('href');
-      if (!href || href.startsWith('#')) continue;
-      const abs = U.absUrl(href, document.baseURI);
-      if (!abs || U.isDataUrl(abs) || U.isBlobUrl(abs)) continue;
-      if (!U.extFromUrl(abs)) continue;   // 必须是明确的图片扩展名，避免误收
-      const rect = a.getBoundingClientRect();
-      push(abs, {
-        source: 'link',
-        element: a,
-        displayWidth: Math.round(rect.width),
-        displayHeight: Math.round(rect.height)
-      });
+  function collectLinks(push, shadowRoots) {
+    const roots = [document].concat(shadowRoots || []);
+    for (const root of roots) {
+      const links = root.querySelectorAll ? root.querySelectorAll('a[href]') : [];
+      for (const a of links) {
+        const href = a.getAttribute('href');
+        if (!href || href.startsWith('#')) continue;
+        const abs = U.absUrl(href, document.baseURI);
+        if (!abs || U.isDataUrl(abs) || U.isBlobUrl(abs)) continue;
+        if (!U.extFromUrl(abs)) continue;   // 必须是明确的图片扩展名，避免误收
+        const rect = a.getBoundingClientRect();
+        push(abs, {
+          source: 'link',
+          element: a,
+          displayWidth: Math.round(rect.width),
+          displayHeight: Math.round(rect.height)
+        });
+      }
     }
   }
 
-  /* --------------------------- preload / og --------------------------- */
+  /* --------------------------- preload / og / JSON-LD --------------------------- */
+
+  function extractJsonLdImages(node, push, depth) {
+    if (!node || depth > 8) return;
+    if (typeof node === 'string') {
+      if (/^(https?:)?\/\//i.test(node) || node.charAt(0) === '/') {
+        push(node, { source: 'og', element: null });
+      }
+      return;
+    }
+    if (Array.isArray(node)) {
+      for (let i = 0; i < node.length && i < 60; i++) extractJsonLdImages(node[i], push, depth + 1);
+      return;
+    }
+    if (typeof node !== 'object') return;
+    if (node.image != null) extractJsonLdImages(node.image, push, depth + 1);
+    if (node.thumbnailUrl != null) extractJsonLdImages(node.thumbnailUrl, push, depth + 1);
+    if (node['@type'] === 'ImageObject' || depth > 0) {
+      const u = node.contentUrl || node.url;
+      if (typeof u === 'string' && (/^(https?:)?\/\//i.test(u) || u.charAt(0) === '/')) {
+        if (node['@type'] === 'ImageObject' || U.isProbablyImageUrl(u)) {
+          push(u, { source: 'og', element: null });
+        }
+      }
+    }
+    if (Array.isArray(node['@graph'])) extractJsonLdImages(node['@graph'], push, depth + 1);
+  }
 
   function collectHeadHints(push, opts) {
     if (opts.scanPreload) {
@@ -441,6 +619,14 @@
       for (const m of metas) {
         const content = m.getAttribute('content');
         if (content) push(content, { source: 'og', element: null });
+      }
+      const ldScripts = document.querySelectorAll('script[type="application/ld+json"]');
+      for (const s of ldScripts) {
+        const raw = s.textContent;
+        if (!raw || raw.length > 262144) continue;
+        try {
+          extractJsonLdImages(JSON.parse(raw), push, 0);
+        } catch (e) { /* 非法 JSON-LD 忽略 */ }
       }
     }
   }
@@ -633,9 +819,14 @@
     };
 
     try {
-      if (settings.scanImg !== false) collectImgs(push);
+      const shadowRoots = [];
+      collectShadowRoots(document.body || document.documentElement, shadowRoots, 4000);
+      if (settings.scanImg !== false) collectImgs(push, shadowRoots);
       if (settings.scanBackground) {
-        const r = collectBackgrounds(push, { scanPseudo: settings.scanPseudo !== false });
+        const r = collectBackgrounds(push, {
+          scanPseudo: settings.scanPseudo !== false,
+          shadowRoots
+        });
         stats.bgElements = r.total;
         stats.bgScanned = r.scanned;
         stats.bgTruncated = r.total > r.scanned;
@@ -644,13 +835,15 @@
             + '背景图扫描只覆盖前 ' + r.scanned + ' 个');
         }
       }
-      if (settings.scanPoster) collectPosters(push);
-      if (settings.scanSvg) collectSvg(push);
-      if (settings.scanLinks) collectLinks(push);
+      if (settings.scanPoster) collectPosters(push, shadowRoots);
+      if (settings.scanSvg) collectSvg(push, shadowRoots);
+      if (settings.scanCanvas) collectCanvas(push, shadowRoots);
+      if (settings.scanLinks) collectLinks(push, shadowRoots);
       collectHeadHints(push, {
         scanPreload: settings.scanPreload !== false,
         scanOg: settings.scanOg !== false
       });
+      if (settings.scanPerf) collectPerfResources(push);
     } catch (e) {
       console.warn('[ImageHunter] 采集阶段异常', e);
     }
@@ -671,6 +864,42 @@
    * @param {(early: Array) => void} [onPartial] 补尺寸之前的中间结果回调
    * @returns {Promise<Array>}
    */
+  const BLOB_CONVERT_MAX_BYTES = 8 * 1024 * 1024;
+
+  async function blobUrlToDataUrl(url) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      const blob = await res.blob();
+      if (!blob || !blob.size || blob.size > BLOB_CONVERT_MAX_BYTES) return null;
+      if (blob.type && !/^image\//i.test(blob.type)) return null;
+      return await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve({ dataUrl: String(reader.result || ''), size: blob.size });
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(blob);
+      });
+    } catch (e) {
+      return null;
+    }
+  }
+
+  async function convertBlobCandidates(list, settings) {
+    if (settings.convertBlob === false) return false;
+    const blobs = list.filter((c) => U.isBlobUrl(c.url));
+    if (!blobs.length) return false;
+    let changed = false;
+    await mapWithLimit(blobs, 4, async (c) => {
+      const conv = await blobUrlToDataUrl(c.url);
+      if (conv && conv.dataUrl) {
+        c.url = conv.dataUrl;
+        if (!c.sizeBytes) c.sizeBytes = conv.size;
+        changed = true;
+      }
+    });
+    return changed;
+  }
+
   async function finishList(list, stats, settings, onPartial) {
     const st = stats || {};
     const conc = settings.probeConcurrency || 6;
@@ -727,6 +956,11 @@
       list = dedupeByUrl(list);
     }
 
+    // 2.5) blob: URL 转 data: URL（避免跨标签页或页面跳转后预览/下载失效）
+    if (await convertBlobCandidates(list, settings)) {
+      list = dedupeByUrl(list);
+    }
+
     // 3) 过滤 + 排序 + 重建主键（与中间结果同一套口径）
     return prefilter(list, settings);
   }
@@ -764,12 +998,41 @@
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   /**
-   * 页面滚动的当前状态。
-   *
-   * 只用 window 级滚动：内层容器滚动的站点（少数）不适用，
-   * 但那种情况普通嗅探本来也拿不到被容器裁掉的内容，不会更糟。
+   * 寻找可滚动目标：优先 window 级滚动；若文档本身不可滚（例如现代 SPA
+   * 把滚动条挂在主内容区 overflow-y: auto 容器上），则退而探测面积最大的内部滚动容器。
    */
-  function scrollMetrics() {
+  function findScrollTarget() {
+    const de = document.documentElement;
+    const body = document.body;
+    const vh = window.innerHeight || (de && de.clientHeight) || 800;
+    const docH = Math.max((de && de.scrollHeight) || 0, (body && body.scrollHeight) || 0);
+    if (docH > vh + 20) return null;
+
+    const all = body ? body.getElementsByTagName('*') : [];
+    const limit = Math.min(all.length, 2000);
+    let best = null;
+    let bestScore = 0;
+    for (let i = 0; i < limit; i++) {
+      const el = all[i];
+      if (SKIP_TAGS[el.tagName]) continue;
+      if (el.scrollHeight <= el.clientHeight + 40 || el.clientHeight < 150) continue;
+      let oy = '';
+      try { oy = getComputedStyle(el).overflowY; } catch (e) { continue; }
+      if (oy !== 'auto' && oy !== 'scroll' && oy !== 'overlay') continue;
+      const score = el.clientHeight * el.scrollHeight;
+      if (score > bestScore) { bestScore = score; best = el; }
+    }
+    return best;
+  }
+
+  function scrollMetrics(target) {
+    if (target) {
+      return {
+        y: target.scrollTop || 0,
+        viewport: target.clientHeight || 800,
+        height: target.scrollHeight || 0
+      };
+    }
     const de = document.documentElement;
     const body = document.body;
     const viewport = window.innerHeight || (de && de.clientHeight) || 800;
@@ -781,24 +1044,26 @@
     return { y, viewport, height };
   }
 
-  function atBottom() {
-    const m = scrollMetrics();
+  function atBottom(target) {
+    const m = scrollMetrics(target);
     // 留 4px 容差：缩放、亚像素布局都会让「到底」差一点点
     return m.height > 0 && m.y + m.viewport >= m.height - 4;
   }
 
-  function scrollOneScreen() {
-    const m = scrollMetrics();
+  function scrollOneScreen(target) {
+    const m = scrollMetrics(target);
     const dy = Math.max(1, Math.floor(m.viewport * 0.9));
     try {
-      if (typeof window.scrollBy === 'function') window.scrollBy(0, dy);
+      if (target) target.scrollTop = m.y + dy;
+      else if (typeof window.scrollBy === 'function') window.scrollBy(0, dy);
       else window.scrollTo(0, m.y + dy);
     } catch (e) { /* 页面禁止滚动时忽略 */ }
   }
 
-  function restoreScroll(y) {
+  function restoreScroll(y, target) {
     try {
-      window.scrollTo(0, y);
+      if (target) target.scrollTop = y;
+      else window.scrollTo(0, y);
     } catch (e) { /* ignore */ }
   }
 
@@ -818,7 +1083,8 @@
   async function deepScan(overrides, onProgress, onPartial) {
     const settings = Object.assign({}, IH.Store.getSettings(), overrides || {});
     const acc = new Map();          // key（规范化 URL）→ 候选，跨轮合并去重
-    const startY = scrollMetrics().y;
+    const scrollTarget = findScrollTarget();
+    const startY = scrollMetrics(scrollTarget).y;
     const t0 = Date.now();
 
     // 这三个走 overrides 通道（不暴露在设置页）：测试要把轮间延迟压到毫秒级，
@@ -857,12 +1123,12 @@
       const outOfBudget = round >= maxRounds || elapsed > timeBudget;
       if (idleRounds >= DEEP_IDLE_ROUNDS || outOfBudget) break;
 
-      if (atBottom()) {
+      if (atBottom(scrollTarget)) {
         bottomRounds++;
         if (bottomRounds >= DEEP_BOTTOM_ROUNDS) break;
       }
 
-      scrollOneScreen();
+      scrollOneScreen(scrollTarget);
       await sleep(roundDelay);
       round++;
     }
@@ -872,7 +1138,7 @@
     if (stats && idleRounds < DEEP_IDLE_ROUNDS) stats.deepTruncated = true;
 
     // 滚动位置必须复原 —— 这是别人的页面，我们没有理由把它滚乱
-    restoreScroll(startY);
+    restoreScroll(startY, scrollTarget);
 
     return finishList(Array.from(acc.values()), stats, settings, onPartial);
   }
@@ -906,9 +1172,10 @@
     let el = node;
     let depth = 0;
     while (el && el.nodeType === 1 && depth < 8) {
-      if (el.tagName === 'IMG') return { el, kind: 'img' };
-      if (el.tagName === 'VIDEO' && el.getAttribute('poster')) return { el, kind: 'poster' };
-      if (el.tagName === 'SVG') return { el, kind: 'svg' };
+      const tagUp = (el.tagName || '').toUpperCase();
+      if (tagUp === 'IMG') return { el, kind: 'img' };
+      if (tagUp === 'VIDEO' && el.getAttribute('poster')) return { el, kind: 'poster' };
+      if (tagUp === 'SVG') return { el, kind: 'svg' };
       el = el.parentElement;
       depth++;
     }
@@ -918,8 +1185,9 @@
     depth = 0;
     while (el && el.nodeType === 1 && depth < 4) {
       try {
-        const bg = getComputedStyle(el).backgroundImage;
-        if (bg && bg !== 'none' && bg.indexOf('url(') >= 0) {
+        const cs = getComputedStyle(el);
+        const cssVals = [cs.backgroundImage, cs.maskImage, cs.webkitMaskImage, cs.borderImageSource];
+        if (cssVals.some((v) => v && v !== 'none' && (v.indexOf('url(') >= 0 || v.indexOf('image-set(') >= 0))) {
           const rect = el.getBoundingClientRect();
           if (rect.width >= 64 && rect.height >= 64) return { el, kind: 'bg' };
         }
@@ -936,7 +1204,7 @@
     const settings = Object.assign({}, IH.Store.getSettings(), overrides || {});
     const { map, push } = createCollector();
 
-    const tag = el.tagName;
+    const tag = (el.tagName || '').toUpperCase();
     try {
       if (tag === 'IMG') collectFromImg(el, push);
       else if (tag === 'VIDEO') {
@@ -948,10 +1216,13 @@
         const href = el.getAttribute('href');
         if (href) push(href, { source: 'link', element: el });
       } else {
-        // 背景图元素
+        // 背景 / 遮罩 / 边框图元素
         try {
-          const bg = getComputedStyle(el).backgroundImage;
-          for (const raw of U.extractCssUrls(bg)) push(raw, { source: 'bg', element: el });
+          const cs = getComputedStyle(el);
+          for (const prop of [cs.backgroundImage, cs.maskImage, cs.webkitMaskImage, cs.borderImageSource]) {
+            if (!prop || prop === 'none') continue;
+            for (const raw of U.extractCssUrls(prop)) push(raw, { source: 'bg', element: el });
+          }
         } catch (e) { /* ignore */ }
       }
     } catch (e) {
@@ -987,6 +1258,8 @@
       }));
     }
 
+    await convertBlobCandidates(list, settings);
+
     const valid = dedupeByUrl(list).filter((c) => isValidCandidate(c, settings));
     if (!valid.length) return null;
 
@@ -1002,16 +1275,19 @@
     let rect;
     try { rect = svg.getBoundingClientRect(); } catch (e) { rect = { width: 0, height: 0 }; }
     try {
+      const w = Math.round(rect.width) || 300;
+      const h = Math.round(rect.height) || 300;
       const clone = svg.cloneNode(true);
       clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-      if (!clone.getAttribute('width')) clone.setAttribute('width', String(Math.round(rect.width) || 300));
-      if (!clone.getAttribute('height')) clone.setAttribute('height', String(Math.round(rect.height) || 300));
+      if (!clone.getAttribute('width')) clone.setAttribute('width', String(w));
+      if (!clone.getAttribute('height')) clone.setAttribute('height', String(h));
+      inlineSvgSymbols(clone, svg);
       const str = new XMLSerializer().serializeToString(clone);
       push('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(str), {
         source: 'svg',
         element: svg,
-        width: Math.round(rect.width) || 300,
-        height: Math.round(rect.height) || 300,
+        width: w,
+        height: h,
         displayWidth: Math.round(rect.width),
         displayHeight: Math.round(rect.height)
       });

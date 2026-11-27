@@ -142,15 +142,32 @@
    * CSS background-image 解析
    * ------------------------------------------------------------------ */
 
-  /** 从 computed style 的 background-image 中抽出所有 url(...) */
+  /** 从 computed style 的 background-image / content 中抽出所有 url(...) 与 image-set(...) */
   function extractCssUrls(backgroundImage) {
     if (!backgroundImage || backgroundImage === 'none') return [];
     const out = [];
+    const seen = new Set();
+    const pushRaw = (raw) => {
+      const s = (raw || '').trim();
+      if (!s || /^data:image\/(?:gif|png);base64,R0lGOD/i.test(s)) return;
+      if (!seen.has(s)) { seen.add(s); out.push(s); }
+    };
+
     const re = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*))\s*\)/gi;
     let m;
     while ((m = re.exec(backgroundImage)) !== null) {
-      const raw = (m[1] || m[2] || m[3] || '').trim();
-      if (raw && !/^data:image\/(?:gif|png);base64,R0lGOD/i.test(raw)) out.push(raw);
+      pushRaw(m[1] || m[2] || m[3] || '');
+    }
+
+    // 兼容 image-set("a.jpg" 1x, "b.jpg" 2x) 这类不带 url() 的简写形式
+    const setRe = /(?:^|[^a-z-])(?:-webkit-)?image-set\(([^)]+)\)/gi;
+    while ((m = setRe.exec(backgroundImage)) !== null) {
+      const inner = m[1];
+      const qRe = /(?:"([^"]+)"|'([^']+)')/g;
+      let qm;
+      while ((qm = qRe.exec(inner)) !== null) {
+        pushRaw(qm[1] || qm[2] || '');
+      }
     }
     return out;
   }

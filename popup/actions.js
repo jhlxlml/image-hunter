@@ -163,6 +163,94 @@
       }
     }
 
+    function dataUrlToBytes(dataUrl) {
+      const idx = dataUrl.indexOf(',');
+      if (idx < 0) return null;
+      const meta = dataUrl.slice(0, idx);
+      const body = dataUrl.slice(idx + 1);
+      if (/;base64/i.test(meta)) {
+        const bin = atob(body);
+        const out = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+        return out;
+      }
+      const txt = decodeURIComponent(body);
+      return typeof TextEncoder !== 'undefined' ? new TextEncoder().encode(txt) : null;
+    }
+
+    function uniqueZipName(raw, used) {
+      let name = U.sanitizeFilename(String(raw || 'image.jpg').split('/').pop() || 'image.jpg');
+      if (!used.has(name)) { used.add(name); return name; }
+      const dot = name.lastIndexOf('.');
+      const stem = dot > 0 ? name.slice(0, dot) : name;
+      const ext = dot > 0 ? name.slice(dot) : '';
+      let n = 2;
+      while (used.has(stem + '_' + n + ext)) n++;
+      const out = stem + '_' + n + ext;
+      used.add(out);
+      return out;
+    }
+
+    async function saveSelectedZip() {
+      const items = state.all.filter((c) => state.selected.has(c.id));
+      if (!items.length) { toast(t('pop.saveNothing')); return; }
+      if (!IH.Zip || typeof IH.Zip.build !== 'function') return;
+
+      const zipBtn = $('btnSaveZip');
+      if (zipBtn) zipBtn.disabled = true;
+      toast(t('pop.zipPacking', { n: items.length }));
+
+      const settings = Store.getSettings();
+      const usedNames = new Set();
+      const entries = [];
+      let failed = 0;
+
+      for (let i = 0; i < items.length; i++) {
+        const c = items[i];
+        const rawName = U.buildFilename(c, settings, i + 1);
+        let bytes = null;
+        if (U.isDataUrl(c.url)) {
+          bytes = dataUrlToBytes(c.url);
+        } else {
+          const res = await U.sendToBg({
+            type: MSG.FETCH_IMAGE,
+            payload: { url: c.url, pageUrl: state.pageUrl || '' }
+          });
+          if (res && res.ok && res.dataUrl) bytes = dataUrlToBytes(res.dataUrl);
+        }
+        if (bytes && bytes.length) {
+          entries.push({ name: uniqueZipName(rawName, usedNames), data: bytes });
+        } else {
+          failed++;
+        }
+      }
+
+      if (zipBtn) zipBtn.disabled = state.selected.size === 0;
+      if (!entries.length) {
+        toast(t('pop.zipEmpty'), 'err');
+        return;
+      }
+
+      const zipBytes = IH.Zip.build(entries);
+      const blob = new Blob([zipBytes], { type: 'application/zip' });
+      const blobUrl = URL.createObjectURL(blob);
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+      const host = (state.targetCount > 1
+        ? 'merged_' + state.targetCount + 'pages'
+        : (U.prettyHost(state.pageUrl) || 'images'));
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = host + '_' + stamp + '.zip';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => { try { URL.revokeObjectURL(blobUrl); } catch (e) { /* ignore */ } }, 10000);
+
+      toast(failed
+        ? t('pop.zipDonePartial', { n: entries.length, failed })
+        : t('pop.zipDone', { n: entries.length }), 'ok');
+    }
+
     function renderProgress() {
       const p = state.progress;
       if (!p || p.status === 'idle') {
@@ -254,8 +342,10 @@
         const headers = Object.keys(rows[0]);
         const csv = [headers.join(',')].concat(rows.map((r) =>
           headers.map((h) => {
-            const v = String(r[h] == null ? '' : r[h]).replace(/"/g, '""');
-            return /[",\n]/.test(v) ? '"' + v + '"' : v;
+            let v = String(r[h] == null ? '' : r[h]);
+            if (/^[=+\-@\t\r]/.test(v)) v = "'" + v;
+            v = v.replace(/"/g, '""');
+            return /[",\r\n]/.test(v) ? '"' + v + '"' : v;
           }).join(',')
         )).join('\r\n');
         U.downloadText(base + '.csv', '\uFEFF' + csv, 'text/csv;charset=utf-8');
@@ -265,7 +355,7 @@
       toast(t('pop.exported', { n: rows.length, fmt: fmt.toUpperCase() }), 'ok');
     }
 
-    return { probeSizes, saveSelected, renderProgress, exportList };
+    return { probeSizes, saveSelected, saveSelectedZip, renderProgress, exportList };
   }
 
   IH.PopupActions = { create };

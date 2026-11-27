@@ -114,6 +114,10 @@
     scanLinks: true,
     scanPreload: true,
     scanOg: true,
+    scanPerf: false,
+    scanCanvas: false,
+    convertBlob: true,
+    autoWatch: false,
     restoreOriginal: true,             // 缩略图 -> 原图 还原
     minSize: 64,                       // 悬停图标生效的最小边（px，页面显示尺寸）
     /* 大图预览列表的最小边（px，图片**真实像素**尺寸）。0 = 不过滤。
@@ -191,7 +195,9 @@
     svg: '内联 SVG',
     link: '图片链接',
     preload: '预加载图',
-    og: '社交主图'
+    og: '社交主图',
+    perf: '资源记录',
+    canvas: '画布导出'
   };
 
   /* ------------------------------------------------------------------ *
@@ -315,8 +321,90 @@
           'w', 'h', 'width', 'height', 'q', 'quality', 'resize', 'size', 'sizes',
           'scale', 'fit', 'crop', 'dpr', 'maxwidth', 'maxheight', 'max_width',
           'max_height', 'compression', 'compress', 'sharpen', 'blur', 'strip',
-          'thumbnail', 'thumb', 'small', 'smaller', 'preview', 'auto', 'fm', 'cs'
+          'thumbnail', 'thumb', 'small', 'smaller', 'preview', 'auto', 'fm', 'cs',
+          'format', 'f', 'imgw', 'imgh', 'maxw', 'maxh', 'mw', 'mh', 'downsize', 'output', 'lossy'
         ]);
+      }
+    },
+    {
+      id: 'shopify-size',
+      label: 'Shopify 尺寸后缀（_800x800.jpg → .jpg）',
+      apply(url) {
+        const m = url.match(/^(.*?\/[^/?#]+)_(?:\d{2,4}x\d{0,4}|small|compact|medium|large|grande|pico|icon|thumb)(\.(?:jpe?g|png|gif|webp|avif))((?:\?[^#]*)?(?:#.*)?)$/i);
+        return m ? m[1] + m[2] + (m[3] || '') : null;
+      }
+    },
+    {
+      id: 'reddit-orig',
+      label: 'Reddit 原图（preview.redd.it → i.redd.it）',
+      apply(url) {
+        const u = new URL(url);
+        if (!/^preview\.redd\.it$/i.test(u.hostname)) return null;
+        return 'https://i.redd.it' + u.pathname;
+      }
+    },
+    {
+      id: 'discord-orig',
+      label: 'Discord 原图（media.discordapp.net → cdn.discordapp.com）',
+      apply(url) {
+        const u = new URL(url);
+        if (!/^media\.discordapp\.net$/i.test(u.hostname)) return null;
+        if (!/^\/attachments\//i.test(u.pathname)) return null;
+        u.hostname = 'cdn.discordapp.com';
+        for (const k of ['width', 'height', 'format', 'quality']) u.searchParams.delete(k);
+        return u.toString();
+      }
+    },
+    {
+      id: 'bilibili-orig',
+      label: 'B 站原图（去掉 @…w_…h 后缀）',
+      apply(url) {
+        const m = url.match(/^(https?:\/\/[^/]*hdslb\.com\/[^?#]+?\.(?:jpe?g|png|gif|webp|avif))@[^?#]+((?:[?#].*)?)$/i);
+        return m ? m[1] + (m[2] || '') : null;
+      }
+    },
+    {
+      id: 'nextjs-image',
+      label: 'Next.js 图片代理（/_next/image?url=…）',
+      apply(url) {
+        const u = new URL(url);
+        if (!/\/_next\/image$/i.test(u.pathname)) return null;
+        const target = u.searchParams.get('url');
+        if (!target) return null;
+        if (/^https?:\/\//i.test(target)) return target;
+        if (target.charAt(0) === '/') return u.origin + target;
+        return null;
+      }
+    },
+    {
+      id: 'cf-image',
+      label: 'Cloudflare Image Resizing（/cdn-cgi/image/…）',
+      apply(url) {
+        const m = url.match(/^(https?:\/\/[^/]+)\/cdn-cgi\/image\/[^/]+\/(.+)$/i);
+        if (!m) return null;
+        const target = m[2];
+        if (/^https?:\/\//i.test(target)) return target;
+        return m[1] + '/' + target.replace(/^\/+/, '');
+      }
+    },
+    {
+      id: 'twitter-orig',
+      label: 'X / Twitter 原图参数（name=orig）',
+      apply(url) {
+        const u = new URL(url);
+        if (!/(^|\.)twimg\.com$/i.test(u.hostname)) return null;
+        const name = u.searchParams.get('name');
+        if (!name || name.toLowerCase() === 'orig') return null;
+        u.searchParams.set('name', 'orig');
+        return u.toString();
+      }
+    },
+    {
+      id: 'sina-large',
+      label: '微博图片原图段（/mw690/ → /large/）',
+      apply(url) {
+        const m = url.match(/^(https?:\/\/[^/]*sinaimg\.cn\/)(?:mw\d+|orj\d+|bmiddle|thumbnail|small|thumb\d+)(\/.+)$/i);
+        return m ? m[1] + 'large' + m[2] : null;
       }
     }
   ];

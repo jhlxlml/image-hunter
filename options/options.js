@@ -463,6 +463,55 @@
     wrap.textContent = '';
     const rules = settings.customRules || [];
     rules.forEach((rule, i) => wrap.appendChild(buildRuleRow(rule, i)));
+    const expBtn = $('btnExportRules');
+    if (expBtn) expBtn.disabled = rules.length === 0;
+  }
+
+  function initRulePortability() {
+    const expBtn = $('btnExportRules');
+    const impBtn = $('btnImportRules');
+    const impFile = $('importRulesFile');
+    if (expBtn) {
+      expBtn.addEventListener('click', () => {
+        const rules = (settings.customRules || []).filter((r) => r && r.pattern);
+        if (!rules.length) return;
+        U.downloadText('image-hunter-rules.json', JSON.stringify(rules, null, 2), 'application/json');
+        toast(t('opt.rulesExported', { n: rules.length }), 'ok');
+      });
+    }
+    if (impBtn && impFile) {
+      impBtn.addEventListener('click', () => impFile.click());
+      impFile.addEventListener('change', async () => {
+        const file = impFile.files && impFile.files[0];
+        impFile.value = '';
+        if (!file) return;
+        try {
+          const parsed = JSON.parse(await file.text());
+          const arr = Array.isArray(parsed) ? parsed : (parsed && Array.isArray(parsed.customRules) ? parsed.customRules : null);
+          if (!arr) throw new Error('Invalid rules JSON');
+          const cur = (settings.customRules || []).slice();
+          const seen = new Set(cur.map((r) => (r.pattern || '') + '|' + (r.flags || 'i') + '|' + (r.replace || '')));
+          let added = 0;
+          for (const r of arr) {
+            if (!r || typeof r.pattern !== 'string') continue;
+            const p = r.pattern.trim();
+            if (!p || !U.isSafePattern(p)) continue;
+            try { new RegExp(p, r.flags || 'i'); } catch (e) { continue; }
+            const item = { pattern: p, flags: String(r.flags || 'i').trim() || 'i', replace: r.replace == null ? '' : String(r.replace) };
+            const sig = item.pattern + '|' + item.flags + '|' + item.replace;
+            if (seen.has(sig)) continue;
+            seen.add(sig);
+            cur.push(item);
+            added++;
+          }
+          await persist({ customRules: cur });
+          renderRules();
+          toast(t('opt.rulesImported', { n: added }), 'ok');
+        } catch (e) {
+          toast(t('opt.rulesImportFail'), 'err');
+        }
+      });
+    }
   }
 
   function buildRuleRow(rule, index) {
@@ -672,9 +721,14 @@
       });
       const countEl = document.createElement('span');
       countEl.className = 'hist-count';
+      const exportBtn = document.createElement('button');
+      exportBtn.type = 'button';
+      exportBtn.className = 'btn ghost';
+      exportBtn.textContent = t('opt.histExportCsv');
       toolbar.appendChild(searchInput);
       toolbar.appendChild(statusSel);
       toolbar.appendChild(countEl);
+      toolbar.appendChild(exportBtn);
       body.appendChild(toolbar);
 
       const table = document.createElement('table');
@@ -693,7 +747,8 @@
       table.appendChild(thead);
 
       const tb = document.createElement('tbody');
-      const slice = history.slice(0, 300);
+      let slice = history.slice(0, 300);
+      let lastMatched = slice;
 
       const renderRows = () => {
         const q = searchInput.value.trim().toLowerCase();
@@ -705,6 +760,7 @@
             || (h.pageUrl && h.pageUrl.toLowerCase().indexOf(q) >= 0)
             || (h.url && h.url.toLowerCase().indexOf(q) >= 0);
         });
+        lastMatched = matched;
 
         tb.textContent = '';
         matched.forEach((h) => {
@@ -719,10 +775,70 @@
             '<td>' + (h.bytes ? U.formatBytes(h.bytes) : '—') + '</td>' +
             '<td>' + st + '</td>' +
             '<td class="url">' + U.escapeHtml(h.pageUrl || '') + '</td>';
+
+          if (h.status !== 'done' && h.url) {
+            const retryBtn = document.createElement('button');
+            retryBtn.type = 'button';
+            retryBtn.className = 'hist-retry';
+            retryBtn.textContent = t('cmn.retry');
+            retryBtn.addEventListener('click', async () => {
+              retryBtn.disabled = true;
+              const res = await U.sendToBg({
+                type: MSG.DOWNLOAD_ONE,
+                payload: {
+                  url: h.url,
+                  pageUrl: h.pageUrl || '',
+                  filename: h.filename || undefined,
+                  width: h.width || 0,
+                  height: h.height || 0
+                }
+              });
+              if (res && res.ok) {
+                const latest = await U.sendToBg({ type: MSG.GET_HISTORY });
+                if (latest && Array.isArray(latest.history)) {
+                  slice = latest.history.slice(0, 300);
+                } else {
+                  h.status = 'done';
+                  if (res.bytes) h.bytes = res.bytes;
+                }
+                renderRows();
+                refreshStats();
+                toast(t('cmn.saved'), 'ok');
+              } else {
+                retryBtn.disabled = false;
+                toast((res && res.error) || t('cmn.unknownError'), 'err');
+              }
+            });
+            tr.children[4].appendChild(retryBtn);
+          }
+
           tb.appendChild(tr);
         });
         countEl.textContent = t('opt.histMatchCount', { shown: matched.length, total: slice.length });
       };
+
+      exportBtn.addEventListener('click', () => {
+        if (!lastMatched.length) return;
+        const headers = [t('opt.histTime'), t('opt.histName'), t('opt.histDims'),
+          t('opt.histBytes'), t('opt.histStatus'), t('opt.histPage'), 'URL'];
+        const csvCell = (val) => {
+          let s = String(val == null ? '' : val);
+          if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+          s = s.replace(/"/g, '""');
+          return /[",\r\n]/.test(s) ? '"' + s + '"' : s;
+        };
+        const lines = [headers.map(csvCell).join(',')].concat(lastMatched.map((h) => [
+          U.formatTime(h.ts),
+          h.filename || '',
+          (h.width && h.height) ? (h.width + 'x' + h.height) : '',
+          h.bytes || 0,
+          h.status === 'done' ? t('opt.histOk') : t('opt.histFail'),
+          h.pageUrl || '',
+          h.url || ''
+        ].map(csvCell).join(',')));
+        U.downloadText('image-hunter-history-' + new Date().toISOString().slice(0, 10) + '.csv',
+          '\uFEFF' + lines.join('\r\n'), 'text/csv;charset=utf-8');
+      });
 
       searchInput.addEventListener('input', renderRows);
       statusSel.addEventListener('change', renderRows);
@@ -881,6 +997,7 @@
     renderSettings();
     renderBuiltin();
     renderRules();
+    initRulePortability();
     bindData();
 
     $('btnAddRule').addEventListener('click', async () => {

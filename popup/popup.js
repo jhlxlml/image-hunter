@@ -235,6 +235,7 @@
   }
   function probeSizes() { return getActions().probeSizes(); }
   function saveSelected() { return getActions().saveSelected(); }
+  function saveSelectedZip() { return getActions().saveSelectedZip(); }
   function renderProgress() { return getActions().renderProgress(); }
   function exportList() { return getActions().exportList(exportFormat); }
 
@@ -756,12 +757,15 @@
     const seenT = new Set();
     const sources = [];
     const seenS = new Set();
+    const sourceCounts = {};
 
     state.all.forEach((c) => {
       const ty = c.type || U.extFromUrl(c.url);
       if (ty && !seenT.has(ty)) { seenT.add(ty); types.push(ty); }
       (c.allSources || [c.source]).forEach((s) => {
-        if (s && !seenS.has(s)) { seenS.add(s); sources.push(s); }
+        if (!s) return;
+        sourceCounts[s] = (sourceCounts[s] || 0) + 1;
+        if (!seenS.has(s)) { seenS.add(s); sources.push(s); }
       });
     });
 
@@ -781,7 +785,7 @@
 
     renderChips($('sourceChips'),
       [{ value: 'all', i18n: 'cmn.all' }].concat(
-        sources.map((s) => ({ value: s, label: I18n.sourceLabel(s) }))),
+        sources.map((s) => ({ value: s, label: I18n.sourceLabel(s) + ' (' + sourceCounts[s] + ')' }))),
       filters.source,
       (v) => { filters.source = v; applyFilters(); });
   }
@@ -1103,6 +1107,7 @@
     });
 
     $('btnSave').addEventListener('click', saveSelected);
+    if ($('btnSaveZip')) $('btnSaveZip').addEventListener('click', saveSelectedZip);
     $('btnCancel').addEventListener('click', async () => {
       const res = await U.sendToBg({ type: MSG.CANCEL_BATCH });
       const dropped = (res && res.dropped) || 0;
@@ -2437,6 +2442,7 @@
     $('statSelected').textContent = String(n);
     $('saveCount').textContent = String(n);
     $('btnSave').disabled = n === 0;
+    if ($('btnSaveZip')) $('btnSaveZip').disabled = n === 0;
     $('ftrHint').textContent = n ? t('pop.willSave', { n }) : t('pop.ftrHintSelect');
     /* 读屏器：勾选数变了要说一声。announce 自带 180ms 防抖，
        所以框选拖拽期间（每帧都在变）不会刷屏，只在停下来之后念一句。

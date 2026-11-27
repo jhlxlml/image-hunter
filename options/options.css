@@ -662,6 +662,20 @@ select.sel:focus { border-color: var(--primary); background-color: var(--surface
   white-space: nowrap;
 }
 
+.hist-retry {
+  margin-left: 6px;
+  padding: 2px 7px;
+  font-size: 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.hist-retry:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
+.hist-retry:disabled { opacity: 0.55; cursor: progress; }
+
 .hist-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 
 .hist-table th {

@@ -187,7 +187,7 @@ image-hunter/
 ├── popup/                 # Gallery UI (a standalone page; the in-page panel shares the same code)
 ├── options/               # Options page
 ├── tools/                 # Packaging, settings audit
-├── tests/                 # 21 Node suites + 28 real-browser suites
+├── tests/                 # 21 Node suites + 29 real-browser suites
 ├── docs/screenshots/      # UI screenshots
 ├── _locales/              # Only extension name/description/command titles/context-menu strings (serves the manifest); the UI itself is handled by shared/i18n.js
 └── icons/
@@ -202,7 +202,7 @@ For the full directory tree (with each file's responsibility) see [HANDBOOK.md](
 ```bash
 npm ci                 # first time: install dev dependencies (jsdom + playwright-core)
 npm test               # Node suites (21)
-npm run test:browser   # real-browser suites (28, needs a local Edge / Chrome)
+npm run test:browser   # real-browser suites (29, needs a local Edge / Chrome)
 npm run test:all       # run both entry points
 npm run package        # build the zip
 npm run audit:settings # audit settings: list every setting's read site / UI hook to find dead settings

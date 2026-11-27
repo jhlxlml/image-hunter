@@ -1507,6 +1507,14 @@ body.ih-selecting * {
   border-left: 1px solid var(--border);
 }
 
+.zip-btn {
+  flex: 0 0 auto;
+  height: 34px;
+  padding: 0 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 button.primary {
   margin-left: auto;
   display: inline-flex;

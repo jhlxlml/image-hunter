@@ -609,6 +609,114 @@ function check(cond, label, extra) {
 
   IH.Scanner.clearSizeCache();
 
+  /* ================================================================ *
+   * 21. Open Shadow DOM + JSON-LD + 内嵌滚动容器深度嗅探
+   * ================================================================ */
+  console.log('\n=== 21. Shadow DOM / JSON-LD / 内嵌滚动容器 ===');
+  const hostEl = window.document.createElement('div');
+  const shadow = hostEl.attachShadow({ mode: 'open' });
+  const sImg = window.document.createElement('img');
+  sImg.setAttribute('src', 'https://cdn.example.com/shadow-pic.jpg');
+  sImg.setAttribute('data-nw', '1200');
+  sImg.setAttribute('data-nh', '900');
+  shadow.appendChild(sImg);
+  window.document.body.appendChild(hostEl);
+
+  const ld = window.document.createElement('script');
+  ld.type = 'application/ld+json';
+  ld.textContent = JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    image: ['https://cdn.example.com/jsonld-1.jpg', { '@type': 'ImageObject', contentUrl: 'https://cdn.example.com/jsonld-2.png' }]
+  });
+  window.document.head.appendChild(ld);
+
+  const r21 = await IH.Scanner.scan({ scanBackground: false, restoreOriginal: false });
+  const urls21 = new Set(r21.map((c) => c.url));
+  check(urls21.has('https://cdn.example.com/shadow-pic.jpg'), 'Open Shadow DOM 内的 <img> 被采集');
+  check(urls21.has('https://cdn.example.com/jsonld-1.jpg') && urls21.has('https://cdn.example.com/jsonld-2.png'),
+    'JSON-LD 结构化数据里的图片被采集');
+
+  // 内嵌滚动容器深度嗅探（文档本身不可滚时，自动探测 overflow-y: auto 容器）
+  Object.defineProperty(window.document.documentElement, 'scrollHeight', { get: () => VIEWPORT, configurable: true });
+  Object.defineProperty(window.document.body, 'scrollHeight', { get: () => VIEWPORT, configurable: true });
+  const box = window.document.createElement('div');
+  box.style.overflowY = 'auto';
+  Object.defineProperty(box, 'clientHeight', { get: () => 500, configurable: true });
+  let boxH = 1200;
+  Object.defineProperty(box, 'scrollHeight', { get: () => boxH, configurable: true });
+  let boxTop = 0;
+  Object.defineProperty(box, 'scrollTop', {
+    get: () => boxTop,
+    set: (v) => {
+      boxTop = v;
+      if (v > 0 && !box.querySelector('.lazy-box-img')) {
+        const im = window.document.createElement('img');
+        im.className = 'lazy-box-img';
+        im.setAttribute('src', 'https://cdn.example.com/box-scrolled.jpg');
+        im.setAttribute('data-nw', '800');
+        im.setAttribute('data-nh', '600');
+        box.appendChild(im);
+      }
+    },
+    configurable: true
+  });
+  window.document.body.appendChild(box);
+
+  const boxRes = await IH.Scanner.deepScan({
+    deepRoundDelay: 1, deepMaxRounds: 5, scanBackground: false, restoreOriginal: false
+  });
+  check(boxRes.some((c) => c.url === 'https://cdn.example.com/box-scrolled.jpg'),
+    '内嵌滚动容器里的懒加载图片被深度嗅探采到');
+  check(boxTop === 0, '内嵌滚动容器深度嗅探结束后 scrollTop 复原为 0', boxTop);
+
+  // 新采集源：input[type="image"]、object[type^="image/"]、performance.getEntriesByType('resource')
+  const imgInput = window.document.createElement('input');
+  imgInput.type = 'image';
+  imgInput.src = 'https://cdn.example.com/submit-btn.png';
+  window.document.body.appendChild(imgInput);
+
+  const objImg = window.document.createElement('object');
+  objImg.type = 'image/png';
+  objImg.data = 'https://cdn.example.com/object-pic.png';
+  window.document.body.appendChild(objImg);
+
+  window.performance.getEntriesByType = (kind) => (
+    kind === 'resource'
+      ? [{ name: 'https://cdn.example.com/perf-preloaded.webp', initiatorType: 'fetch' }]
+      : []
+  );
+
+  const rExtra = await IH.Scanner.scan({ scanBackground: false, scanPerf: true, restoreOriginal: false });
+  const extraUrls = new Set(rExtra.map((c) => c.url));
+  check(extraUrls.has('https://cdn.example.com/submit-btn.png'), '<input type="image"> 图片被采集');
+  check(extraUrls.has('https://cdn.example.com/object-pic.png'), '<object type="image/..."> 图片被采集');
+  check(extraUrls.has('https://cdn.example.com/perf-preloaded.webp'), 'performance 资源记录里的图片被采集');
+
+  // 回归：小写 <svg> 标签（SVG 命名空间）+ <use href="#id"> 符号内联（无 CSS.escape 环境）
+  const symSvg = window.document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  symSvg.setAttribute('style', 'display:none');
+  const sym = window.document.createElementNS('http://www.w3.org/2000/svg', 'symbol');
+  sym.setAttribute('id', 'test-sym');
+  const symPath = window.document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  symPath.setAttribute('d', 'M0 0h10v10z');
+  sym.appendChild(symPath);
+  symSvg.appendChild(sym);
+  window.document.body.appendChild(symSvg);
+
+  const svgEl = window.document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svgEl.getBoundingClientRect = () => ({ width: 120, height: 120, top: 0, left: 0, right: 120, bottom: 120 });
+  const useEl = window.document.createElementNS('http://www.w3.org/2000/svg', 'use');
+  useEl.setAttribute('href', '#test-sym');
+  svgEl.appendChild(useEl);
+  window.document.body.appendChild(svgEl);
+
+  const svgHit = IH.Scanner.findSaveTarget(useEl);
+  check(svgHit && svgHit.kind === 'svg' && svgHit.el === svgEl, '小写 <svg> 子节点可被 findSaveTarget 识别');
+  const svgResolved = await IH.Scanner.resolveForElement(svgEl);
+  check(svgResolved && /^data:image\/svg\+xml/i.test(svgResolved.url) && decodeURIComponent(svgResolved.url).includes('test-sym'),
+    'resolveForElement 正确序列化小写 <svg> 并内联 <use> 引用的 symbol');
+
   console.log('\n通过 ' + pass + ' 项，失败 ' + fail + ' 项');
   process.exit(fail ? 1 : 0);
 })().catch((e) => {
