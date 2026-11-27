@@ -140,13 +140,17 @@
       return;
     }
 
-    // 整排贴着图片右上角，右对齐 —— 这样下载键永远停在「图片右上角」那个老位置，
-    // 预览键往左长出去，不改变已经形成的肌肉记忆。
-    let left = rect.right - BAR_W - EDGE_GAP;
-    let top = rect.top + EDGE_GAP;
+    const pos = settings().hoverPos || 'tr';
+    const isLeft = pos === 'tl' || pos === 'bl';
+    const isBottom = pos === 'br' || pos === 'bl';
 
-    // 图片很窄时贴紧右边缘
-    if (rect.width < BAR_W + EDGE_GAP * 2) left = rect.right - BAR_W - 4;
+    let left = isLeft ? (rect.left + EDGE_GAP) : (rect.right - BAR_W - EDGE_GAP);
+    let top = isBottom ? (rect.bottom - BTN_SIZE - EDGE_GAP) : (rect.top + EDGE_GAP);
+
+    // 图片很窄时贴紧边缘
+    if (rect.width < BAR_W + EDGE_GAP * 2) {
+      left = isLeft ? (rect.left + 4) : (rect.right - BAR_W - 4);
+    }
 
     left = U.clamp(left, 4, Math.max(4, vw - BAR_W - 4));
     top = U.clamp(top, 4, Math.max(4, vh - BTN_SIZE - 4));
@@ -450,7 +454,8 @@
   }
 
   function onMouseOver(e) {
-    if (!settings().hoverEnabled) return;
+    const s = settings();
+    if (!s.hoverEnabled) return;
     if (blocked()) return;
     const t = e.target;
     if (!t || t.nodeType !== 1) return;
@@ -458,6 +463,11 @@
     // 我们自己的 UI 宿主必须**立刻**处理：鼠标在下载图标上移动时如果也延后一帧，
     // 会先被 scheduleHide 藏掉再显示，肉眼可见地闪。
     if (isHostEl(t)) { handleHostOver(t); return; }
+
+    if (s.hoverAltOnly && !e.altKey) {
+      if (target) scheduleHide();
+      return;
+    }
 
     pendingOverEl = t;
     if (!overFrame) overFrame = requestAnimationFrame(flushOver);

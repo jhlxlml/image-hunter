@@ -164,6 +164,7 @@
     aspect: 'all',
     type: 'all',
     source: 'all',
+    minBytes: 0,
     /* 排序拆成「维度 + 方向」两件事（界面上也是一个下拉 + 一个按钮）。
        原来把「分辨率 大→小 / 分辨率 小→大」当成两个并列选项 ——
        五个选项里有两对是同一维度的正反，选完还得回下拉里找另一头；
@@ -742,12 +743,25 @@
     });
   }
 
-  /** 与扫描结果无关的条件（比例 / 开关） */
+  const BYTE_PRESETS = [
+    { value: 0, i18n: 'cmn.all' },
+    { value: 20480, label: '≥ 20 KB' },
+    { value: 102400, label: '≥ 100 KB' },
+    { value: 512000, label: '≥ 500 KB' }
+  ];
+
+  /** 与扫描结果无关的条件（比例 / 体积 / 开关） */
   function buildStaticChips() {
     renderChips($('aspectChips'), ASPECTS, filters.aspect, (v) => {
       filters.aspect = v;
       applyFilters();
     });
+    if ($('bytePresets')) {
+      renderChips($('bytePresets'), BYTE_PRESETS, filters.minBytes, (v) => {
+        filters.minBytes = Number(v);
+        applyFilters();
+      });
+    }
     renderSwitches($('flagChips'));
   }
 
@@ -882,6 +896,7 @@
        判据与 resetFilters 一致：只有**离开** SIZE_MIN_DEFAULT 才算数。 */
     if (filters.sizePreset || filters.sizeMin !== SIZE_MIN_DEFAULT) n++;
     if (filters.aspect !== 'all') n++;
+    if (filters.minBytes > 0) n++;
     if (filters.type !== 'all') n++;
     if (filters.source !== 'all') n++;
     if (filters.search) n++;
@@ -911,6 +926,7 @@
        这和他心里「恢复默认」的预期不符（默认本来就是 256）。 */
     filters.sizeMin = SIZE_MIN_DEFAULT;
     filters.aspect = 'all';
+    filters.minBytes = 0;
     filters.type = 'all';
     filters.source = 'all';
     filters.search = '';
@@ -1108,6 +1124,15 @@
 
     $('btnSave').addEventListener('click', saveSelected);
     if ($('btnSaveZip')) $('btnSaveZip').addEventListener('click', saveSelectedZip);
+    if ($('btnOpenFolder')) {
+      $('btnOpenFolder').addEventListener('click', () => {
+        try {
+          if (chrome && chrome.downloads && typeof chrome.downloads.showDefaultFolder === 'function') {
+            chrome.downloads.showDefaultFolder();
+          }
+        } catch (e) { /* ignore */ }
+      });
+    }
     $('btnCancel').addEventListener('click', async () => {
       const act = getActions();
       if (act && act.isZipPacking && act.isZipPacking()) {
@@ -1222,13 +1247,21 @@
           try { window.parent.postMessage({ __ih: true, type: 'close' }, '*'); } catch (err) { /* ignore */ }
         }
       }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
         const tag = (e.target && e.target.tagName) || '';
         if (/^(INPUT|TEXTAREA)$/.test(tag)) return;
         e.preventDefault();
         state.filtered.forEach((c) => state.selected.add(c.id));
         updateStats();
         paintSelection(state.selected);
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        const tag = (e.target && e.target.tagName) || '';
+        if (/^(INPUT|TEXTAREA)$/.test(tag)) return;
+        e.preventDefault();
+        if (state.selected.size === 0) { toast(t('pop.saveNothing')); return; }
+        if (e.shiftKey) saveSelectedZip();
+        else saveSelected();
       }
     });
   }
@@ -1249,6 +1282,40 @@
     if (zoomBtn) {
       e.stopPropagation();
       openLightbox(idx);
+      return;
+    }
+
+    const copyBtn = e.target.closest('.card-copy');
+    if (copyBtn) {
+      e.stopPropagation();
+      const cand = state.filtered[idx];
+      if (cand && cand.url && navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(cand.url).then(() => toast(t('pg.linkCopied'), 'ok'), () => {});
+      }
+      return;
+    }
+
+    const saveOneBtn = e.target.closest('.card-save');
+    if (saveOneBtn) {
+      e.stopPropagation();
+      const cand = state.filtered[idx];
+      if (cand && cand.url) {
+        const s = Store.getSettings();
+        U.sendToBg({
+          type: MSG.DOWNLOAD_ONE,
+          payload: {
+            url: cand.url,
+            pageUrl: state.pageUrl || '',
+            width: cand.width || 0,
+            height: cand.height || 0,
+            filename: U.buildFilename(cand, s, 0),
+            restored: !!cand.restored
+          }
+        }).then((res) => {
+          if (res && res.ok) toast(t('cmn.saved'), 'ok');
+          else toast((res && res.error) || t('cmn.unknownError'), 'err');
+        });
+      }
       return;
     }
 
@@ -1711,6 +1778,14 @@
 
     // 仅已还原
     if (filters.onlyRestored) list = list.filter((c) => c.restored);
+
+    // 最小文件体积（仅过滤已探测出体积且小于阈值的图片）
+    if (filters.minBytes > 0) {
+      list = list.filter((c) => {
+        const sz = state.sizes[c.url];
+        return typeof sz !== 'number' || sz >= filters.minBytes;
+      });
+    }
 
     // 隐藏已下载
     if (filters.hideDownloaded && state.downloaded.size) {
@@ -2359,6 +2434,26 @@
     zoom.setAttribute('aria-label', t('pop.zoomAria'));
     zoom.innerHTML = U.icon('zoom-in');
     thumb.appendChild(zoom);
+
+    // 快捷复制链接
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'card-copy';
+    copyBtn.type = 'button';
+    copyBtn.title = t('pop.cardCopyTitle');
+    copyBtn.tabIndex = -1;
+    copyBtn.setAttribute('aria-label', t('pop.cardCopyTitle'));
+    copyBtn.innerHTML = U.icon('link');
+    thumb.appendChild(copyBtn);
+
+    // 快捷单张保存
+    const saveBtn = document.createElement('button');
+    saveBtn.className = 'card-save';
+    saveBtn.type = 'button';
+    saveBtn.title = t('pop.cardSaveTitle');
+    saveBtn.tabIndex = -1;
+    saveBtn.setAttribute('aria-label', t('pop.cardSaveTitle'));
+    saveBtn.innerHTML = U.icon('download');
+    thumb.appendChild(saveBtn);
 
     // 「还原」按钮：只给「有原图候选、但这一轮没还原成功」的图。
     // 原图还原有 8 秒时间预算（RESTORE_TIME_BUDGET），按文档顺序推进，

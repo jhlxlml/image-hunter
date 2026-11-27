@@ -315,6 +315,27 @@
           <div class="control"><label class="switch"><input type="checkbox" data-key="hoverEnabled"><i></i></label></div>
         </div>
         <div class="row">
+          <div class="label">
+            <b data-i18n="opt.uxHoverPos">悬停按钮位置</b>
+            <span data-i18n="opt.uxHoverPosHint">选择悬停下载/预览按钮停靠在图片的哪个角落，避开站点自带角标</span>
+          </div>
+          <div class="control">
+            <select data-key="hoverPos">
+              <option value="tr" data-i18n="opt.uxHoverPosTr">右上角</option>
+              <option value="tl" data-i18n="opt.uxHoverPosTl">左上角</option>
+              <option value="br" data-i18n="opt.uxHoverPosBr">右下角</option>
+              <option value="bl" data-i18n="opt.uxHoverPosBl">左下角</option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+          <div class="label">
+            <b data-i18n="opt.uxHoverAltOnly">仅按住 Alt 时显示悬停按钮</b>
+            <span data-i18n="opt.uxHoverAltOnlyHint">开启后普通浏览鼠标划过图片不会浮现按钮，按住 Alt 键才显示</span>
+          </div>
+          <div class="control"><label class="switch"><input type="checkbox" data-key="hoverAltOnly"><i></i></label></div>
+        </div>
+        <div class="row">
           <div class="label"><b data-i18n="opt.uxHoverDelay">图标出现延迟</b><span data-i18n="opt.uxHoverDelayHint">避免鼠标快速划过时图标闪烁</span></div>
           <div class="control">
             <input type="range" min="0" max="600" step="20" data-key="hoverDelay">

@@ -168,6 +168,15 @@ function startExtraServer() {
   }));
   check(!zipUi.hidden && zipUi.now === '100' && zipUi.text.length > 0, 'ZIP 打包显示进度条并推进至 100%', JSON.stringify(zipUi));
 
+  const uxCheck = await popPage.evaluate(() => ({
+    hasByteFilter: !!document.getElementById('bytePresets') && document.getElementById('bytePresets').children.length === 4,
+    hasCardCopy: !!document.querySelector('.card .card-copy'),
+    hasCardSave: !!document.querySelector('.card .card-save'),
+    hasOpenFolderBtn: !!document.getElementById('btnOpenFolder')
+  }));
+  check(uxCheck.hasByteFilter && uxCheck.hasCardCopy && uxCheck.hasCardSave && uxCheck.hasOpenFolderBtn,
+    '图库体积过滤、卡片快捷复制/保存与打开目录按钮就绪', JSON.stringify(uxCheck));
+
   await ctx.close();
   srv.close();
   try { fs.rmSync(PROFILE, { recursive: true, force: true }); } catch (e) { /* ignore */ }

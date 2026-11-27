@@ -725,10 +725,22 @@
       exportBtn.type = 'button';
       exportBtn.className = 'btn ghost';
       exportBtn.textContent = t('opt.histExportCsv');
+      const dirBtn = document.createElement('button');
+      dirBtn.type = 'button';
+      dirBtn.className = 'btn ghost';
+      dirBtn.textContent = t('opt.histOpenDir');
+      dirBtn.addEventListener('click', () => {
+        try {
+          if (chrome && chrome.downloads && typeof chrome.downloads.showDefaultFolder === 'function') {
+            chrome.downloads.showDefaultFolder();
+          }
+        } catch (e) { /* ignore */ }
+      });
       toolbar.appendChild(searchInput);
       toolbar.appendChild(statusSel);
       toolbar.appendChild(countEl);
       toolbar.appendChild(exportBtn);
+      toolbar.appendChild(dirBtn);
       body.appendChild(toolbar);
 
       const table = document.createElement('table');

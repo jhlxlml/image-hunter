@@ -1185,8 +1185,10 @@ body.ih-selecting * {
   color: #fff;
 }
 
-/* 预览按钮 */
-.card .zoom {
+/* 预览 / 复制 / 单张保存按钮 */
+.card .zoom,
+.card .card-copy,
+.card .card-save {
   position: absolute;
   top: 7px;
   right: 7px;
@@ -1207,9 +1209,20 @@ body.ih-selecting * {
   transition: all 0.16s ease;
 }
 
-.card .zoom svg { width: var(--ic-xs); height: var(--ic-xs); }
-.card:hover .zoom { opacity: 1; transform: scale(1); }
-.card .zoom:hover { background: var(--primary); border-color: var(--primary); }
+.card .card-copy { right: 32px; }
+.card .card-save { right: 57px; }
+
+.card .zoom svg,
+.card .card-copy svg,
+.card .card-save svg { width: var(--ic-xs); height: var(--ic-xs); }
+.card:hover .zoom,
+.card:hover .card-copy,
+.card:hover .card-save,
+.card:focus-visible .card-copy,
+.card:focus-visible .card-save { opacity: 1; transform: scale(1); }
+.card .zoom:hover,
+.card .card-copy:hover,
+.card .card-save:hover { background: var(--primary); border-color: var(--primary); }
 
 /* 「还原」按钮
    只出现在「有原图候选、但这一轮没还原成功」的卡片上 —— 撞上还原时间预算时

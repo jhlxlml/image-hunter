@@ -142,6 +142,8 @@
 
     /* 交互 */
     hoverEnabled: true,
+    hoverPos: 'tr',
+    hoverAltOnly: false,
     hoverDelay: 120,
     altClickSave: true,
     /* 多标签页合并嗅探：打开后，图库顶部的「扫描目标」从单选下拉变成多选，

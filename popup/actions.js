@@ -181,14 +181,20 @@
     }
 
     function uniqueZipName(raw, used) {
-      let name = U.sanitizeFilename(String(raw || 'image.jpg').split('/').pop() || 'image.jpg');
+      const segs = String(raw || 'image.jpg').replace(/\\/g, '/').split('/')
+        .filter((s) => s && s !== '.' && s !== '..')
+        .map((s) => U.sanitizeFilename(s));
+      let name = segs.length ? segs.join('/') : 'image.jpg';
       if (!used.has(name)) { used.add(name); return name; }
-      const dot = name.lastIndexOf('.');
-      const stem = dot > 0 ? name.slice(0, dot) : name;
-      const ext = dot > 0 ? name.slice(dot) : '';
+      const slash = name.lastIndexOf('/');
+      const dir = slash >= 0 ? name.slice(0, slash + 1) : '';
+      const base = slash >= 0 ? name.slice(slash + 1) : name;
+      const dot = base.lastIndexOf('.');
+      const stem = dot > 0 ? base.slice(0, dot) : base;
+      const ext = dot > 0 ? base.slice(dot) : '';
       let n = 2;
-      while (used.has(stem + '_' + n + ext)) n++;
-      const out = stem + '_' + n + ext;
+      while (used.has(dir + stem + '_' + n + ext)) n++;
+      const out = dir + stem + '_' + n + ext;
       used.add(out);
       return out;
     }
@@ -233,6 +239,8 @@
         setZipProgress(done, failed, total, parts.join(' · '));
       };
 
+      const folderBtn = $('btnOpenFolder');
+      if (folderBtn) folderBtn.hidden = true;
       announce(t('pop.zipPacking', { n: total }));
       refreshBar();
 
@@ -307,6 +315,8 @@
           ? t('pop.zipDonePartial', { n: entries.length, failed })
           : t('pop.zipDone', { n: entries.length });
         setZipProgress(total, 0, total, doneMsg);
+        const folderBtn = $('btnOpenFolder');
+        if (folderBtn) folderBtn.hidden = false;
         progressTimer = setTimeout(() => { $('progress').hidden = true; }, 4000);
         toast(doneMsg, 'ok');
       } finally {
@@ -357,8 +367,13 @@
       $('progressText').textContent = parts.join(' · ');
 
       if (p.status !== 'running') {
+        const folderBtn = $('btnOpenFolder');
+        if (folderBtn) folderBtn.hidden = (p.done || 0) === 0;
         clearTimeout(progressTimer);
         progressTimer = setTimeout(() => { $('progress').hidden = true; }, 4000);
+      } else {
+        const folderBtn = $('btnOpenFolder');
+        if (folderBtn) folderBtn.hidden = true;
       }
     }
 
