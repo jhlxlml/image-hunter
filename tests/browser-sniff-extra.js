@@ -33,15 +33,18 @@ const TINY_PNG = Buffer.from(
 );
 
 function startExtraServer() {
+  const hotlinkStats = { ok: 0, forbidden: 0 };
   return new Promise((resolve) => {
     const srv = http.createServer((req, res) => {
       if (req.url === '/hotlink.png') {
         const ref = req.headers.referer || '';
         if (!ref.startsWith('http://127.0.0.1:')) {
+          hotlinkStats.forbidden++;
           res.writeHead(403, { 'Content-Type': 'text/plain' });
           res.end('403 Hotlink Forbidden');
           return;
         }
+        hotlinkStats.ok++;
         res.writeHead(200, { 'Content-Type': 'image/png' });
         res.end(TINY_PNG);
         return;
@@ -72,13 +75,19 @@ function startExtraServer() {
     });
     srv.listen(0, '127.0.0.1', () => {
       const addr = srv.address();
-      resolve({ url: 'http://127.0.0.1:' + addr.port + '/', close: () => srv.close() });
+      resolve({ url: 'http://127.0.0.1:' + addr.port + '/', hotlinkStats, close: () => srv.close() });
     });
   });
 }
 
 (async () => {
+  const DL = path.join(PROFILE, 'downloads');
   fs.mkdirSync(path.join(PROFILE, 'Default'), { recursive: true });
+  fs.mkdirSync(DL, { recursive: true });
+  fs.writeFileSync(
+    path.join(PROFILE, 'Default', 'Preferences'),
+    JSON.stringify({ download: { default_directory: DL, prompt_for_download: false } })
+  );
   const srv = await startExtraServer();
   console.log('测试页地址 =', srv.url);
 
@@ -201,7 +210,10 @@ function startExtraServer() {
       }
     });
   }, srv.url);
-  check(!!(dlHotlink && dlHotlink.ok), '严格防盗链（403 Referer 校验）图片降级下载成功', JSON.stringify(dlHotlink));
+  check(!!(dlHotlink && dlHotlink.ok && dlHotlink.bytes === TINY_PNG.length),
+    '严格防盗链（403 Referer 校验）图片降级下载成功', JSON.stringify(dlHotlink));
+  check(srv.hotlinkStats.ok >= 1,
+    '降级 fetch 携带了真实 Referer 并拿到 200 响应', JSON.stringify(srv.hotlinkStats));
 
   await ctx.close();
   srv.close();

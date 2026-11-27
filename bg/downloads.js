@@ -94,27 +94,66 @@ chrome.downloads.onChanged.addListener((delta) => {
  * 单张下载（含 403 降级）
  * ====================================================================== */
 
+const desiredNamesByUrl = new Map();
+const pendingFetchNames = [];
+
+if (typeof chrome !== 'undefined' && chrome.downloads && chrome.downloads.onDeterminingFilename) {
+  chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
+    const key = item && (item.url || item.finalUrl);
+    let targetName = (key && desiredNamesByUrl.get(key)) || null;
+    if (key) desiredNamesByUrl.delete(key);
+    if (!targetName && item && pendingFetchNames.length) {
+      const isExt = !item.byExtensionId || (typeof chrome.runtime !== 'undefined' && item.byExtensionId === chrome.runtime.id);
+      if (isExt) targetName = pendingFetchNames.shift();
+    }
+    if (targetName) {
+      suggest({ filename: targetName, conflictAction: 'uniquify' });
+    }
+  });
+}
+
+const HOTLINK_FETCH_FIRST_HOSTS = /(?:^|\.)sinaimg\.cn$/i;
+
+function shouldFetchFirst(url, s) {
+  if (!s || !s.fetchFallback) return false;
+  try {
+    const h = new URL(url).hostname;
+    return HOTLINK_FETCH_FIRST_HOSTS.test(h);
+  } catch (e) { return false; }
+}
+
 async function downloadOne(task) {
   const s = await settings();
   const requested = downloadPath(task.filename);
 
+  if (shouldFetchFirst(task.url, s)) {
+    return await downloadViaFetch(task, requested);
+  }
+
   try {
-    const id = await chrome.downloads.download({
-      url: task.url,
-      filename: requested,
-      conflictAction: 'uniquify',
-      saveAs: false
-    });
-    /* 拿到 id 立刻记下来并落盘：这是重启后唯一能问「这张下完了吗」的凭据。
-       晚一步（比如等 waitForDownload 之后）记，SW 恰好在那之间被回收，
-       这个 id 就永久丢了 —— 那张图既没进 done，也不会重下。 */
-    task.downloadId = id;
-    await persistJob();
-    const info = await waitForDownload(id, task.interactive ? 60000 : 180000);
+    const info = await withRefererRule(task.url, task.pageUrl, async () => {
+      const id = await chrome.downloads.download({
+        url: task.url,
+        filename: requested,
+        conflictAction: 'uniquify',
+        saveAs: false
+      });
+      /* 拿到 id 立刻记下来并落盘：这是重启后唯一能问「这张下完了吗」的凭据。
+         晚一步（比如等 waitForDownload 之后）记，SW 恰好在那之间被回收，
+         这个 id 就永久丢了 —— 那张图既没进 done，也不会重下。 */
+      task.downloadId = id;
+      await persistJob();
+      return await waitForDownload(id, task.interactive ? 60000 : 180000);
+    }, { includeDownloads: true });
     return describeSaved(info, requested);
   } catch (err) {
     if (!s.fetchFallback) throw err;
     if (U.isDataUrl(task.url) || U.isBlobUrl(task.url)) throw err;
+    if (task.downloadId != null && chrome.downloads && typeof chrome.downloads.erase === 'function') {
+      const failedId = task.downloadId;
+      task.downloadId = null;
+      try { await chrome.downloads.erase({ id: failedId }); } catch (e) { /* ignore */ }
+    }
     return await downloadViaFetch(task, requested);
   }
 }
@@ -167,7 +206,7 @@ let dnrRuleSeq = 1000;
  * 传入 `https://weibo.com/` 会被浏览器静默丢弃或回退为扩展源，
  * 导致微博（sinaimg.cn）等严格校验 Referer 的图床在降级 fetch 时依然 403。
  */
-async function withRefererRule(targetUrl, pageUrl, fn) {
+async function withRefererRule(targetUrl, pageUrl, fn, opts) {
   const dnr = typeof chrome !== 'undefined' && chrome.declarativeNetRequest;
   if (!dnr || typeof dnr.updateSessionRules !== 'function' || !U.isHttpUrl(targetUrl) || !U.isHttpUrl(pageUrl)) {
     return await fn();
@@ -181,12 +220,15 @@ async function withRefererRule(targetUrl, pageUrl, fn) {
 
   let host = '';
   try { host = new URL(targetUrl).hostname; } catch (e) { host = ''; }
+  const includeDownloads = !!(opts && opts.includeDownloads);
   const condition = {
-    urlFilter: targetUrl.split('#')[0],
-    resourceTypes: ['xmlhttprequest', 'other', 'image']
+    urlFilter: '|' + targetUrl.split('#')[0] + '|',
+    resourceTypes: includeDownloads
+      ? ['main_frame', 'sub_frame', 'xmlhttprequest', 'other', 'image']
+      : ['xmlhttprequest', 'other', 'image']
   };
   if (host) condition.requestDomains = [host];
-  if (typeof chrome.runtime !== 'undefined' && chrome.runtime.id) {
+  if (!includeDownloads && typeof chrome.runtime !== 'undefined' && chrome.runtime.id) {
     condition.initiatorDomains = [chrome.runtime.id];
   }
 
@@ -250,6 +292,8 @@ async function downloadViaFetch(task, filename) {
     downloadable = await U.blobToDataUrl(blob);
   }
 
+  desiredNamesByUrl.set(downloadable, filename);
+  pendingFetchNames.push(filename);
   try {
     const id = await chrome.downloads.download({
       url: downloadable,
@@ -265,6 +309,9 @@ async function downloadViaFetch(task, filename) {
     if (!described.bytes) described.bytes = blob.size;
     return described;
   } finally {
+    desiredNamesByUrl.delete(downloadable);
+    const qi = pendingFetchNames.indexOf(filename);
+    if (qi >= 0) pendingFetchNames.splice(qi, 1);
     if (objectUrl) {
       setTimeout(() => { try { URL.revokeObjectURL(objectUrl); } catch (e) { /* ignore */ } }, 60000);
     }
