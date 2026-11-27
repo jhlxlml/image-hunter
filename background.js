@@ -122,11 +122,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
              scanTab 兑现的本来就是最终结果，这里只是不让 partial 抢先兑现响应。 */
           onPartial: msg.finalOnly
             ? null
-            : (p) => answer(Object.assign({ phase: C.SCAN_PHASE.PARTIAL }, p))
-        }).then((final) => {
+            : async (p) => {
+              await ensurePreviewRefererRules(p && p.images, p && p.pageUrl);
+              answer(Object.assign({ phase: C.SCAN_PHASE.PARTIAL }, p));
+            }
+        }).then(async (final) => {
           /* 只缓存**最终**结果：partial 里还全是页面上的缩略图地址，存下来等于
              把「没还原」的状态固化 5 分钟。也只在真的扫成功时缓存 ——
              blocked / 出错都该下次重新判断，不能留下痕迹。 */
+          await ensurePreviewRefererRules(final && final.images, final && final.pageUrl);
           if (final && final.ok && final.pageUrl) putCachedScan(tabId, final.pageUrl, final);
           recordScanSummary(final, final && final.pageUrl);
           if (!answer(final)) broadcast({ type: MSG.SCAN_UPGRADE, payload: final });
@@ -150,6 +154,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         let hit = null;
         try { hit = await getCachedScan(tabId, url); } catch (e) { hit = null; }
         if (hit) {
+          await ensurePreviewRefererRules(hit.result && hit.result.images, url);
           // reqId 换成新的：旧的那个可能对应一次已经结束的扫描，
           // 留着它反而有机会和一条迟到的 SCAN_UPGRADE 广播撞上
           // 缓存命中也要记一笔：用户看到的这一份就是它，诊断包里

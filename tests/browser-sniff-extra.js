@@ -62,6 +62,7 @@ function startExtraServer() {
   <img id="blobImg" width="320" height="320">
   <input type="image" src="/pic.png" width="100" height="100" alt="btn">
   <object type="image/png" data="/pic.png" width="100" height="100"></object>
+  <img src="/hotlink.png" width="320" height="320" alt="hotlink">
   <script>
     const cv = document.getElementById('cv');
     const ctx = cv.getContext('2d');
@@ -214,6 +215,21 @@ function startExtraServer() {
     '严格防盗链（403 Referer 校验）图片降级下载成功', JSON.stringify(dlHotlink));
   check(srv.hotlinkStats.ok >= 1,
     '降级 fetch 携带了真实 Referer 并拿到 200 响应', JSON.stringify(srv.hotlinkStats));
+
+  // 把尺寸滑条拉到 0，确保 10×10 的 /hotlink.png 也显示在图库里
+  await popPage.evaluate(() => {
+    const sl = document.getElementById('sizeMin');
+    if (sl) { sl.value = '0'; sl.dispatchEvent(new Event('input', { bubbles: true })); }
+  });
+  const hotlinkPreviewOk = await popPage.waitForFunction(() => {
+    const imgs = Array.from(document.querySelectorAll('.card img'));
+    const target = imgs.find((im) => {
+      const card = im.closest('.card');
+      return /hotlink\.png/i.test(im.getAttribute('src') || '') || (card && /hotlink\.png/i.test(card.title || ''));
+    });
+    return !!(target && target.complete && target.naturalWidth > 0);
+  }, { timeout: 8000 }).then(() => true, () => false);
+  check(hotlinkPreviewOk, '防盗链图片在图库卡片中可正常显示 (naturalWidth > 0)');
 
   await ctx.close();
   srv.close();

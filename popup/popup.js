@@ -2401,11 +2401,28 @@
     img.draggable = false;   // 防止原生图片拖拽打断框选
     img.alt = c.alt || '';
     img.src = c.displayUrl || c.url;
-    let triedFallback = false;
+    let fallbackStage = 0;
     img.addEventListener('error', () => {
-      if (triedFallback) { img.style.visibility = 'hidden'; return; }
-      triedFallback = true;
-      img.src = c.url;
+      if (fallbackStage === 0) {
+        fallbackStage = 1;
+        if (img.src !== c.url) { img.src = c.url; return; }
+      }
+      if (fallbackStage === 1 && U.isHttpUrl(c.url)) {
+        fallbackStage = 2;
+        U.sendToBg({
+          type: MSG.FETCH_IMAGE,
+          payload: { url: c.url, pageUrl: c.pageUrl || state.pageUrl || '' }
+        }).then((res) => {
+          if (res && res.ok && res.dataUrl) {
+            img.style.visibility = '';
+            img.src = res.dataUrl;
+          } else {
+            img.style.visibility = 'hidden';
+          }
+        }, () => { img.style.visibility = 'hidden'; });
+        return;
+      }
+      img.style.visibility = 'hidden';
     });
     thumb.appendChild(img);
 

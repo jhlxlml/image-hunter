@@ -316,6 +316,67 @@ async function clearScanCache() {
   persistScanCache();
 }
 
+const PREVIEW_DNR_BASE = 2000;
+const PREVIEW_DNR_MAX = 80;
+const previewRefererHosts = new Map();
+
+/**
+ * 为图库/灯箱（扩展页）预览图片挂载会话级 Referer 规则。
+ * 严格限定 initiatorDomains = [chrome.runtime.id] 与 resourceTypes = ['image']，
+ * 不影响任何普通网页请求。
+ */
+async function ensurePreviewRefererRules(images, pageUrl) {
+  const dnr = typeof chrome !== 'undefined' && chrome.declarativeNetRequest;
+  if (!dnr || typeof dnr.updateSessionRules !== 'function') return;
+  if (!Array.isArray(images) || !images.length) return;
+  const extId = typeof chrome.runtime !== 'undefined' && chrome.runtime.id;
+  if (!extId) return;
+
+  let changed = false;
+  for (const im of images) {
+    if (!im || !U.isHttpUrl(im.url)) continue;
+    const pUrl = im.pageUrl || pageUrl;
+    if (!U.isHttpUrl(pUrl)) continue;
+    try {
+      const imgHost = new URL(im.url).hostname;
+      const refOrigin = new URL(pUrl).origin + '/';
+      if (!imgHost || previewRefererHosts.get(imgHost) === refOrigin) continue;
+      if (previewRefererHosts.has(imgHost)) previewRefererHosts.delete(imgHost);
+      previewRefererHosts.set(imgHost, refOrigin);
+      while (previewRefererHosts.size > PREVIEW_DNR_MAX) {
+        const oldest = previewRefererHosts.keys().next().value;
+        if (oldest === undefined) break;
+        previewRefererHosts.delete(oldest);
+      }
+      changed = true;
+    } catch (e) { /* ignore */ }
+  }
+  if (!changed) return;
+
+  const removeRuleIds = [];
+  for (let i = 0; i < PREVIEW_DNR_MAX; i++) removeRuleIds.push(PREVIEW_DNR_BASE + i);
+  const addRules = [];
+  let idx = 0;
+  for (const [imgHost, refOrigin] of previewRefererHosts.entries()) {
+    addRules.push({
+      id: PREVIEW_DNR_BASE + idx++,
+      priority: 1,
+      action: {
+        type: 'modifyHeaders',
+        requestHeaders: [{ header: 'Referer', operation: 'set', value: refOrigin }]
+      },
+      condition: {
+        requestDomains: [imgHost],
+        initiatorDomains: [extId],
+        resourceTypes: ['image']
+      }
+    });
+  }
+  try {
+    await dnr.updateSessionRules({ removeRuleIds, addRules });
+  } catch (e) { /* ignore */ }
+}
+
 function scanTab(tabId, opts) {
   const reqId = U.uid();
   const deep = !!(opts && opts.deep);
