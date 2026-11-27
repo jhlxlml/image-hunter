@@ -10,7 +10,8 @@
     "downloads",
     "storage",
     "contextMenus",
-    "scripting"
+    "scripting",
+    "declarativeNetRequestWithHostAccess"
   ],
   "host_permissions": ["<all_urls>"],
 

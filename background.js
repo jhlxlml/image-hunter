@@ -324,10 +324,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       (async () => {
         try {
           const opts = { credentials: 'include', cache: 'no-store' };
-          if (p.pageUrl) {
-            try { opts.referrer = p.pageUrl; opts.referrerPolicy = 'strict-origin-when-cross-origin'; } catch (e) { /* ignore */ }
-          }
-          const res = await U.fetchWithTimeout(p.url, opts, 20000);
+          const res = await withRefererRule(p.url, p.pageUrl, () => U.fetchWithTimeout(p.url, opts, 20000));
           if (!res.ok) throw new Error('HTTP ' + res.status);
           /* 以前是先 `await res.blob()` 再判 `size > 16MB` ——
              判断发生在内存已经吃完之后，等于没判。改成边读边计数。 */

@@ -35,6 +35,17 @@ const TINY_PNG = Buffer.from(
 function startExtraServer() {
   return new Promise((resolve) => {
     const srv = http.createServer((req, res) => {
+      if (req.url === '/hotlink.png') {
+        const ref = req.headers.referer || '';
+        if (!ref.startsWith('http://127.0.0.1:')) {
+          res.writeHead(403, { 'Content-Type': 'text/plain' });
+          res.end('403 Hotlink Forbidden');
+          return;
+        }
+        res.writeHead(200, { 'Content-Type': 'image/png' });
+        res.end(TINY_PNG);
+        return;
+      }
       if (req.url === '/pic.png') {
         res.writeHead(200, { 'Content-Type': 'image/png' });
         res.end(TINY_PNG);
@@ -176,6 +187,21 @@ function startExtraServer() {
   }));
   check(uxCheck.hasByteFilter && uxCheck.hasCardCopy && uxCheck.hasCardSave && uxCheck.hasOpenFolderBtn,
     '图库体积过滤、卡片快捷复制/保存与打开目录按钮就绪', JSON.stringify(uxCheck));
+
+  // 4. 验证严格防盗链（无 Referer 403）图片通过 DNR 会话 Referer 规则下载成功
+  const dlHotlink = await popPage.evaluate(async (base) => {
+    return await globalThis.IH.U.sendToBg({
+      type: globalThis.IH.C.MSG.DOWNLOAD_ONE,
+      payload: {
+        url: base + 'hotlink.png',
+        pageUrl: base,
+        filename: 'hotlink-test.png',
+        width: 10,
+        height: 10
+      }
+    });
+  }, srv.url);
+  check(!!(dlHotlink && dlHotlink.ok), '严格防盗链（403 Referer 校验）图片降级下载成功', JSON.stringify(dlHotlink));
 
   await ctx.close();
   srv.close();

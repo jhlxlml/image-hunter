@@ -157,20 +157,71 @@ function bodyLimitError(e) {
   return e;
 }
 
+let dnrRuleSeq = 1000;
+
+/**
+ * 为扩展发起的跨域 fetch 临时挂载一条会话级 Referer 规则。
+ *
+ * 为什么必须走 DNR 而不是 `fetch(url, { referrer: pageUrl })`：
+ * Fetch 规范禁止跨域自定义 referrer —— 扩展后台（`chrome-extension://<id>`）
+ * 传入 `https://weibo.com/` 会被浏览器静默丢弃或回退为扩展源，
+ * 导致微博（sinaimg.cn）等严格校验 Referer 的图床在降级 fetch 时依然 403。
+ */
+async function withRefererRule(targetUrl, pageUrl, fn) {
+  const dnr = typeof chrome !== 'undefined' && chrome.declarativeNetRequest;
+  if (!dnr || typeof dnr.updateSessionRules !== 'function' || !U.isHttpUrl(targetUrl) || !U.isHttpUrl(pageUrl)) {
+    return await fn();
+  }
+  let refOrigin = '';
+  try { refOrigin = new URL(pageUrl).origin + '/'; } catch (e) { refOrigin = ''; }
+  if (!refOrigin) return await fn();
+
+  const ruleId = dnrRuleSeq++;
+  if (dnrRuleSeq > 999999) dnrRuleSeq = 1000;
+
+  let host = '';
+  try { host = new URL(targetUrl).hostname; } catch (e) { host = ''; }
+  const condition = {
+    urlFilter: targetUrl.split('#')[0],
+    resourceTypes: ['xmlhttprequest', 'other', 'image']
+  };
+  if (host) condition.requestDomains = [host];
+  if (typeof chrome.runtime !== 'undefined' && chrome.runtime.id) {
+    condition.initiatorDomains = [chrome.runtime.id];
+  }
+
+  let added = false;
+  try {
+    await dnr.updateSessionRules({
+      addRules: [{
+        id: ruleId,
+        priority: 1,
+        action: {
+          type: 'modifyHeaders',
+          requestHeaders: [{ header: 'Referer', operation: 'set', value: refOrigin }]
+        },
+        condition
+      }]
+    });
+    added = true;
+  } catch (e) { /* DNR 不可用或参数被拒时退回无规则执行 */ }
+
+  try {
+    return await fn();
+  } finally {
+    if (added) {
+      try { await dnr.updateSessionRules({ removeRuleIds: [ruleId] }); } catch (e) { /* ignore */ }
+    }
+  }
+}
+
 /**
  * 降级方案：在扩展页里 fetch 图片（不受页面 CORS 限制），
  * 拿到 blob 后用 blob URL / dataURL 交给下载 API —— 可绕过缺少 Referer 导致的 403
  */
 async function downloadViaFetch(task, filename) {
   const opts = { credentials: 'include', cache: 'no-store' };
-  if (task.pageUrl) {
-    try {
-      opts.referrer = task.pageUrl;
-      opts.referrerPolicy = 'strict-origin-when-cross-origin';
-    } catch (e) { /* 忽略 */ }
-  }
-
-  const res = await U.fetchWithTimeout(task.url, opts, 30000);
+  const res = await withRefererRule(task.url, task.pageUrl, () => U.fetchWithTimeout(task.url, opts, 30000));
   if (!res.ok) throw new Error('HTTP ' + res.status);
 
   /* 这里以前是裸的 `await res.blob()`：先吃完整个响应体，再检查大小 ——
