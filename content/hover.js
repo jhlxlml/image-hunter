@@ -443,6 +443,7 @@
      鼠标划过复杂页面时这个事件每秒能触发几十上百次，每次都全量算一遍是白费。
      （position() 早就用 U.rafThrottle 节流了，onMouseOver 之前漏了。） */
   let pendingOverEl = null;
+  let lastOverEl = null;
   let overFrame = 0;
 
   function flushOver() {
@@ -464,6 +465,7 @@
     // 会先被 scheduleHide 藏掉再显示，肉眼可见地闪。
     if (isHostEl(t)) { handleHostOver(t); return; }
 
+    lastOverEl = t;
     if (s.hoverAltOnly && !e.altKey) {
       if (target) scheduleHide();
       return;
@@ -475,7 +477,10 @@
 
   function onMouseLeaveDoc(e) {
     // relatedTarget 为空说明指针离开了整个窗口
-    if (!e.relatedTarget) scheduleHide();
+    if (!e.relatedTarget) {
+      lastOverEl = null;
+      scheduleHide();
+    }
   }
 
   function onScrollOrResize() {
@@ -488,7 +493,24 @@
       clearTimeout(resetTimer);
       setState('idle');
       hideNow();
+      return;
     }
+    if (e.key === 'Alt') {
+      const s = settings();
+      if (s.hoverEnabled && s.hoverAltOnly && !blocked() && lastOverEl && lastOverEl.isConnected) {
+        handleOver(lastOverEl);
+      }
+    }
+  }
+
+  function onKeyUp(e) {
+    if (e.key === 'Alt' && settings().hoverAltOnly) {
+      hideNow();
+    }
+  }
+
+  function onWindowBlur() {
+    if (settings().hoverAltOnly) hideNow();
   }
 
   /** Alt + 点击图片 → 免悬停直接保存 */
@@ -789,7 +811,9 @@
     document.addEventListener('mouseout', onMouseLeaveDoc, true);
     document.addEventListener('click', onClick, true);
     document.addEventListener('keydown', onKeyDown, true);
+    document.addEventListener('keyup', onKeyUp, true);
 
+    window.addEventListener('blur', onWindowBlur);
     window.addEventListener('scroll', onScrollOrResize, { passive: true, capture: true });
     window.addEventListener('resize', reposition, { passive: true });
 
